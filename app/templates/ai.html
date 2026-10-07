@@ -5,7 +5,7 @@
 <div class="page-head">
   <div>
     <h1>เชื่อมต่อ AI</h1>
-    <p class="sub">ใช้ AI เจ้าอื่นผ่าน API รูปแบบ OpenAI (เช่น DeepSeek, OpenRouter, เกตเวย์ AI ต่างๆ) เป็นโมเดลตอบลูกค้าหรือโมเดลเรียนรู้ได้ นอกเหนือจาก Gemini และ Claude</p>
+    <p class="sub">ตั้งค่าการเชื่อมต่อผู้ให้บริการ AI ภายนอกที่รองรับ API รูปแบบ OpenAI (เช่น DeepSeek, OpenRouter) เพื่อใช้เป็นโมเดลตอบลูกค้าหรือโมเดลเรียนรู้ นอกเหนือจาก Gemini และ Claude</p>
   </div>
 </div>
 
@@ -17,122 +17,199 @@
   <div class="strip-cell"><span class="strip-ic">{{ cicon('apps-list', 22) }}</span><span class="strip-label">โมเดลที่ตั้งไว้</span><span class="strip-value">{{ models | length }}</span></div>
 </div>
 
-<section class="card">
-  <div class="card-head"><h2>{{ cicon('lock-closed', 20) }} API key</h2></div>
-  <div class="key-status">
-    <span><span class="dot {{ 'live' if key_set else 'off' }}"></span> <code>CUSTOM_AI_API_KEY</code>
-      {% if key_set %}ตั้งค่าแล้ว <span class="mono muted">{{ key_mask }}</span>{% else %}ยังไม่ได้ตั้ง{% endif %}</span>
-  </div>
-  <p class="hint" style="margin:8px 0 0">ใส่คีย์ที่ Railway → service นี้ → <b>Variables</b> → New Variable ชื่อ <code>CUSTOM_AI_API_KEY</code> แล้วกด Deploy
-    ระบบเก็บคีย์ไว้ในตัวแปรสภาพแวดล้อมเท่านั้น ไม่บันทึกในฐานข้อมูล ไม่แสดงบนหน้าเว็บ และไม่ปรากฏในข้อความ error · อย่าส่งคีย์ในแชทหรือวางในโค้ด</p>
-</section>
-
 <form method="post" action="/ai/save">
-  <section class="card">
-    <div class="card-head"><h2>{{ cicon('settings', 20) }} การเชื่อมต่อ</h2></div>
-    <div class="stack">
-      <div class="row">
-        <label class="field" style="flex: 1 1 180px">ชื่อผู้ให้บริการ <span class="hint">แสดงในรายการโมเดล</span>
-          <input name="name" value="{{ settings.custom_ai_name }}" maxlength="60" placeholder="เช่น Thirx"></label>
-        <label class="field" style="flex: 3 1 360px">Base URL
-          <input name="base_url" id="cBase" value="{{ settings.custom_ai_base_url }}" class="mono" maxlength="300" placeholder="https://api.example.com/v1" autocomplete="off">
-          <span class="hint">ที่อยู่ API ตามเอกสารของผู้ให้บริการ ปกติลงท้ายด้วย <code>/v1</code> (ถ้าวางลิงก์ที่ลงท้าย /chat/completions ระบบตัดให้เอง) ต้องเป็น https</span></label>
-      </div>
-      {% if base_error and (settings.custom_ai_base_url) %}<div class="note error">{{ base_error }}</div>{% endif %}
-      <label class="field">รายชื่อโมเดล <span class="hint">บรรทัดละ 1 รุ่น · ใส่ <code>ชื่อรุ่น | ชื่อที่ให้แสดง</code> ได้ · หรือกด "ดึงรายชื่อจาก API" ด้านล่าง</span>
-        <textarea name="models" id="cModels" rows="5" class="mono" placeholder="deepseek-v4.1-flash | DeepSeek v4.1 Flash&#10;gpt-6-sol | GPT-6 Sol">{{ settings.custom_ai_models }}</textarea></label>
-      <div class="row">
-        <label class="field">บังคับให้ตอบเป็น JSON
-          <select name="json_mode">
-            {% for v, l in [('auto', 'อัตโนมัติ (แนะนำ) ลองแบบที่ผู้ให้บริการรองรับให้เอง'), ('schema', 'json_schema'), ('object', 'json_object'), ('prompt', 'ขอใน prompt เท่านั้น')] %}
-              <option value="{{ v }}" {{ 'selected' if settings.custom_ai_json_mode == v }}>{{ l }}</option>{% endfor %}
-          </select></label>
-        <label class="field">max tokens <span class="hint">0 = ไม่กำหนด</span>
-          <input type="number" name="max_tokens" min="0" max="200000" value="{{ settings.custom_ai_max_tokens }}"></label>
-        <label class="field">รอคำตอบสูงสุด (วินาที)
-          <input type="number" name="timeout" min="10" max="600" value="{{ settings.custom_ai_timeout }}"></label>
-      </div>
 
-      <div class="privacy-block">
-        <h3>{{ cicon('lock-closed', 18) }} ปกปิดข้อมูลก่อนส่งให้ AI ภายนอก</h3>
-        <p class="hint" style="margin:4px 0 10px">ก่อนส่ง ระบบเปลี่ยนข้อมูลส่วนตัวเป็นรหัสแทน เช่น <code>[PHONE_1]</code> <code>[EMAIL_1]</code> <code>[URL_1]</code> <code>[NAME_1]</code>
-          AI ภายนอกเห็นเฉพาะรหัส พอตอบกลับมา ระบบแทนค่าจริงกลับให้ (ร่างคำตอบลูกค้าจึงยังมีเบอร์/ลิงก์ที่ถูกต้อง) · ตารางรหัสอยู่ในหน่วยความจำชั่วคราว ไม่บันทึกลงฐานข้อมูลหรือ log
-          · ถ้าปกปิดไม่สำเร็จ ระบบจะไม่ส่งข้อความออกไปเลย</p>
-        <div class="row">
-          <label class="field">ปกปิดข้อมูล
-            <select name="mask">
+  {# ======================= 1. การเชื่อมต่อ ======================= #}
+  <section class="panel">
+    <div class="panel-head"><h2>1. ข้อมูลการเชื่อมต่อ API</h2><span class="count">บันทึกพร้อมกันทั้งหน้าด้วยปุ่มด้านล่าง</span></div>
+    <table class="kv">
+      <colgroup><col class="kv-k"><col><col class="kv-d"></colgroup>
+      <tbody>
+        <tr>
+          <th scope="row">API key</th>
+          <td><span class="dot {{ 'live' if key_set else 'off' }}"></span> <code>CUSTOM_AI_API_KEY</code>
+            {% if key_set %}ตั้งค่าแล้ว <span class="mono muted">{{ key_mask }}</span>{% else %}<strong>ยังไม่ได้ตั้ง</strong>{% endif %}</td>
+          <td class="desc">กำหนดที่ Railway → service นี้ → <b>Variables</b> → ชื่อ <code>CUSTOM_AI_API_KEY</code> แล้ว Deploy · ระบบไม่บันทึกคีย์ลงฐานข้อมูล ไม่แสดงบนหน้าเว็บ และไม่ปรากฏในข้อความ error</td>
+        </tr>
+        <tr>
+          <th scope="row">ชื่อผู้ให้บริการ</th>
+          <td><input name="name" value="{{ settings.custom_ai_name }}" maxlength="60" placeholder="เช่น Thirx"></td>
+          <td class="desc">ชื่อที่แสดงหน้ารายการโมเดล</td>
+        </tr>
+        <tr>
+          <th scope="row">Base URL</th>
+          <td><input name="base_url" id="cBase" value="{{ settings.custom_ai_base_url }}" class="mono" maxlength="300" placeholder="https://api.example.com/v1" autocomplete="off">
+            {% if base_error and (settings.custom_ai_base_url) %}<div class="note error" style="margin-top:8px">{{ base_error }}</div>{% endif %}</td>
+          <td class="desc">ที่อยู่ API ตามเอกสารของผู้ให้บริการ ลงท้ายด้วย <code>/v1</code> (หากวางลิงก์ที่ลงท้ายด้วย /chat/completions ระบบจะตัดส่วนเกินให้) และต้องเป็น https</td>
+        </tr>
+        <tr>
+          <th scope="row">รายชื่อโมเดล</th>
+          <td>
+            <textarea name="models" id="cModels" rows="5" class="mono" placeholder="deepseek-v4.1-flash | DeepSeek v4.1 Flash&#10;gpt-6-sol | GPT-6 Sol">{{ settings.custom_ai_models }}</textarea>
+            <div class="actions" style="margin-top:8px"><button type="button" id="cFetch">{{ icon('refresh', 14) }} ดึงรายชื่อโมเดลจาก API</button></div>
+            <div id="cFetchOut" class="fetch-out" hidden style="margin-top:8px"></div>
+          </td>
+          <td class="desc">บรรทัดละ 1 รุ่น · ระบุเป็น <code>ชื่อรุ่น | ชื่อที่แสดง</code> ได้ · หรือกดปุ่ม "ดึงรายชื่อโมเดลจาก API" แล้วเลือกรุ่นที่ต้องการ</td>
+        </tr>
+        <tr>
+          <th scope="row">รูปแบบคำตอบ JSON</th>
+          <td><select name="json_mode">
+            {% for v, l in [('auto', 'อัตโนมัติ (แนะนำ)'), ('schema', 'json_schema'), ('object', 'json_object'), ('prompt', 'ขอใน prompt เท่านั้น')] %}
+              <option value="{{ v }}" {{ 'selected' if settings.custom_ai_json_mode == v }}>{{ l }}</option>{% endfor %}
+          </select></td>
+          <td class="desc">วิธีบังคับให้โมเดลตอบเป็น JSON · แบบอัตโนมัติจะลองตามที่ผู้ให้บริการรองรับให้เอง และจำผลไว้</td>
+        </tr>
+        <tr>
+          <th scope="row">max tokens</th>
+          <td><input type="number" name="max_tokens" min="0" max="200000" value="{{ settings.custom_ai_max_tokens }}"></td>
+          <td class="desc">จำนวนโทเคนตอบสูงสุดต่อครั้ง · 0 = ไม่กำหนด (บางผู้ให้บริการไม่รองรับพารามิเตอร์นี้)</td>
+        </tr>
+        <tr>
+          <th scope="row">เวลารอคำตอบ (วินาที)</th>
+          <td><input type="number" name="timeout" min="10" max="600" value="{{ settings.custom_ai_timeout }}"></td>
+          <td class="desc">เวลารอคำตอบสูงสุดต่อครั้ง (10–600 วินาที)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  {# ======================= 2. การปกปิดข้อมูล ======================= #}
+  <section class="panel">
+    <div class="panel-head"><h2>2. ปกปิดข้อมูลก่อนส่งให้ AI ภายนอก</h2><span class="count">ระบบเปลี่ยนข้อมูลสำคัญเป็นรหัส แล้วแทนค่าจริงกลับเมื่อได้รับคำตอบ</span></div>
+    <table class="kv">
+      <colgroup><col class="kv-k"><col><col class="kv-d"></colgroup>
+      <tbody>
+        <tr>
+          <th scope="row">ปกปิดข้อมูล</th>
+          <td><select name="mask">
               <option value="on" {{ 'selected' if mask_on }}>เปิด (แนะนำ)</option>
               <option value="off" {{ 'selected' if not mask_on }}>ปิด — ส่งข้อความจริงทั้งหมด</option>
-            </select></label>
-          <label class="field">ระดับการปกปิด
-            <select name="mask_level" id="cLevel">
-              <option value="strict" {{ 'selected' if mask_level == 'strict' }}>เข้มงวด (แนะนำ) — ไม่ส่งข้อมูลธุรกิจ/ฐานความรู้/คู่มือ/บทเรียน</option>
-              <option value="standard" {{ 'selected' if mask_level == 'standard' }}>มาตรฐาน — ส่งข้อมูลธุรกิจและคู่มือได้ (ปกปิดเฉพาะข้อมูลส่วนตัว)</option>
-            </select></label>
-          <label class="field">ส่งรูปภาพให้โมเดล <span class="hint">รูป (เช่น สลิป) ปกปิดไม่ได้</span>
-            <select name="vision">
-              {% for v, l in [('no', 'ไม่ส่งรูป (ปลอดภัยสุด · แนะนำ)'), ('auto', 'อัตโนมัติ (ส่งก่อน ถ้าไม่รับจะส่งเฉพาะข้อความ)'), ('yes', 'ส่งเสมอ')] %}
+            </select></td>
+          <td class="desc">ควรเปิดเสมอ · ถ้าปกปิดไม่สำเร็จ ระบบจะไม่ส่งข้อความออกไปเลย</td>
+        </tr>
+        <tr>
+          <th scope="row">ระดับการปกปิด</th>
+          <td><select name="mask_level" id="cLevel">
+              <option value="strict" {{ 'selected' if mask_level == 'strict' }}>เข้มงวด (แนะนำ)</option>
+              <option value="standard" {{ 'selected' if mask_level == 'standard' }}>มาตรฐาน</option>
+            </select></td>
+          <td class="desc"><b>เข้มงวด</b> ไม่ส่งข้อมูลธุรกิจ ฐานความรู้ คู่มือ และบทเรียนของ AI AI จะตอบแบบทั่วไปและขอตรวจสอบก่อน · <b>มาตรฐาน</b> ส่งข้อมูลเหล่านั้นได้ (ปกปิดข้อมูลส่วนตัวแล้ว)</td>
+        </tr>
+        <tr>
+          <th scope="row">ส่งรูปภาพให้โมเดล</th>
+          <td><select name="vision">
+              {% for v, l in [('no', 'ไม่ส่งรูป (แนะนำ)'), ('auto', 'อัตโนมัติ'), ('yes', 'ส่งเสมอ')] %}
                 <option value="{{ v }}" {{ 'selected' if settings.custom_ai_vision == v }}>{{ l }}</option>{% endfor %}
-            </select></label>
-        </div>
-        <label class="field">คำที่ต้องปกปิดเพิ่ม <span class="hint">บรรทัดละ 1 คำ เช่น ชื่อแบรนด์ ชื่อระบบภายใน ชื่อพนักงาน (อย่างน้อย 3 ตัวอักษร)</span>
-          <textarea name="mask_terms" id="cTerms" rows="3" class="mono" placeholder="ชื่อแบรนด์ลูกค้า&#10;ชื่อระบบภายใน">{{ settings.custom_ai_mask_terms }}</textarea></label>
-        <div class="note info"><strong>ปกปิดอัตโนมัติ:</strong> คีย์/โทเคน รหัสผ่าน OTP อีเมล ลิงก์และโดเมน IP เบอร์โทร เลขยาว (บัตร บัญชี อ้างอิง) @ชื่อผู้ใช้ ยูสเซอร์ที่มีตัวเลข
-          และชื่อที่ระบบรู้จัก (ผู้ส่งข้อความ ลูกค้าใน ticket ชื่อแชท) <br>
-          <strong>ระดับเข้มงวดเพิ่ม:</strong> ข้อมูลธุรกิจ ฐานความรู้ คู่มือ และบทเรียนของ AI อยู่ในระบบเท่านั้น ไม่ถูกส่งออก · ปกปิดจำนวนเงิน ตัวเลข 4 หลักขึ้นไป และชื่อแบรนด์/ตัวย่อ (เช่น SCB, UFA168)
-          — AI จะตอบแบบทั่วไปและขอตรวจสอบข้อมูลก่อน (เลือก "มาตรฐาน" ถ้าต้องการให้ AI ใช้ฐานความรู้/คู่มือตอบ) <br>
-          <strong>ที่ปกปิดไม่ได้:</strong> ชื่อหรือที่อยู่ที่ลูกค้าพิมพ์เองในข้อความโดยระบบไม่รู้จัก (ใส่ในช่อง "คำที่ต้องปกปิดเพิ่ม" ได้) และข้อมูลในรูปภาพ <br>
-          <strong>เรื่องการเข้ารหัส:</strong> การส่งข้อมูลถึงผู้ให้บริการเข้ารหัสด้วย HTTPS อยู่แล้ว แต่ผู้ให้บริการต้องอ่านข้อความได้จึงจะตอบได้ จึงใช้การแทนด้วยรหัสและไม่ส่งข้อมูลบริษัทแทน</div>
-        <div class="mask-try">
-          <label class="field">ลองดูว่าข้อความถูกปกปิดอย่างไร <span class="hint">วางข้อความตัวอย่าง ไม่ได้ส่งไปไหน ไม่ถูกเก็บ</span>
-            <textarea id="pvIn" rows="3" placeholder="โทร 081-234-5678 อีเมล a@b.com ยูส ufa12345 เว็บ abc-bet.com โอนเข้า 123-4-56789-0"></textarea></label>
-          <div class="actions"><button type="button" id="pvBtn">{{ icon('refresh', 14) }} ดูตัวอย่าง</button></div>
-          <div id="pvOut" class="mask-out" hidden></div>
-        </div>
-        <p class="hint" style="margin:8px 0 0">
-          {% if mask_stats.requests %}ตั้งแต่เปิดระบบรอบนี้ ({{ mask_stats.since }} UTC): ปกปิดแล้ว <b>{{ mask_stats['items'] }}</b> รายการใน {{ mask_stats.requests }} คำขอ
-            {% if mask_stats.by_kind %}· {% for k, n in mask_stats.by_kind.items() %}{{ k }} {{ n }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
-          {% else %}ยังไม่มีการส่งข้อความให้ AI ภายนอกในรอบนี้{% endif %}</p>
-        {% if mask_recent %}
-        <details class="mask-recent">
-          <summary>ดูข้อความที่ส่งออกล่าสุด {{ mask_recent | length }} รายการ (ฉบับที่ปกปิดแล้ว = สิ่งที่ AI ภายนอกได้รับจริง)</summary>
-          {% for r in mask_recent %}
-          <div class="mask-out">
-            <div class="mask-sum">{{ r.at }} UTC · {{ r.model }} · ปกปิด {{ r['items'] }} รายการ</div>
-            <pre>{{ r.system }}</pre>
-            <pre>{{ r.body }}</pre>
-          </div>
-          {% endfor %}
-          <p class="hint" style="margin:6px 0 0">เก็บในหน่วยความจำชั่วคราว (หายเมื่อรีสตาร์ต) ไม่บันทึกลงฐานข้อมูล และไม่เก็บข้อความดิบก่อนปกปิด</p>
-        </details>
-        {% endif %}
-      </div>
+          </select></td>
+          <td class="desc">รูปภาพ (เช่น สลิปโอนเงิน) ปกปิดข้อมูลในรูปไม่ได้ จึงแนะนำให้ไม่ส่ง · อัตโนมัติ = ส่งก่อน ถ้าโมเดลไม่รับจะส่งเฉพาะข้อความ</td>
+        </tr>
+        <tr>
+          <th scope="row">คำที่ต้องปกปิดเพิ่ม</th>
+          <td><textarea name="mask_terms" id="cTerms" rows="3" class="mono" placeholder="ชื่อแบรนด์ลูกค้า&#10;ชื่อระบบภายใน">{{ settings.custom_ai_mask_terms }}</textarea></td>
+          <td class="desc">บรรทัดละ 1 คำ เช่น ชื่อแบรนด์ ชื่อระบบภายใน ชื่อพนักงาน (อย่างน้อย 3 ตัวอักษร) · ไม่สนตัวพิมพ์เล็ก/ใหญ่</td>
+        </tr>
+      </tbody>
+    </table>
 
-      <div class="note warn"><strong>ความเป็นส่วนตัว</strong> ข้อความที่ผ่านการปกปิดแล้วยังถูกส่งไปยังผู้ให้บริการรายนี้
-        ตรวจสอบความน่าเชื่อถือและนโยบายข้อมูลของผู้ให้บริการก่อนใช้งานจริง · แนะนำให้ลองกับ "โมเดลเรียนรู้" ก่อน</div>
-      <div class="actions end">
-        <button type="button" id="cFetch">{{ icon('refresh', 14) }} ดึงรายชื่อโมเดลจาก API</button>
-        <button class="primary">{{ icon('check', 15) }} บันทึก</button>
-      </div>
-      <div id="cFetchOut" class="fetch-out" hidden></div>
+    <div class="sub-title">รายการข้อมูลที่ปกปิด</div>
+    {% set mask_rows = [
+      ('คีย์ โทเคน รหัสผ่าน OTP', 'sk-…, รหัสผ่าน abc123, OTP 482913', '[SECRET_1]', 1, 1),
+      ('อีเมล', 'name@example.com', '[EMAIL_1]', 1, 1),
+      ('ลิงก์และโดเมน', 'https://abc-bet.com/login', '[URL_1]', 1, 1),
+      ('เบอร์โทรศัพท์', '081-234-5678', '[PHONE_1]', 1, 1),
+      ('เลขบัตร เลขบัญชี เลขอ้างอิง (7 หลักขึ้นไป)', '123-4-56789-0', '[ID_1]', 1, 1),
+      ('ยูสเซอร์ และ @ชื่อผู้ใช้', 'ufa12345, @somchai', '[USER_1]', 1, 1),
+      ('หมายเลข IP', '203.0.113.7', '[IP_1]', 1, 1),
+      ('ชื่อที่ระบบรู้จัก และคำที่กำหนดเพิ่ม', 'ชื่อลูกค้า, ชื่อแชท', '[NAME_1]', 1, 1),
+      ('จำนวนเงิน และตัวเลข 4 หลักขึ้นไป', '5,000 บาท', '[AMT_1]', 0, 1),
+      ('ชื่อแบรนด์ และตัวย่อ', 'SCB, UFA168', '[BRAND_1]', 0, 1),
+    ] %}
+    <div class="table-wrap">
+    <table class="grid-table masktbl">
+      <thead><tr>
+        <th>ประเภทข้อมูล</th><th>ตัวอย่าง</th><th>AI ภายนอกเห็นเป็น</th>
+        <th class="center lv {{ 'on' if mask_level == 'standard' }}" data-lv="standard">ระดับมาตรฐาน</th>
+        <th class="center lv {{ 'on' if mask_level == 'strict' }}" data-lv="strict">ระดับเข้มงวด</th>
+      </tr></thead>
+      <tbody>
+      {% for kind, example, token, std, strict in mask_rows %}
+        <tr><td>{{ kind }}</td><td class="mono small">{{ example }}</td><td class="mono small">{{ token }}</td>
+          <td class="center lv {{ 'on' if mask_level == 'standard' }} {{ 'yes' if std else 'no' }}" data-lv="standard">{{ 'ปกปิด' if std else '—' }}</td>
+          <td class="center lv {{ 'on' if mask_level == 'strict' }} {{ 'yes' if strict else 'no' }}" data-lv="strict">{{ 'ปกปิด' if strict else '—' }}</td></tr>
+      {% endfor %}
+        <tr><td>ข้อมูลธุรกิจ ฐานความรู้ คู่มือ และบทเรียนของ AI</td><td class="small">ข้อความที่กรอกไว้ในระบบ</td><td class="small">ตามระดับที่เลือก</td>
+          <td class="center lv {{ 'on' if mask_level == 'standard' }}" data-lv="standard">ส่ง (ปกปิดข้อมูลส่วนตัวแล้ว)</td>
+          <td class="center lv yes {{ 'on' if mask_level == 'strict' }}" data-lv="strict">ไม่ส่งออก</td></tr>
+        <tr><td>รูปภาพ (สลิป ภาพหน้าจอ)</td><td class="small">ไฟล์รูปจากลูกค้า</td><td class="small">รูปต้นฉบับ (ปกปิดไม่ได้)</td>
+          <td class="center" colspan="2">ตามตัวเลือก "ส่งรูปภาพให้โมเดล" ด้านบน</td></tr>
+      </tbody>
+    </table>
     </div>
+
+    <ol class="mask-notes">
+      <li>ชื่อหรือที่อยู่ที่ลูกค้าพิมพ์เองในข้อความ โดยระบบไม่รู้จัก ปกปิดอัตโนมัติไม่ได้ — เพิ่มชื่อนั้นในช่อง "คำที่ต้องปกปิดเพิ่ม"</li>
+      <li>การส่งข้อมูลถึงผู้ให้บริการเข้ารหัสด้วย HTTPS อยู่แล้ว แต่ผู้ให้บริการต้องอ่านข้อความได้จึงจะตอบได้ จึงใช้การแทนด้วยรหัสและไม่ส่งข้อมูลบริษัท (ระดับเข้มงวด)</li>
+      <li>ตารางรหัสอยู่ในหน่วยความจำของคำขอนั้น ไม่บันทึกลงฐานข้อมูลหรือ log</li>
+    </ol>
+
+    <div class="sub-title">ทดสอบการปกปิด</div>
+    <div class="mask-try">
+      <div class="mask-col">
+        <label class="field" for="pvIn">ข้อความตัวอย่าง <span class="hint">ไม่ได้ส่งไปไหน ไม่ถูกเก็บ</span></label>
+        <textarea id="pvIn" rows="5" placeholder="โทร 081-234-5678 อีเมล a@b.com ยูส ufa12345 เว็บ abc-bet.com โอนเข้า 123-4-56789-0"></textarea>
+        <div class="actions"><button type="button" id="pvBtn">{{ icon('refresh', 14) }} ดูตัวอย่าง</button></div>
+      </div>
+      <div class="mask-col">
+        <div class="field">ข้อความที่ AI ภายนอกจะได้รับ</div>
+        <div id="pvOut" class="mask-out mask-result"><span class="muted">กด "ดูตัวอย่าง" เพื่อแสดงผล</span></div>
+      </div>
+    </div>
+
+    <div class="panel-foot">
+      {% if mask_stats.requests %}
+        <span>ตั้งแต่เปิดระบบรอบนี้ ({{ mask_stats.since }} UTC)</span>
+        <span>ปกปิดแล้ว <b>{{ mask_stats['items'] }}</b> รายการ ใน <b>{{ mask_stats.requests }}</b> คำขอ</span>
+        {% for k, n in mask_stats.by_kind.items() %}<span>{{ k }} <b>{{ n }}</b></span>{% endfor %}
+      {% else %}<span>ยังไม่มีการส่งข้อความให้ AI ภายนอกในรอบนี้</span>{% endif %}
+    </div>
+    {% if mask_recent %}
+    <details class="mask-recent">
+      <summary>ดูข้อความที่ส่งออกล่าสุด {{ mask_recent | length }} รายการ (ฉบับที่ปกปิดแล้ว = สิ่งที่ AI ภายนอกได้รับจริง)</summary>
+      {% for r in mask_recent %}
+      <div class="mask-out">
+        <div class="mask-sum">{{ r.at }} UTC · {{ r.model }} · ปกปิด {{ r['items'] }} รายการ</div>
+        <pre>{{ r.system }}</pre>
+        <pre>{{ r.body }}</pre>
+      </div>
+      {% endfor %}
+      <p class="hint" style="margin:6px 0 0">เก็บในหน่วยความจำชั่วคราว (หายเมื่อรีสตาร์ต) ไม่บันทึกลงฐานข้อมูล และไม่เก็บข้อความดิบก่อนปกปิด</p>
+    </details>
+    {% endif %}
   </section>
+
+  <div class="form-actions">
+    <div class="note warn"><strong>ข้อควรระวัง</strong> ข้อความที่ผ่านการปกปิดแล้วยังถูกส่งไปยังผู้ให้บริการรายนี้ ควรตรวจสอบความน่าเชื่อถือและนโยบายข้อมูลของผู้ให้บริการก่อนใช้งานจริง · แนะนำให้ทดลองกับ "โมเดลเรียนรู้" ก่อน</div>
+    <button class="primary">{{ icon('check', 15) }} บันทึกการตั้งค่า</button>
+  </div>
 </form>
 
+{# ======================= 3. โมเดล ======================= #}
 <section class="panel">
-  <div class="panel-head"><h2>{{ cicon('apps-list', 20) }} โมเดลที่ตั้งไว้</h2>
-    <span class="count">ทดสอบก่อนใช้งานจริง (ใช้โทเคนไม่กี่ร้อยตัว)</span></div>
+  <div class="panel-head"><h2>3. โมเดลที่ตั้งไว้</h2>
+    <span class="count">ทดสอบก่อนใช้งานจริง (ใช้โทเคนไม่กี่ร้อยตัวต่อครั้ง)</span></div>
   <div class="table-wrap">
   <table class="grid-table">
-    <thead><tr><th>โมเดล</th><th>ความสามารถที่ทดสอบ</th><th class="shrink center">วันนี้</th><th class="shrink"></th></tr></thead>
+    <thead><tr><th>โมเดล</th><th>บทบาท</th><th>ความสามารถที่ทดสอบ</th><th class="shrink center">ใช้งานวันนี้</th><th class="shrink">การดำเนินการ</th></tr></thead>
     <tbody>
     {% for m, label in models.items() %}
       {% set c = caps[m] %}{% set u = usage.get(m) %}
       <tr>
         <td><strong>{{ label }}</strong>
-          <div class="mono small muted">{{ m }}</div>
+          <div class="mono small muted">{{ m }}</div></td>
+        <td class="small">
           {% if m == main_model %}<span class="tag st-resolved">โมเดลหลัก (ตอบลูกค้า)</span>{% endif %}
-          {% if m == learn_model %}<span class="tag st-in_progress">โมเดลเรียนรู้</span>{% endif %}</td>
+          {% if m == learn_model %}<span class="tag st-in_progress">โมเดลเรียนรู้</span>{% endif %}
+          {% if m != main_model and m != learn_model %}<span class="muted">—</span>{% endif %}</td>
         <td class="small">
           {% if c %}
             <span class="tag {{ 'st-resolved' if c.json else 'rs-failed' }}">JSON: {{ {'schema': 'schema', 'object': 'json_object', 'prompt': 'ผ่าน prompt'}.get(c.json, 'ไม่ผ่าน') }}</span>
@@ -153,7 +230,7 @@
         </td>
       </tr>
     {% else %}
-      <tr class="empty-row"><td colspan="4">{{ icon('bot', 24) }}<strong>ยังไม่มีโมเดล</strong>ใส่ Base URL และรายชื่อโมเดลด้านบน แล้วกดบันทึก</td></tr>
+      <tr class="empty-row"><td colspan="5">{{ icon('bot', 24) }}<strong>ยังไม่มีโมเดล</strong>ใส่ Base URL และรายชื่อโมเดลด้านบน แล้วกดบันทึก</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -180,6 +257,11 @@
     $('cModels').value = (v ? v + '\n' : '') + id;
   }
 
+  // ไฮไลต์คอลัมน์ของระดับที่เลือกในตารางรายการที่ปกปิด
+  $('cLevel').addEventListener('change', () => {
+    document.querySelectorAll('.masktbl [data-lv]').forEach(el => el.classList.toggle('on', el.dataset.lv === $('cLevel').value));
+  });
+
   $('cFetch').addEventListener('click', async () => {
     const out = $('cFetchOut'), btn = $('cFetch');
     out.hidden = false; out.innerHTML = '<span class="muted">กำลังดึงรายชื่อโมเดล…</span>'; btn.disabled = true;
@@ -187,7 +269,7 @@
       const d = await api('/ai/api/models', { base_url: $('cBase').value });
       if (!d.ok) { out.innerHTML = '<div class="note error">' + esc(d.error) + '</div>'; return; }
       if (!d.models.length) { out.innerHTML = '<div class="note warn">ผู้ให้บริการไม่ได้ส่งรายชื่อโมเดลกลับมา (ใส่ชื่อรุ่นเองได้ในช่องรายชื่อโมเดล)</div>'; return; }
-      out.innerHTML = '<p class="hint" style="margin:0 0 6px">พบ ' + d.models.length + ' รุ่น · กดเพื่อเพิ่มเข้ารายชื่อ แล้วกด "บันทึก"</p><div class="chips">'
+      out.innerHTML = '<p class="hint" style="margin:0 0 6px">พบ ' + d.models.length + ' รุ่น · กดเพื่อเพิ่มเข้ารายชื่อ แล้วกด "บันทึกการตั้งค่า"</p><div class="chips">'
         + d.models.map(m => '<button type="button" class="chip" data-add="' + esc(m) + '">+ ' + esc(m) + '</button>').join('') + '</div>';
       out.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => { addModel(b.dataset.add); b.disabled = true; }));
     } catch (e) { out.innerHTML = '<div class="note error">' + esc(e.message) + '</div>'; }
@@ -196,12 +278,11 @@
 
   $('pvBtn').addEventListener('click', async () => {
     const out = $('pvOut'), btn = $('pvBtn');
-    out.hidden = false; out.textContent = 'กำลังตรวจ…'; btn.disabled = true;
+    out.textContent = 'กำลังตรวจ…'; btn.disabled = true;
     try {
       const d = await api('/ai/api/mask-preview', { text: $('pvIn').value, terms: $('cTerms').value, level: $('cLevel').value });
       const kinds = Object.entries(d.counts || {}).map(([k, n]) => k + ' ' + n).join(' · ');
-      out.innerHTML = '<div class="mask-sum">' + (d.total ? 'ปกปิด ' + d.total + ' รายการ · ' + esc(kinds) : 'ไม่พบข้อมูลที่ต้องปกปิดในข้อความนี้') + '</div><pre>' + esc(d.masked) + '</pre>'
-        + '<div class="hint">นี่คือข้อความที่ AI ภายนอกจะได้รับ</div>';
+      out.innerHTML = '<div class="mask-sum">' + (d.total ? 'ปกปิด ' + d.total + ' รายการ · ' + esc(kinds) : 'ไม่พบข้อมูลที่ต้องปกปิดในข้อความนี้') + '</div><pre>' + esc(d.masked) + '</pre>';
     } catch (e) { out.innerHTML = '<div class="note error">' + esc(e.message) + '</div>'; }
     finally { btn.disabled = false; }
   });

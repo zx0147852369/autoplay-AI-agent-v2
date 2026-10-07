@@ -19,9 +19,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=57">
+  <link rel="stylesheet" href="/static/style.css?v=63">
 </head>
 <body>
+<div class="navbar" aria-hidden="true"></div>
 {% if user %}
 {% macro nav_item(href, ic, label, badge='') -%}
   {% set active = (path == '/' and href == '/') or (href != '/' and path.startswith(href)) %}
@@ -195,6 +196,22 @@
     menuBtn.onclick = () => document.body.classList.add('menu-open');
     document.getElementById('scrim').onclick = () => document.body.classList.remove('menu-open');
   }
+  // แถบโหลดด้านบน: ขึ้นทันทีที่เริ่มเปลี่ยนหน้า (ลิงก์ แถวที่กดได้ ส่งฟอร์ม) ให้รู้ว่าระบบรับคำสั่งแล้วระหว่างรอเซิร์ฟเวอร์
+  (() => {
+    let skip = false, timer = 0;
+    const idle = () => { clearTimeout(timer); document.body.classList.remove('navigating'); };
+    // ลิงก์ดาวน์โหลดไฟล์ไม่ได้เปลี่ยนหน้า -> ไม่ต้องแสดงแถบ
+    document.addEventListener('click', e => {
+      const a = e.target.closest && e.target.closest('a[href]');
+      if (a && (a.hasAttribute('download') || /\/download$/.test(a.pathname))) { skip = true; setTimeout(() => { skip = false; }, 1500); }
+    }, true);
+    window.addEventListener('beforeunload', () => {
+      if (skip) return;
+      document.body.classList.add('navigating');
+      timer = setTimeout(idle, 10000);  // เผื่อผู้ใช้กดยกเลิกการออกจากหน้า
+    });
+    window.addEventListener('pageshow', idle);  // กลับมาด้วยปุ่ม back (แคชของเบราว์เซอร์)
+  })();
 </script>
 {% if user %}
 <script>

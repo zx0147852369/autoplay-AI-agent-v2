@@ -133,7 +133,23 @@ async def _timing(request: Request, call_next):
     if ms > 1000:
         log.warning("ช้า %s %s %.0f ms", request.method, request.url.path, ms)
     return response
-app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
+
+
+class CachedStatic(StaticFiles):
+    """ไฟล์ static ให้เบราว์เซอร์แคชไว้ ไม่ต้องถามเซิร์ฟเวอร์ซ้ำทุกครั้งที่เปลี่ยนหน้า
+    (เซิร์ฟเวอร์อยู่ไกล ทุกคำขอ 304 เสียเวลาไป-กลับ ~250 ms · หน้าเดียวมีไอคอนกว่า 25 ไฟล์)
+    ลิงก์ที่มี ?v=เลขเวอร์ชัน (style.css) แคชถาวร เปลี่ยนเลขเมื่อแก้ไฟล์ · ไฟล์อื่น (ไอคอน โลโก้) แคช 7 วัน"""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            versioned = b"v=" in scope.get("query_string", b"")
+            response.headers["Cache-Control"] = ("public, max-age=31536000, immutable" if versioned
+                                                 else "public, max-age=604800, stale-while-revalidate=86400")
+        return response
+
+
+app.mount("/static", CachedStatic(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
 
