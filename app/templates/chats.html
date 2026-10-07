@@ -28,8 +28,18 @@
     <h2>{{ cicon('chat', 20) }} รายชื่อแชท</h2>
     <span class="count">{{ summary.monitored }} จาก {{ summary.total }} แชทที่ติดตาม · วิเคราะห์อัตโนมัติเมื่อมีข้อความใหม่</span>
   </div>
+  {% if chats %}
+  <div class="toolbar">
+    <div class="search">{{ icon('search', 16) }}<input type="search" id="chatSearch" placeholder="ค้นหาชื่อแชท…" autocomplete="off" aria-label="ค้นหาชื่อแชท"></div>
+    <div class="seg" id="chatSeg" role="group" aria-label="กรองตามสถานะติดตาม">
+      <button type="button" data-mode="all" class="on">ทั้งหมด<span class="n">{{ summary.total }}</span></button>
+      <button type="button" data-mode="on">ติดตามอยู่<span class="n">{{ summary.monitored }}</span></button>
+      <button type="button" data-mode="off">ปิดอยู่<span class="n">{{ summary.total - summary.monitored }}</span></button>
+    </div>
+  </div>
+  {% endif %}
   <div class="table-wrap">
-  <table class="grid-table">
+  <table class="grid-table" id="chatTable">
     <thead><tr>
       <th>แชท</th><th class="shrink">ประเภท</th><th class="shrink">ติดตาม</th>
       <th class="shrink center">วันนี้</th><th class="shrink center">ทั้งหมด</th><th class="shrink">ข้อความล่าสุด</th>
@@ -37,11 +47,14 @@
     </tr></thead>
     <tbody>
     {% for c in chats %}
-      <tr class="{{ '' if c.monitored else 'dim' }}">
-        <td><a class="title-link" href="/chats/{{ c.id }}">{{ c.title }}</a>
-          {% if c.id == dev_group_id %}<span class="tag st-in_progress">กลุ่มโปรแกรมเมอร์</span>{% endif %}
-          {% if c.website_url %}<div class="small muted mono">{{ c.website_url }}</div>{% endif %}
-          {% if ai_errors.get(c.id) %}<div class="small error-text">{{ ai_errors[c.id] }}</div>{% endif %}</td>
+      <tr class="{{ '' if c.monitored else 'dim' }}" data-title="{{ (c.title or '') | lower }}" data-on="{{ 1 if c.monitored else 0 }}">
+        <td><div class="chat-cell">
+          <span class="chat-av" style="--h:{{ (c.id | abs) % 360 }}" aria-hidden="true">{{ ((c.title or '?')[:1]) | upper }}</span>
+          <div class="chat-meta"><a class="title-link" href="/chats/{{ c.id }}">{{ c.title }}</a>
+            {% if c.id == dev_group_id %}<span class="tag st-in_progress">กลุ่มโปรแกรมเมอร์</span>{% endif %}
+            {% if c.website_url %}<div class="small muted mono">{{ c.website_url }}</div>{% endif %}
+            {% if ai_errors.get(c.id) %}<div class="small error-text">{{ ai_errors[c.id] }}</div>{% endif %}</div>
+        </div></td>
         <td class="shrink small">{{ {'group': 'กลุ่ม', 'channel': 'แชนแนล', 'user': 'แชทส่วนตัว'}[c.kind] }}</td>
         <td class="shrink">
           {% if user.role == 'admin' %}
@@ -82,6 +95,43 @@
     {% endfor %}
     </tbody>
   </table>
+  <div class="no-match" id="chatNoMatch" hidden><strong>ไม่พบแชทที่ตรงกับที่ค้นหา</strong>ลองพิมพ์ชื่ออื่น หรือเลือก "ทั้งหมด"</div>
   </div>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+  (() => {
+    const input = document.getElementById('chatSearch');
+    const seg = document.getElementById('chatSeg');
+    const empty = document.getElementById('chatNoMatch');
+    if (!input || !seg) return;
+    const rows = Array.from(document.querySelectorAll('#chatTable tbody tr[data-title]'));
+    let mode = 'all';
+    try { mode = localStorage.getItem('chatFilter') || 'all'; } catch (e) {}
+    if (!seg.querySelector(`[data-mode="${mode}"]`)) mode = 'all';
+
+    function apply() {
+      const q = input.value.trim().toLowerCase();
+      let shown = 0;
+      for (const r of rows) {
+        const okMode = mode === 'all' || (mode === 'on' && r.dataset.on === '1') || (mode === 'off' && r.dataset.on === '0');
+        const ok = okMode && (!q || r.dataset.title.includes(q));
+        r.hidden = !ok;
+        if (ok) shown++;
+      }
+      empty.hidden = shown > 0;
+      seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+    }
+    seg.addEventListener('click', e => {
+      const b = e.target.closest('button[data-mode]');
+      if (!b) return;
+      mode = b.dataset.mode;
+      try { localStorage.setItem('chatFilter', mode); } catch (e2) {}
+      apply();
+    });
+    input.addEventListener('input', apply);
+    apply();
+  })();
+</script>
 {% endblock %}
