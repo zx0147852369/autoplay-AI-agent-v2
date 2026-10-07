@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}แชทลูกค้า{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>แชทลูกค้า</h1>
+    <p class="sub">เปิดติดตามเฉพาะกลุ่มลูกค้า ระบบจะอ่านข้อความเฉพาะแชทที่เปิดไว้</p>
+  </div>
+  {% if user.role == 'admin' %}
+  <form method="post" action="/chats/sync"><button class="primary" {{ '' if connected else 'disabled' }}>{{ icon('refresh', 14) }} ดึงรายชื่อแชทจาก Telegram</button></form>
+  {% endif %}
+</div>
+
+<div class="strip compact">
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('chat-multiple', 22) }}</span><span class="strip-label">แชททั้งหมด</span><span class="strip-value">{{ summary.total }}</span></div>
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('person-available', 22) }}</span><span class="strip-label">ติดตามอยู่</span><span class="strip-value">{{ summary.monitored }}</span></div>
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('calendar-clock', 22) }}</span><span class="strip-label">ข้อความลูกค้าวันนี้</span><span class="strip-value">{{ summary.today }}</span></div>
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('clipboard-task', 22) }}</span><span class="strip-label">Ticket ค้าง</span><span class="strip-value">{{ summary.open_tickets }}</span></div>
+</div>
+
+{% if not connected %}
+  <div class="note warn" style="margin-bottom:16px">ยังไม่ได้เชื่อมต่อ Telegram ระบบจะยังไม่รับข้อความใหม่ {% if user.role == 'admin' %}<a href="/telegram">ไปเชื่อมต่อบัญชี</a>{% endif %}</div>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ cicon('chat', 20) }} รายชื่อแชท</h2>
+    <span class="count">{{ summary.monitored }} จาก {{ summary.total }} แชทที่ติดตาม · วิเคราะห์อัตโนมัติเมื่อมีข้อความใหม่</span>
+  </div>
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr>
+      <th>แชท</th><th class="shrink">ประเภท</th><th class="shrink">ติดตาม</th>
+      <th class="shrink center">วันนี้</th><th class="shrink center">ทั้งหมด</th><th class="shrink">ข้อความล่าสุด</th>
+      <th class="shrink center">Ticket ค้าง</th><th class="shrink center">รออนุมัติ</th><th class="shrink">การวิเคราะห์</th>
+    </tr></thead>
+    <tbody>
+    {% for c in chats %}
+      <tr class="{{ '' if c.monitored else 'dim' }}">
+        <td><a class="title-link" href="/chats/{{ c.id }}">{{ c.title }}</a>
+          {% if c.id == dev_group_id %}<span class="tag st-in_progress">กลุ่มโปรแกรมเมอร์</span>{% endif %}
+          {% if c.website_url %}<div class="small muted mono">{{ c.website_url }}</div>{% endif %}
+          {% if ai_errors.get(c.id) %}<div class="small error-text">{{ ai_errors[c.id] }}</div>{% endif %}</td>
+        <td class="shrink small">{{ {'group': 'กลุ่ม', 'channel': 'แชนแนล', 'user': 'แชทส่วนตัว'}[c.kind] }}</td>
+        <td class="shrink">
+          {% if user.role == 'admin' %}
+          <form method="post" action="/chats/{{ c.id }}/toggle">
+            <button class="switch {{ 'on' if c.monitored }}" title="เปิด/ปิดการติดตาม"><span class="track"></span>{{ 'เปิด' if c.monitored else 'ปิด' }}</button>
+          </form>
+          {% else %}<span class="state {{ 'ok' if c.monitored else 'off' }}">{{ 'เปิด' if c.monitored else 'ปิด' }}</span>{% endif %}
+        </td>
+        {% set n_today = today_counts.get(c.id, 0) %}{% set n_all = counts.get(c.id, 0) %}
+        {% set n_open = open_tickets.get(c.id, 0) %}{% set n_pending = pending.get(c.id, 0) %}
+        <td class="num center {{ 'zero' if not n_today }}">{{ n_today }}</td>
+        <td class="num center {{ 'zero' if not n_all }}">{{ n_all }}</td>
+        <td class="when">{{ last_at[c.id] | localtime if last_at.get(c.id) else '—' }}</td>
+        <td class="num center">{% if n_open %}<a href="/tickets" class="tag st-open">{{ n_open }}</a>{% else %}<span class="zero">0</span>{% endif %}</td>
+        <td class="num center">{% if n_pending %}<a href="/replies" class="tag rs-pending">{{ n_pending }}</a>{% else %}<span class="zero">0</span>{% endif %}</td>
+        {% set n_wait = unanalyzed.get(c.id, 0) %}
+        <td class="shrink">
+          {% if c.id == dev_group_id %}<span class="state off">ใช้แจ้งปัญหา</span>
+          {% elif not c.monitored %}<span class="zero">—</span>
+          {% elif ai_errors.get(c.id) %}
+            <div class="ai-cell">
+              <span class="state bad"><span class="dot off"></span>ผิดพลาด</span>
+              <form method="post" action="/chats/{{ c.id }}/analyze"><button class="icon-btn sm" title="ลองใหม่ตอนนี้ (ระบบจะลองใหม่เองทุก 5 นาที)">{{ icon('refresh', 14) }}</button></form>
+            </div>
+          {% elif n_wait %}
+            <div class="ai-cell">
+              <span class="state warn"><span class="dot wait"></span>รอวิเคราะห์ {{ n_wait }}</span>
+              <form method="post" action="/chats/{{ c.id }}/analyze"><button class="icon-btn sm" title="วิเคราะห์เลยไม่ต้องรอ">{{ icon('refresh', 14) }}</button></form>
+            </div>
+          {% else %}<span class="state ok">{{ icon('check', 13) }} อัตโนมัติ</span>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr class="empty-row"><td colspan="9">{{ icon('chat', 24) }}<strong>ยังไม่มีรายชื่อแชท</strong>
+        {% if not connected %}<a href="/telegram">เชื่อมต่อบัญชี Telegram</a> ก่อน แล้วกด "ดึงรายชื่อแชทจาก Telegram"
+        {% else %}กด "ดึงรายชื่อแชทจาก Telegram" ด้านบน แล้วเปิดติดตามเฉพาะกลุ่มลูกค้า{% endif %}
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

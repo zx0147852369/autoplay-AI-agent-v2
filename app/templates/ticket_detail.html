@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}Ticket #{{ ticket.id }}{% endblock %}
+{% block content %}
+<a class="crumb" href="/tickets">{{ icon('arrow-left', 14) }} Tickets</a>
+<div class="page-head">
+  <div>
+    <h1><span class="id" style="font-size:1rem">#{{ ticket.id }}</span> {{ ticket.title }}</h1>
+    <p class="sub">{{ CATEGORIES.get(ticket.category, ticket.category) }} · เปิดเมื่อ {{ ticket.created_at | localtime }}</p>
+  </div>
+  <div class="actions">
+    <span class="tag sev-{{ ticket.severity }}">{{ SEVERITY_LABELS[ticket.severity] }}</span>
+    <span class="tag st-{{ ticket.status }}">{{ TICKET_STATUSES[ticket.status] }}</span>
+  </div>
+</div>
+
+<div class="grid-2 wide-left">
+  <div>
+    <section class="card">
+      <div class="card-head"><h2>รายละเอียด</h2></div>
+      <dl class="facts">
+        <dt>ลูกค้า</dt><dd>{{ ticket.customer_name or '-' }}</dd>
+        <dt>แชท</dt><dd>{% if chat %}<a href="/chats/{{ chat.id }}">{{ chat.title }}</a>{% else %}{{ ticket.chat_id }}{% endif %}</dd>
+        <dt>เว็บไซต์</dt><dd>
+          {%- set u = ticket.website_url | trim %}
+          {%- set href = u if u.lower().startswith(('http://', 'https://')) else ('https://' ~ u) %}
+          {%- if u and ' ' not in u and '.' in u and not u.lower().startswith(('javascript:', 'data:')) -%}
+            <a href="{{ href }}" target="_blank" rel="noopener noreferrer" class="mono">{{ u }} {{ icon('external', 12) }}</a>
+          {%- else %}{{ u or 'ยังไม่มีลิงก์' }}{% endif %}</dd>
+        <dt>ผู้รับผิดชอบ</dt><dd>{% set a = users | selectattr('id', 'equalto', ticket.assignee_id) | first %}{{ a.username if a else 'ยังไม่มอบหมาย' }}</dd>
+        <dt>อัปเดตล่าสุด</dt><dd class="mono small">{{ ticket.updated_at | localtime }}</dd>
+      </dl>
+      <p class="section-title">สรุปปัญหา</p>
+      <div class="summary">{{ ticket.summary or '—' }}</div>
+    </section>
+
+    {% set sc = ticket.site_check | fromjson %}
+    <section class="card">
+      <div class="card-head">
+        <h2>สถานะเว็บไซต์</h2>
+        <form method="post" action="/tickets/{{ ticket.id }}/check-site"><button class="sm" {{ '' if ticket.website_url else 'disabled' }}>{{ icon('refresh', 13) }} ตรวจอีกครั้ง</button></form>
+      </div>
+      {% if sc %}
+        {% set state = 'down' if not sc.ok else ('moved' if sc.other_host else 'up') %}
+        <div class="site-status {{ state }}">
+          <span class="state"><span class="dot {{ {'up': 'live', 'moved': 'wait', 'down': 'off'}[state] }}"></span>
+            {{ {'up': 'เข้าได้ปกติ', 'moved': 'ถูกพาไปโดเมนอื่น', 'down': 'เข้าไม่ได้'}[state] }}</span>
+          <span class="mono small">{% if sc.status_code %}HTTP {{ sc.status_code }}{% else %}{{ sc.error }}{% endif %} · {{ sc.elapsed_ms }} ms</span>
+          {% if sc.checked_at %}<span class="muted small">ตรวจเมื่อ {{ sc.checked_at | isolocal }}</span>{% endif %}
+        </div>
+        {% if state == 'moved' %}
+          <div class="note warn" style="margin-top:10px">เปิด <span class="mono">{{ sc.url }}</span> แล้วถูกพาไปที่ <strong class="mono">{{ sc.final_host }}</strong>
+            ไม่ใช่เว็บของลูกค้า โดเมนอาจหมดอายุ ถูกเปลี่ยน หรือลิงก์ที่บันทึกไว้ไม่ถูกต้อง</div>
+        {% elif sc.final_url and sc.final_url != sc.url %}
+          <p class="muted small" style="margin:8px 0 0">redirect ไปที่ <span class="mono">{{ sc.final_url }}</span></p>
+        {% endif %}
+      {% else %}<p class="muted" style="margin:0">{{ 'ยังไม่ได้ตรวจ' if ticket.website_url else 'ยังไม่มีลิงก์เว็บไซต์' }}</p>{% endif %}
+      <form method="post" action="/tickets/{{ ticket.id }}/website" class="site-edit">
+        <label class="field">ลิงก์เว็บไซต์ของลูกค้า
+          <span class="row" style="flex-wrap:nowrap">
+            <input name="website_url" value="{{ ticket.website_url }}" placeholder="https://play.example.com" class="mono">
+            <button class="primary">บันทึกและตรวจใหม่</button>
+          </span></label>
+        <label class="check-inline"><input type="checkbox" name="for_chat" value="1" {{ 'checked' if not (chat and chat.website_url) or (chat and chat.website_url == ticket.website_url) }}>
+          ใช้เป็นเว็บประจำแชท{% if chat %} "{{ chat.title }}"{% endif %} (ticket ต่อไปจะใช้ลิงก์นี้ AI ไม่ต้องเดา)</label>
+        {% if chat and chat.website_url and chat.website_url != ticket.website_url %}
+          <p class="hint" style="margin:4px 0 0">เว็บประจำแชทตอนนี้: <span class="mono">{{ chat.website_url }}</span></p>
+        {% endif %}
+      </form>
+    </section>
+
+    {% if attachments %}
+    <section class="card">
+      <div class="card-head"><h2>รูปจากลูกค้า <span class="muted small">{{ attachments | length }} รูป</span></h2></div>
+      <div class="gallery">
+        {% for a in attachments %}
+          <a href="/media/{{ a.media_path }}" target="_blank"><img src="/media/{{ a.media_path }}" alt="{{ a.caption or 'รูปจากลูกค้า' }}"></a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="card">
+      <div class="card-head"><h2>ประวัติ</h2></div>
+      {% set kinds = {'customer_message': 'ลูกค้า', 'ai_summary': 'สรุปอัตโนมัติ', 'note': 'บันทึก', 'status': 'อัปเดต', 'site_check': 'ตรวจเว็บ', 'dev': 'โปรแกรมเมอร์'} %}
+      <ol class="timeline">
+        {% for g in timeline %}
+          <li class="ev-{{ g.kind }}">
+            <span class="tl-when">{{ g.created_at | localtime }}</span>
+            <div>
+              <div class="tl-who"><strong>{{ kinds.get(g.kind, g.kind) }}</strong>{% if g.author %} · {{ g.author }}{% endif %}
+                {% if g['items'] | length > 1 %}<span class="muted"> · {{ g['items'] | length }} ข้อความ</span>{% endif %}</div>
+              {% set texts = g['items'] | map(attribute='body') | select | list %}
+              {% if texts %}<div class="body">{{ texts | join('\n') }}</div>{% endif %}
+              {% set pics = g['items'] | map(attribute='media') | select | list %}
+              {% if pics %}<div class="tl-pics">{% for p in pics %}<a href="/media/{{ p }}" target="_blank"><img src="/media/{{ p }}" alt="รูปจากลูกค้า" loading="lazy"></a>{% endfor %}</div>{% endif %}
+            </div>
+          </li>
+        {% else %}
+          <li><span></span><div class="muted small">ยังไม่มีประวัติ</div></li>
+        {% endfor %}
+      </ol>
+      <form method="post" action="/tickets/{{ ticket.id }}/note" class="stack">
+        <textarea name="body" rows="3" placeholder="จดสาเหตุ สิ่งที่แก้ไป หรือสิ่งที่ต้องตามต่อ" required></textarea>
+        <div class="actions end"><button>เพิ่มบันทึก</button></div>
+      </form>
+    </section>
+  </div>
+
+  <aside class="sticky">
+    <section class="card">
+      <div class="card-head"><h2>จัดการ</h2></div>
+      <form method="post" action="/tickets/{{ ticket.id }}/update" class="stack">
+        <label class="field">หัวข้อ <input name="title" value="{{ ticket.title }}" required></label>
+        <label class="field">สถานะ
+          <select name="status">{% for k, v in TICKET_STATUSES.items() %}<option value="{{ k }}" {{ 'selected' if ticket.status == k }}>{{ v }}</option>{% endfor %}</select>
+        </label>
+        <label class="field">ความรุนแรง
+          <select name="severity">{% for k, v in SEVERITY_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if ticket.severity == k }}>{{ v }}</option>{% endfor %}</select>
+        </label>
+        <label class="field">ผู้รับผิดชอบ
+          <select name="assignee_id">
+            <option value="">— ยังไม่มอบหมาย —</option>
+            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if ticket.assignee_id == u.id }}>{{ u.username }} ({{ ROLES[u.role] }})</option>{% endfor %}
+          </select>
+        </label>
+        <input type="hidden" name="website_url" value="{{ ticket.website_url }}">
+        <button class="primary block">บันทึก</button>
+        <p class="hint" style="margin:0">เมื่อเปลี่ยนสถานะเป็น "แก้ไขแล้ว" ระบบจะร่างข้อความแจ้งลูกค้าว่าแก้ไขเรียบร้อย ให้อนุมัติก่อนส่ง</p>
+      </form>
+      {% if user.role == 'admin' %}
+      <form method="post" action="/tickets/{{ ticket.id }}/delete" class="delete-zone"
+            data-confirm-title="ลบ ticket #{{ ticket.id }}?" data-confirm="{{ ticket.title }} — ประวัติและรูปแนบของ ticket นี้จะถูกลบด้วย กู้คืนไม่ได้"
+            data-confirm-ok="ลบ ticket" data-confirm-tone="danger">
+        <button class="danger sm block">{{ cicon('delete', 15) }} ลบ ticket นี้</button>
+      </form>
+      {% endif %}
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>กลุ่มโปรแกรมเมอร์</h2></div>
+      {% if not dev_group_set %}
+        <p class="muted small" style="margin:0">ยังไม่ได้เลือกกลุ่ม {% if user.role == 'admin' %}<a href="/settings">ตั้งค่า</a>{% endif %}</p>
+      {% else %}
+        <p class="small" style="margin:0 0 10px">
+          {% if dev_posted %}<span class="state ok">{{ icon('check', 13) }} ส่งเข้ากลุ่มแล้ว</span>
+          {% elif ticket.dev_status == 'pending' %}<span class="state warn"><span class="dot wait"></span>รออนุมัติก่อนส่งเข้ากลุ่ม</span>
+          {% elif ticket.dev_status == 'skipped' %}<span class="state off">เลือกไม่ส่งเข้ากลุ่ม</span>
+          {% else %}<span class="state off">ยังไม่ได้ส่งเข้ากลุ่ม</span>{% endif %}
+        </p>
+        {% if user.role in ('admin', 'agent') %}
+        <form method="post" action="/tickets/{{ ticket.id }}/post-dev">
+          <button class="sm block {{ 'go' if ticket.dev_status == 'pending' }}">{{ icon('send', 13) }}
+            {{ 'ส่งเข้ากลุ่มอีกครั้ง' if dev_posted else ('อนุมัติและส่งเข้ากลุ่ม' if ticket.dev_status == 'pending' else 'ส่งเข้ากลุ่มตอนนี้') }}</button>
+        </form>
+        {% if ticket.dev_status == 'pending' %}
+        <form method="post" action="/tickets/{{ ticket.id }}/skip-dev" style="margin-top:6px">
+          <button class="sm block ghost">ไม่ส่งเข้ากลุ่ม</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        <p class="hint" style="margin:10px 0 0">โปรแกรมเมอร์ reply โพสต์ ticket ในกลุ่ม เช่น "กำลังแก้" "แก้เสร็จแล้ว" ระบบจะอัปเดตสถานะให้</p>
+      {% endif %}
+    </section>
+    {% if replies %}
+    <section class="card">
+      <div class="card-head"><h2>ข้อความที่ตอบลูกค้า</h2></div>
+      {% for r in replies %}
+        <div class="mini-reply"><span class="tag rs-{{ r.status }}">{{ REPLY_STATUSES.get(r.status, r.status) }}</span>
+          {% if r.kind == 'resolved' %}<span class="tag st-resolved">แจ้งแก้ไขเสร็จ</span>{% endif %}
+          {% if r.kind == 'dev_update' %}<span class="tag st-in_progress">จากโปรแกรมเมอร์</span>{% endif %}
+          {% if r.status == 'pending' %}<a class="small" href="/replies">ไปอนุมัติ →</a>{% endif %}<br>{{ r.final_text }}</div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}เข้าสู่ระบบ{% endblock %}
+{% block auth %}
+<div class="login">
+
+  <main class="login-main">
+    <div class="login-card">
+      <img class="login-logo logo-light" src="/static/brand/logo.png" alt="autopay" width="200" height="41"><img class="login-logo logo-dark" src="/static/brand/logo-dark.png" alt="autopay" width="200" height="41">
+      <h1>เข้าสู่ระบบหลังบ้าน</h1>
+      <p class="login-sub">ใช้ชื่อผู้ใช้และรหัสผ่านที่ผู้ดูแลระบบสร้างให้</p>
+
+      {% if need_setup %}
+        <div class="login-alert">{{ icon('alert', 16) }}<span>ยังไม่ได้ตั้งค่า <code>ADMIN_PASSWORD</code> บนเซิร์ฟเวอร์ ตั้งค่าใน Variables แล้วรีสตาร์ทระบบ</span></div>
+      {% endif %}
+      {% for message in login_errors %}
+        <div class="login-alert" role="alert">{{ icon('alert', 16) }}<span>{{ message }}</span></div>
+      {% endfor %}
+
+      <form method="post" action="/login" class="login-form" id="loginForm">
+        <label class="login-field">
+          <span>ชื่อผู้ใช้</span>
+          <span class="input-wrap">{{ icon('user', 17) }}<input name="username" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false"></span>
+        </label>
+        <label class="login-field">
+          <span>รหัสผ่าน</span>
+          <span class="input-wrap">{{ icon('lock', 17) }}<input name="password" id="password" type="password" required autocomplete="current-password">
+            <button type="button" class="reveal" id="reveal" aria-label="แสดงรหัสผ่าน" title="แสดงรหัสผ่าน">
+              <span class="when-hidden">{{ icon('eye', 17) }}</span><span class="when-shown">{{ icon('eye-off', 17) }}</span>
+            </button>
+          </span>
+        </label>
+        <p class="caps-hint" id="capsHint" hidden>{{ icon('alert', 13) }} Caps Lock เปิดอยู่</p>
+        <button class="login-submit" id="submitBtn">เข้าสู่ระบบ</button>
+      </form>
+
+      <p class="login-help">ลืมรหัสผ่าน? ติดต่อผู้ดูแลระบบให้ตั้งรหัสใหม่</p>
+    </div>
+  </main>
+</div>
+<script>
+  const pw = document.getElementById('password');
+  const reveal = document.getElementById('reveal');
+  reveal.addEventListener('click', () => {
+    const show = pw.type === 'password';
+    pw.type = show ? 'text' : 'password';
+    reveal.classList.toggle('on', show);
+    reveal.setAttribute('aria-label', show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+    pw.focus();
+  });
+  const caps = document.getElementById('capsHint');
+  pw.addEventListener('keyup', e => { caps.hidden = !(e.getModifierState && e.getModifierState('CapsLock')); });
+  document.getElementById('loginForm').addEventListener('submit', () => {
+    const b = document.getElementById('submitBtn'); b.disabled = true; b.textContent = 'กำลังเข้าสู่ระบบ…';
+  });
+</script>
+{% endblock %}

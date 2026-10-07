@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}ตั้งค่า{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>ตั้งค่า</h1>
+    <p class="sub">ข้อมูลที่ระบบใช้ร่างคำตอบ การทำงานอัตโนมัติ และผู้ใช้หลังบ้าน</p>
+  </div>
+</div>
+
+<form method="post" action="/settings" class="grid-2 wide-left">
+  <div>
+  <section class="card">
+    <div class="card-head"><h2>ข้อมูลสำหรับร่างคำตอบ</h2></div>
+    <div class="stack">
+      <label class="field">เกี่ยวกับธุรกิจ <span class="hint">ธุรกิจของเรา บริการ และลูกค้าเป็นใคร</span>
+        <textarea name="business_context" rows="4">{{ settings.business_context }}</textarea></label>
+      <label class="field">คำตอบมาตรฐาน / วิธีแก้ปัญหาเบื้องต้น <span class="hint">รวมรายชื่อเว็บไซต์ของเรา และข้อมูลที่ต้องขอจากลูกค้าในแต่ละปัญหา</span>
+        <textarea name="knowledge_base" rows="9">{{ settings.knowledge_base }}</textarea></label>
+      <label class="field">น้ำเสียงการตอบ
+        <input name="reply_style" value="{{ settings.reply_style }}"></label>
+    </div>
+  </section>
+  {% include "_sound_card.html" %}
+  <section class="card">
+    <div class="card-head"><h2>โมเดลและเวลา</h2></div>
+    <div class="stack">
+      <label class="field">โมเดล AI
+        <select name="ai_model">
+          <optgroup label="Google AI Studio (ฟรี)">
+            {% for m, label in GEMINI_MODELS.items() %}<option value="{{ m }}" {{ 'selected' if settings.ai_model == m }}>{{ label }}</option>{% endfor %}
+          </optgroup>
+          <optgroup label="Anthropic Claude (เสียเงิน)">
+            {% for m, label in CLAUDE_MODELS.items() %}<option value="{{ m }}" {{ 'selected' if settings.ai_model == m }}>{{ label }}</option>{% endfor %}
+          </optgroup>
+        </select>
+      </label>
+      <div class="key-status">
+        {% for label, masked, bad in gemini_keys %}
+          <span><span class="dot {{ 'off' if bad else 'live' }}"></span> <code>{{ 'GEMINI_API_KEY' if loop.first else 'GEMINI_API_KEY_' ~ loop.index }}</code>
+            {{ label }} <span class="mono muted">{{ masked }}</span>{% if bad %} <span class="error-text">· Google แจ้งว่าคีย์ใช้ไม่ได้</span>{% endif %}</span>
+        {% else %}
+          <span><span class="dot off"></span> <code>GEMINI_API_KEY</code> ยังไม่ได้ตั้ง</span>
+        {% endfor %}
+        {% if gemini_keys | length == 1 %}
+          <span><span class="dot wait"></span> <code>GEMINI_API_KEY_2</code> ยังไม่มีคีย์สำรอง</span>
+        {% endif %}
+        <span><span class="dot {{ 'live' if has_claude_key else 'off' }}"></span> <code>ANTHROPIC_API_KEY</code> {{ 'ตั้งค่าแล้ว' if has_claude_key else 'ยังไม่ได้ตั้ง' }}</span>
+      </div>
+      <p class="hint" style="margin:6px 0 0">คีย์สำรอง: เพิ่ม <code>GEMINI_API_KEY_2</code>, <code>GEMINI_API_KEY_3</code> ใน Variables ของ Railway
+        เมื่อคีย์หลักโควตาเต็ม ระบบจะสลับไปใช้คีย์สำรองกับรุ่นเดิมก่อน แล้วค่อยลดไปรุ่นอื่น · ควรสร้างคีย์จากคนละบัญชี Google เพราะโควตาฟรีนับต่อโปรเจกต์</p>
+      {% if settings.ai_model.startswith('gemini') and not has_gemini_key %}
+        <div class="note error">โมเดลที่เลือกต้องใช้ <code>GEMINI_API_KEY</code> สร้างฟรีที่ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> แล้วใส่ใน Variables ของ Railway</div>
+      {% elif settings.ai_model.startswith('claude') and not has_claude_key %}
+        <div class="note error">โมเดลที่เลือกต้องใช้ <code>ANTHROPIC_API_KEY</code></div>
+      {% endif %}
+      <div class="field">เพดานโควตาฟรีต่อรุ่น <span class="hint">ดูตัวเลขจริงของบัญชีคุณที่ <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">AI Studio</a> · ใส่ 0 = ไม่จำกัด</span>
+        <table class="grid-table limits-table">
+          <thead><tr><th>รุ่น</th><th class="shrink">ต่อวัน</th><th class="shrink">ต่อนาที</th></tr></thead>
+          <tbody>
+          {% for model, lim in limits.items() %}
+            <tr><td class="mono small">{{ model }}</td>
+              <td><input name="rpd__{{ model }}" type="number" min="0" max="100000" value="{{ lim.rpd }}" class="mono"></td>
+              <td><input name="rpm__{{ model }}" type="number" min="0" max="10000" value="{{ lim.rpm }}" class="mono"></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <input type="hidden" name="gemini_limits" value="1">
+      </div>
+      <label class="field">ความละเอียดในการคิด <span class="hint">ใช้กับ Claude เท่านั้น</span>
+        <select name="ai_effort">
+          {% for e, l in [('low', 'ต่ำ — เร็วและประหยัด'), ('medium', 'กลาง'), ('high', 'สูง — ละเอียดที่สุด')] %}<option value="{{ e }}" {{ 'selected' if settings.ai_effort == e }}>{{ l }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="row">
+        <label class="field">รอลูกค้าพิมพ์ (วินาที) <input name="debounce_seconds" type="number" min="0" max="600" class="mono" value="{{ settings.debounce_seconds }}"></label>
+        <label class="field">อ่านย้อนหลัง (ข้อความ) <input name="context_messages" type="number" min="5" max="100" class="mono" value="{{ settings.context_messages }}"></label>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <div class="card-head"><h2>ทำงานอัตโนมัติ</h2></div>
+      <label class="check-row"><input type="checkbox" name="auto_draft" {{ 'checked' if settings.auto_draft == '1' }}>
+        <span>ร่างคำตอบให้อัตโนมัติ<span class="hint">ทุกข้อความยังต้องอนุมัติก่อนส่ง</span></span></label>
+      <label class="check-row"><input type="checkbox" name="auto_ticket" {{ 'checked' if settings.auto_ticket == '1' }}>
+        <span>เปิด ticket เมื่อลูกค้าแจ้งปัญหา</span></label>
+      <label class="check-row"><input type="checkbox" name="site_check" {{ 'checked' if settings.site_check == '1' }}>
+        <span>ตรวจเว็บไซต์ที่ลูกค้าแจ้ง<span class="hint">เช็กว่าเข้าได้ไหม และใช้เวลาโหลดเท่าไร</span></span></label>
+      <label class="check-row"><input type="checkbox" name="ask_link" {{ 'checked' if settings.ask_link == '1' }}>
+        <span>ขอลิงก์เว็บไซต์เมื่อลูกค้าไม่ได้แจ้ง<span class="hint">ขอครั้งเดียวต่อ ticket · ต้องอนุมัติก่อนส่ง</span></span></label>
+      <label class="check-row"><input type="checkbox" name="ack_info" {{ 'checked' if settings.ack_info == '1' }}>
+        <span>ตอบรับเมื่อลูกค้าส่งข้อมูลที่ขอไป<span class="hint">เช่น ลิงก์เว็บไซต์ ยูสเซอร์ สลิป → "ได้รับข้อมูลแล้วค่ะ ทีมงานกำลังตรวจสอบให้นะคะ" · ต้องอนุมัติก่อนส่ง</span></span></label>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>แจ้งลูกค้าเมื่อแก้ไขเสร็จ</h2></div>
+      <label class="check-row"><input type="checkbox" name="notify_resolved" {{ 'checked' if settings.notify_resolved == '1' }}>
+        <span>ร่างข้อความแจ้งลูกค้าเมื่อ ticket เปลี่ยนเป็น "แก้ไขแล้ว"<span class="hint">ข้อความจะเข้าคิวรออนุมัติก่อนส่งเสมอ</span></span></label>
+      <label class="field" style="margin-top:10px">ข้อความที่จะส่ง
+        <textarea name="resolved_message" rows="4">{{ settings.resolved_message }}</textarea>
+        <span class="hint">ใส่ <code>{customer}</code> = ชื่อลูกค้า, <code>{title}</code> = หัวข้อปัญหา, <code>{ticket_id}</code> = เลข ticket</span></label>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>กลุ่มแจ้งปัญหาโปรแกรมเมอร์</h2></div>
+      {% set current = settings.dev_group_id or (suggested.id | string if suggested else '') %}
+      <div class="stack">
+        <label class="field">กลุ่มที่ใช้แจ้งปัญหา
+          <select name="dev_group_id">
+            <option value="">— ไม่ใช้ —</option>
+            {% for g in groups %}<option value="{{ g.id }}" {{ 'selected' if current == g.id | string }}>{{ g.title }}</option>{% endfor %}
+          </select>
+          {% if not settings.dev_group_id and suggested %}<span class="hint">เลือก "{{ suggested.title }}" ให้แล้ว กดบันทึกเพื่อใช้งาน</span>
+          {% elif not groups %}<span class="hint">ยังไม่มีรายชื่อกลุ่ม ไปที่หน้าแชทลูกค้าแล้วกด "ดึงรายชื่อแชทจาก Telegram"</span>{% endif %}
+        </label>
+        <label class="field">ชื่อผู้ใช้ Telegram ของทีมงานในกลุ่มลูกค้า
+          <input name="staff_usernames" value="{{ settings.staff_usernames }}" placeholder="Prime2499, admin2">
+          <span class="hint">คนที่ไม่ใช่ลูกค้า เช่น แอดมินคนอื่น ข้อความของคนเหล่านี้จะไม่ถูกวิเคราะห์และไม่ทำให้ระบบร่างคำตอบ</span></label>
+        <label class="field">ไม่รับข้อความจากบัญชีเหล่านี้
+          <input name="ignore_usernames" value="{{ settings.ignore_usernames }}" placeholder="nsbmw_prod_bot">
+          <span class="hint">ระบบจะไม่บันทึกและไม่วิเคราะห์ข้อความจากบัญชีเหล่านี้ เช่น บอทแจ้งเตือนในกลุ่มลูกค้า · คั่นด้วยจุลภาค ไม่ต้องใส่ @</span></label>
+        <label class="check-row"><input type="checkbox" name="ignore_bots" {{ 'checked' if settings.ignore_bots == '1' }}>
+          <span>ไม่รับข้อความจากบอท Telegram ทุกตัว<span class="hint">บัญชีที่เป็นบอท (เช่น ชื่อลงท้าย _bot) จะถูกข้ามทั้งหมด</span></span></label>
+        <label class="field">ชื่อผู้ใช้ Telegram ของโปรแกรมเมอร์
+          <input name="dev_usernames" value="{{ settings.dev_usernames }}" placeholder="yuopa9, dev2">
+          <span class="hint">คั่นด้วยเครื่องหมายจุลภาค ไม่ต้องใส่ @ ระบบจะอ่านเฉพาะข้อความจากคนเหล่านี้</span></label>
+        <label class="field">ทีมงานที่ดูแลเรื่องเชื่อมบัญชีธนาคาร
+          <input name="bank_usernames" value="{{ settings.bank_usernames }}" placeholder="bank_admin1, bank_admin2">
+          <span class="hint">เรื่องเชื่อมบัญชี เช่น ขอเชื่อม SCB LINE Connect ใหม่ / SCB Connect ไม่ออโต้ จะส่งเข้ากลุ่มเดิมพร้อมแท็กคนเหล่านี้
+            และระบบจะอ่านคำตอบของคนเหล่านี้เพื่ออัปเดตสถานะ เหมือนโปรแกรมเมอร์ · คั่นด้วยจุลภาค ไม่ต้องใส่ @</span></label>
+        <div>
+          <label class="check-row"><input type="checkbox" name="dev_forward" {{ 'checked' if settings.dev_forward == '1' }}>
+            <span>ส่ง ticket ใหม่เข้ากลุ่ม<span class="hint">พร้อมรูปจากลูกค้า และข้อมูลเพิ่มเติมที่ลูกค้าส่งตามมา</span></span></label>
+          <label class="check-row"><input type="checkbox" name="dev_require_approval" {{ 'checked' if settings.dev_require_approval == '1' }}>
+            <span>ต้องอนุมัติก่อนส่ง ticket เข้ากลุ่ม<span class="hint">ticket ใหม่จะรอที่หน้า "รออนุมัติ" แก้ข้อความได้ก่อนส่ง</span></span></label>
+          <label class="check-row"><input type="checkbox" name="dev_watch" {{ 'checked' if settings.dev_watch == '1' }}>
+            <span>อ่านข้อความโปรแกรมเมอร์และอัปเดต ticket<span class="hint">โปรแกรมเมอร์ต้อง reply โพสต์ ticket หรือพิมพ์ #เลข ticket · ข้อความถึงลูกค้ายังต้องอนุมัติก่อนส่ง</span></span></label>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="save-bar">
+    <span class="muted small">การตั้งค่าในหน้านี้ (ยกเว้นเสียงแจ้งเตือน) จะมีผลเมื่อกดบันทึก</span>
+    <button class="primary">{{ icon('check', 15) }} บันทึกการตั้งค่า</button>
+  </div>
+</form>
+
+<section class="card">
+  <div class="card-head"><h2>ผู้ใช้หลังบ้าน</h2></div>
+  <div class="list">
+    {% for u in users %}
+      <div class="list-item">
+        <span class="avatar">{{ u.username[:1] | upper }}</span>
+        <span class="li-main"><span class="li-title">{{ u.username }}{% if u.id == user.id %} <span class="muted small">(คุณ)</span>{% endif %}</span>
+          <span class="li-sub">{{ ROLES[u.role] }} · เพิ่มเมื่อ {{ u.created_at | localtime }}</span></span>
+        {% if u.id != user.id %}<form method="post" action="/users/{{ u.id }}/delete" data-confirm-title="ลบผู้ใช้ {{ u.username }}?" data-confirm="ผู้ใช้นี้จะเข้าสู่ระบบหลังบ้านไม่ได้อีก" data-confirm-ok="ลบผู้ใช้" data-confirm-tone="danger"><button class="sm danger">ลบ</button></form>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <h3>เพิ่มผู้ใช้</h3>
+  <form method="post" action="/users" class="row">
+    <label class="field">ชื่อผู้ใช้ <input name="username" required></label>
+    <label class="field">รหัสผ่าน <input name="password" type="password" placeholder="อย่างน้อย 8 ตัวอักษร" minlength="8" required autocomplete="new-password"></label>
+    <label class="field">สิทธิ์ <select name="role">{% for k, v in ROLES.items() %}<option value="{{ k }}" {{ 'selected' if k == 'programmer' }}>{{ v }}</option>{% endfor %}</select></label>
+    <button>เพิ่ม</button>
+  </form>
+  <p class="hint" style="margin:12px 0 0">ผู้ดูแลระบบ: ทุกเมนู · แอดมินตอบแชท: อนุมัติข้อความและดู ticket · โปรแกรมเมอร์: ticket อย่างเดียว</p>
+</section>
+{% endblock %}
+{% block scripts %}
+{% include "_sound_script.html" %}
+{% endblock %}

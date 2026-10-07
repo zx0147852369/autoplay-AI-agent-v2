@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}Tickets{% endblock %}
+{% block scripts %}
+<script>
+  function updatePicks() {
+    const n = document.querySelectorAll('.pick:checked').length;
+    const bar = document.getElementById('bulkForm');
+    if (!bar) return;
+    bar.hidden = n === 0;
+    document.getElementById('pickCount').textContent = n;
+    const all = document.querySelector('.pick-all');
+    if (all) all.checked = n > 0 && n === document.querySelectorAll('.pick').length;
+  }
+  function pickAll(on) {
+    document.querySelectorAll('.pick').forEach(c => c.checked = on);
+    updatePicks();
+  }
+</script>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Tickets</h1>
+    <p class="sub">ปัญหาที่ลูกค้าแจ้งในแชท สรุปพร้อมรูปภาพและลิงก์ ให้โปรแกรมเมอร์รับไปแก้</p>
+  </div>
+</div>
+
+{% set cells = [('active', 'ยังไม่ปิด', 'clipboard-task'), ('open', 'เปิดใหม่', 'add-circle'),
+                ('in_progress', 'กำลังแก้ไข', 'wrench'), ('resolved', 'แก้ไขแล้ว', 'checkmark-circle'),
+                ('closed', 'ปิดแล้ว', 'lock-closed'), ('all', 'ทั้งหมด', 'apps-list')] %}
+<nav class="strip compact" style="--cols:6">
+  {% for key, label, ic in cells %}
+    <a class="strip-cell {{ 'active' if status == key }}" href="/tickets?status={{ key }}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q | urlencode }}{% endif %}">
+      <span class="strip-ic">{{ cicon(ic, 22) }}</span>
+      <span class="strip-label">{{ label }}</span>
+      <span class="strip-value">{{ status_counts.get(key, 0) }}</span>
+    </a>
+  {% endfor %}
+</nav>
+
+<section class="panel">
+  <form method="get" class="toolbar">
+    <input type="hidden" name="status" value="{{ status }}">
+    <label class="search">{{ icon('search', 15) }}<input name="q" value="{{ q }}" placeholder="ค้นหาเลข ticket, หัวข้อ, ชื่อลูกค้า, ลิงก์เว็บ"></label>
+    <select name="category" onchange="this.form.submit()" aria-label="ประเภท">
+      <option value="">ทุกประเภท</option>
+      {% for k, v in CATEGORIES.items() if k != 'none' %}<option value="{{ k }}" {{ 'selected' if category == k }}>{{ v }}</option>{% endfor %}
+    </select>
+    <button>ค้นหา</button>
+    {% if q or category %}<a class="btn ghost" href="/tickets?status={{ status }}">ล้างตัวกรอง</a>{% endif %}
+  </form>
+  {% set can_delete = user.role == 'admin' %}
+  {% if can_delete %}
+  <form method="post" action="/tickets/delete" id="bulkForm" class="bulk-bar" hidden
+        data-confirm-title="ลบ ticket ที่เลือก {n} รายการ?" data-confirm="ประวัติและรูปแนบของ ticket เหล่านี้จะถูกลบด้วย กู้คืนไม่ได้"
+        data-confirm-ok="ลบทั้งหมด" data-confirm-tone="danger" data-confirm-count=".pick:checked">
+    <span><b id="pickCount">0</b> รายการที่เลือก</span>
+    <button class="danger sm">{{ cicon('delete', 15) }} ลบที่เลือก</button>
+    <button type="button" class="ghost sm" onclick="pickAll(false)">ยกเลิก</button>
+  </form>
+  {% endif %}
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr>
+      {% if can_delete %}<th class="shrink center" onclick="event.stopPropagation()"><input type="checkbox" class="pick-all" aria-label="เลือกทั้งหมด" onchange="pickAll(this.checked)"></th>{% endif %}
+      <th class="shrink">#</th><th class="col-title">เรื่อง</th><th class="col-opt">ประเภท</th><th>ลูกค้า</th>
+      <th class="shrink">ความรุนแรง</th><th class="shrink">สถานะ</th><th class="shrink col-opt">ผู้รับผิดชอบ</th><th class="shrink">เปิดเมื่อ</th>
+      {% if can_delete %}<th class="shrink"></th>{% endif %}
+    </tr></thead>
+    <tbody>
+    {% for t in tickets %}
+      <tr onclick="location.href='/tickets/{{ t.id }}'" style="cursor:pointer">
+        {% if can_delete %}<td class="shrink center" onclick="event.stopPropagation()"><input type="checkbox" class="pick" name="ids" value="{{ t.id }}" form="bulkForm" aria-label="เลือก ticket #{{ t.id }}" onchange="updatePicks()"></td>{% endif %}
+        <td class="id">{{ t.id }}</td>
+        <td class="col-title"><a class="title-link" href="/tickets/{{ t.id }}">{{ t.title }}</a>
+          {% set sc = t.site_check | fromjson %}
+          {% if sc and not sc.ok %}<div class="small error-text">{{ icon('globe', 12) }} เว็บเข้าไม่ได้</div>
+          {% elif sc and sc.other_host %}<div class="small" style="color:var(--amber)">{{ icon('globe', 12) }} เว็บถูกพาไป {{ sc.final_host }}</div>{% endif %}</td>
+        <td class="small col-opt">{{ CATEGORIES.get(t.category, t.category) }}</td>
+        <td class="nowrap">{{ t.customer_name or '-' }}<div class="muted small">{{ chat_titles.get(t.chat_id, '') }}</div></td>
+        <td class="shrink"><span class="tag sev-{{ t.severity }}">{{ SEVERITY_LABELS[t.severity] }}</span></td>
+        <td class="shrink"><span class="tag st-{{ t.status }}">{{ TICKET_STATUSES[t.status] }}</span></td>
+        <td class="shrink small col-opt">{{ users.get(t.assignee_id) or '—' }}</td>
+        <td class="when">{{ t.created_at | localtime }}</td>
+        {% if can_delete %}
+        <td class="shrink" onclick="event.stopPropagation()">
+          <form method="post" action="/tickets/{{ t.id }}/delete" data-confirm-title="ลบ ticket #{{ t.id }}?" data-confirm="{{ t.title }} — ลบแล้วกู้คืนไม่ได้" data-confirm-ok="ลบ ticket" data-confirm-tone="danger">
+            <button class="icon-btn sm del" title="ลบ ticket" aria-label="ลบ ticket #{{ t.id }}">{{ cicon('delete', 17) }}</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+    {% else %}
+      <tr class="empty-row"><td colspan="{{ 10 if can_delete else 8 }}">{{ icon('ticket', 24) }}
+        {% if q or category %}<strong>ไม่พบ ticket ที่ตรงกับการค้นหา</strong>ลองเปลี่ยนคำค้นหรือล้างตัวกรอง
+        {% else %}<strong>ไม่มี ticket ในหมวดนี้</strong>เมื่อลูกค้าแจ้งปัญหาในแชทที่ติดตาม ระบบจะเปิด ticket ให้อัตโนมัติ{% endif %}
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="panel-foot">แสดง <b>{{ tickets | length }}</b> รายการ{% if tickets | length == 300 %} (ล่าสุด 300){% endif %}</div>
+</section>
+{% endblock %}

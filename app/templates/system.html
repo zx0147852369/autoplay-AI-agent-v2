@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}ทรัพยากรเครื่อง{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>ทรัพยากรเครื่อง</h1>
+    <p class="sub">เครื่องที่บอทรันอยู่ตอนนี้ใช้ CPU แรม และพื้นที่ดิสก์ไปเท่าไหร่ · อัปเดตอัตโนมัติทุก 5 วินาที</p>
+  </div>
+</div>
+
+{% set si = sysinfo %}
+<section class="panel" id="resmon" data-src="/api/sysinfo">
+  <div class="panel-head">
+    <h2>{{ cicon('gauge', 20) }} ทรัพยากรเครื่อง</h2>
+    <span class="count">อัปเดตอัตโนมัติทุก 5 วินาที</span>
+  </div>
+  <div class="strip" style="--cols:4">
+    <div class="strip-cell"><span class="strip-ic">{{ cicon('data-trending', 22) }}</span>
+      <span class="strip-label">CPU ทั้งเครื่อง</span>
+      <span class="strip-value" data-k="cpu.host" data-suffix="%">{{ si.cpu.host }}%</span></div>
+    <div class="strip-cell"><span class="strip-ic">{{ cicon('data-bar-vertical-ascending' if false else 'gauge', 22) }}</span>
+      <span class="strip-label">แรมที่ใช้</span>
+      <span class="strip-value" data-k="ram.pct" data-suffix="%">{{ si.ram.pct }}%</span></div>
+    <div class="strip-cell"><span class="strip-ic">{{ cicon('clipboard-task', 22) }}</span>
+      <span class="strip-label">ดิสก์ที่ใช้</span>
+      <span class="strip-value" data-k="disk.pct" data-suffix="%">{{ si.disk.pct }}%</span></div>
+    <div class="strip-cell"><span class="strip-ic">{{ cicon('checkmark-circle', 22) }}</span>
+      <span class="strip-label">ทำงานต่อเนื่อง</span>
+      <span class="strip-value text" data-k="uptime.app">{{ si.uptime.app }}</span></div>
+  </div>
+
+  <div class="resrows">
+    <div class="resrow">
+      <div class="resrow-head"><span>CPU ของบอท (โปรเซส)</span><b data-k="cpu.proc" data-suffix="%">{{ si.cpu.proc }}%</b></div>
+      <div class="qbar {{ si.cpu.proc_level }}" data-bar="cpu.proc"><span style="width: {{ [si.cpu.proc, 100] | min }}%"></span></div>
+      <div class="small muted">CPU ทั้งเครื่อง <b data-k="cpu.host" data-suffix="%">{{ si.cpu.host }}%</b>{% if si.cpu.load1 is not none %} · load {{ si.cpu.load1 }}{% endif %} · {{ si.cpu.cores }} คอร์ · โควตา {{ si.machine.quota_str }}</div>
+    </div>
+    <div class="resrow">
+      <div class="resrow-head"><span>แรมของคอนเทนเนอร์</span><b><span data-k="ram.used_str">{{ si.ram.used_str }}</span> / <span data-k="ram.limit_str">{{ si.ram.limit_str }}</span></b></div>
+      <div class="qbar {{ si.ram.level }}" data-bar="ram.pct"><span style="width: {{ si.ram.pct }}%"></span></div>
+      <div class="small muted">แรมที่โปรเซสบอทใช้ <b data-k="ram.proc_rss_str">{{ si.ram.proc_rss_str }}</b></div>
+    </div>
+    <div class="resrow">
+      <div class="resrow-head"><span>พื้นที่ดิสก์ (Volume)</span><b><span data-k="disk.used_str">{{ si.disk.used_str }}</span> / <span data-k="disk.total_str">{{ si.disk.total_str }}</span></b></div>
+      <div class="qbar {{ si.disk.level }}" data-bar="disk.pct"><span style="width: {{ si.disk.pct }}%"></span></div>
+      <div class="small muted">เหลือ <b data-k="disk.free_str">{{ si.disk.free_str }}</b>{% if si.uptime.machine %} · เครื่องเปิดมา {{ si.uptime.machine }}{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="panel-foot resmeta">
+    <dl class="facts small">
+      <dt>ชื่อเครื่อง</dt><dd class="mono">{{ si.machine.host }}</dd>
+      <dt>ระบบปฏิบัติการ</dt><dd class="mono">{{ si.machine.os }}</dd>
+      <dt>ซีพียู</dt><dd>{{ si.machine.cpu_model }} · {{ si.cpu.cores }} คอร์ · โควตา {{ si.machine.quota_str }}</dd>
+      <dt>แรมที่ใช้ได้</dt><dd>{{ si.machine.ram_limit_str }}</dd>
+      <dt>Python</dt><dd class="mono">{{ si.machine.python }}</dd>
+      {% if si.machine.service %}<dt>บริการ</dt><dd class="mono">{{ si.machine.service }}</dd>{% endif %}
+      {% if si.machine.env %}<dt>สภาพแวดล้อม</dt><dd class="mono">{{ si.machine.env }}</dd>{% endif %}
+      {% if si.machine.region %}<dt>โซนที่รัน</dt><dd class="mono">{{ si.machine.region }}</dd>{% endif %}
+      {% if si.machine.commit %}<dt>คอมมิตที่ deploy</dt><dd class="mono">{{ si.machine.commit }}</dd>{% endif %}
+      <dt>ฐานข้อมูล</dt><dd class="mono">{{ si.machine.db_path }} · {{ si.machine.db_size_str }}</dd>
+    </dl>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  (() => {
+    const panel = document.getElementById('resmon');
+    if (!panel) return;
+    const lvl = p => p >= 90 ? 'bad' : p >= 75 ? 'warn' : 'ok';
+    const dig = (o, path) => path.split('.').reduce((v, k) => (v == null ? v : v[k]), o);
+    async function refresh() {
+      let d;
+      try { const r = await fetch('/api/sysinfo'); if (!r.ok) return; d = await r.json(); } catch (e) { return; }
+      panel.querySelectorAll('[data-k]').forEach(el => {
+        const v = dig(d, el.dataset.k);
+        if (v != null) el.textContent = v + (el.dataset.suffix || '');
+      });
+      panel.querySelectorAll('[data-bar]').forEach(el => {
+        const p = dig(d, el.dataset.bar) || 0;
+        el.firstElementChild.style.width = p + '%';
+        el.className = 'qbar ' + lvl(p);
+      });
+    }
+    setInterval(refresh, 5000);
+  })();
+</script>
+{% endblock %}

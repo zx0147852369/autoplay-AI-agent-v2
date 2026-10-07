@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}{{ chat.title }}{% endblock %}
+{% block content %}
+<a class="crumb" href="/chats">{{ icon('arrow-left', 14) }} แชทลูกค้า</a>
+<div class="page-head">
+  <div>
+    <h1>{{ chat.title }}</h1>
+    <p class="sub">{{ messages | length }} ข้อความล่าสุด · {{ 'กำลังติดตาม' if chat.monitored else 'ไม่ได้ติดตาม' }}</p>
+  </div>
+</div>
+{% if not dev_group %}
+<form method="post" action="/chats/{{ chat.id }}/website" class="card site-edit" style="margin-top:0">
+  <label class="field">เว็บไซต์ของลูกค้าแชทนี้
+    <span class="row" style="flex-wrap:nowrap">
+      <input name="website_url" value="{{ chat.website_url }}" placeholder="https://play.example.com" class="mono">
+      <button class="primary">บันทึก</button>
+    </span>
+    <span class="hint">ticket ทุกใบของแชทนี้จะใช้ลิงก์นี้ (ถ้าลูกค้าพิมพ์ลิงก์ของเว็บเดียวกันมา จะใช้ลิงก์ที่ลูกค้าพิมพ์) · ปล่อยว่าง = ให้ระบบหาจากข้อความลูกค้า</span>
+  </label>
+</form>
+{% endif %}
+<section class="panel chat-panel">
+  <div class="panel-head">
+    <h2>{{ cicon('chat', 20) }} บทสนทนา</h2>
+    <div class="chat-legend">
+      <span><i class="lg-in"></i> ลูกค้า{% if people %} {{ people }} คน{% endif %}</span>
+      <span><i class="lg-out"></i> ทีมงาน</span>
+      {% if waiting %}<span class="state warn"><span class="dot wait"></span>รอ AI วิเคราะห์ {{ waiting }} ข้อความ</span>{% endif %}
+      <span class="count">{{ messages | length }} ข้อความล่าสุด</span>
+    </div>
+  </div>
+  <div class="chatview" id="chatview">
+    {% for it in view %}
+      {% set m = it.m %}
+      {% if it.day_label %}<div class="day-sep"><span>{{ it.day_label }}</span></div>{% endif %}
+      <div class="cm {{ 'out' if m.is_outgoing else 'in' }} {{ 'first' if it.first }} {{ 'last' if it.last }}">
+        {% if not m.is_outgoing %}
+          {% if it.last %}<span class="cm-av" style="background: {{ it.color }}" title="{{ m.sender_name }}">{{ it.initial }}</span>
+          {% else %}<span class="cm-av-gap"></span>{% endif %}
+        {% endif %}
+        <div class="cm-bubble {{ 'sticker' if it.sticker }}">
+          {% if it.first %}
+            <div class="cm-name" {% if not m.is_outgoing %}style="color: {{ it.color }}"{% endif %}>
+              {{ it.name }}{% if it.username %} <span class="cm-user">@{{ it.username }}</span>{% endif %}
+              {% if m.is_outgoing %}<span class="cm-badge">ทีมงาน</span>{% endif %}
+            </div>
+          {% endif %}
+          {% if m.media_path %}
+            <a href="/media/{{ m.media_path }}" target="_blank" class="cm-photo"><img src="/media/{{ m.media_path }}" alt="รูปจาก {{ it.name }}" loading="lazy"></a>
+          {% endif %}
+          {% if it.sticker %}<div class="cm-note">สติกเกอร์</div>
+          {% elif it.text %}<div class="cm-text">{{ it.text | linkify }}</div>
+          {% elif not m.media_path %}<div class="cm-note">รูปภาพหรือไฟล์ (ไม่ได้บันทึกไว้ในระบบ)</div>{% endif %}
+          <div class="cm-foot">
+            {% if not m.is_outgoing and not m.analyzed %}<span class="cm-wait" title="ข้อความนี้ยังไม่ได้ให้ AI วิเคราะห์">รอวิเคราะห์</span>{% endif %}
+            <span class="cm-id" title="เลขข้อความใน Telegram">#{{ m.tg_message_id }}</span>
+            <time datetime="{{ it.local.isoformat() }}" title="{{ m.date | localtime }}">{{ it.local.strftime('%H:%M') }}</time>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="empty"><strong>ยังไม่มีข้อความ</strong>ระบบบันทึกเฉพาะข้อความที่เข้ามาหลังเริ่มติดตาม</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // เลื่อนไปข้อความล่าสุด
+  const cv = document.getElementById('chatview');
+  if (cv) cv.scrollTop = cv.scrollHeight;
+</script>
+{% endblock %}

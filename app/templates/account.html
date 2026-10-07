@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}บัญชีของฉัน{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ user.username }}</h1>
+    <p class="sub">{{ ROLES[user.role] }}</p>
+  </div>
+</div>
+<div class="{{ 'grid-2 account-grid' if user.role == 'agent' else 'account-single' }}">
+{% if user.role == 'agent' %}{% include "_sound_card.html" %}{% endif %}
+<form method="post" action="/account/password" class="card stack">
+  <div class="card-head" style="margin:0"><h2>เปลี่ยนรหัสผ่าน</h2></div>
+  {% if user.username == ENV_ADMIN %}
+    <div class="note warn">บัญชีนี้ใช้รหัสผ่านจาก <code>ADMIN_PASSWORD</code> บนเซิร์ฟเวอร์ ถ้าเปลี่ยนที่นี่ รหัสจะกลับเป็นค่าเดิมเมื่อรีสตาร์ท ให้เปลี่ยนที่ Variables แทน</div>
+  {% endif %}
+  <label class="field">รหัสผ่านเดิม <input name="current" type="password" required autocomplete="current-password"></label>
+  <label class="field">รหัสผ่านใหม่ <input name="new" type="password" minlength="8" required autocomplete="new-password" placeholder="อย่างน้อย 8 ตัวอักษร"></label>
+  <div class="actions end"><button class="primary">บันทึก</button></div>
+</form>
+</div>
+{% if user.role == 'admin' %}
+<p class="muted small" style="margin-top:14px">ตั้งค่าเสียงแจ้งเตือนได้ที่หน้า <a href="/settings#sound">ตั้งค่า</a></p>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if user.role == 'agent' %}{% include "_sound_script.html" %}{% endif %}
+{% endblock %}

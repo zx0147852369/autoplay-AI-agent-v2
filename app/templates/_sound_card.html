@@ -1,0 +1,24 @@
+{% from "_icons.html" import icon, cicon %}
+<section class="card stack sound-card" id="sound">
+  <div class="card-head" style="margin:0"><h2 class="row" style="gap:8px;align-items:center">{{ cicon('bell', 20) }} เสียงแจ้งเตือน</h2></div>
+  <label class="check-row"><input type="checkbox" id="sndOn">
+    <span>เล่นเสียงเมื่อมีรายการรออนุมัติใหม่<span class="hint">ข้อความตอบลูกค้า และ Ticket ที่รอส่งเข้ากลุ่มโปรแกรมเมอร์ · ดังได้ทุกหน้า ขณะเปิดเว็บไว้</span></span></label>
+  <div class="field">เสียง
+    <div class="row" style="flex-wrap:nowrap;align-items:center">
+      <select id="sndType" style="flex:1"></select>
+      <button type="button" id="sndTest">{{ icon('volume', 15) }} ทดลองฟัง</button>
+    </div>
+  </div>
+  <div class="field">ความดัง <span class="hint" id="sndVolText"></span>
+    <input type="range" id="sndVol" min="5" max="100" step="5" class="range">
+  </div>
+  <label class="field">เตือนซ้ำ
+    <select id="sndRepeat">
+      <option value="0">ไม่ต้องเตือนซ้ำ (ดังครั้งเดียวเมื่อมีรายการใหม่)</option>
+      <option value="1">ทุก 1 นาที ถ้ายังมีรายการค้าง</option>
+      <option value="3">ทุก 3 นาที ถ้ายังมีรายการค้าง</option>
+      <option value="5">ทุก 5 นาที ถ้ายังมีรายการค้าง</option>
+      <option value="10">ทุก 10 นาที ถ้ายังมีรายการค้าง</option>
+    </select></label>
+  <p class="hint" style="margin:0" id="sndHint">บันทึกทันทีเมื่อเปลี่ยน (ไม่ต้องกดบันทึกด้านล่าง) · เก็บในเบราว์เซอร์เครื่องนี้ แต่ละเครื่องตั้งต่างกันได้ · เบราว์เซอร์จะเล่นเสียงได้หลังคลิกในหน้าเว็บอย่างน้อย 1 ครั้ง · ปุ่มลำโพงที่มุมซ้ายล่างใช้เปิด/ปิดเสียงได้เร็ว</p>
+</section>

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}แจ้งเตือน LINE{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>แจ้งเตือน LINE</h1>
+    <p class="sub">ส่งการ์ดรออนุมัติเข้า LINE และกดอนุมัติ/ไม่ส่งจาก LINE ได้</p>
+  </div>
+</div>
+
+<form method="post" action="/line">
+  <section class="card">
+    <div class="card-head"><h2>{{ cicon('bell', 20) }} แจ้งเตือน/อนุมัติผ่าน LINE</h2></div>
+    <div class="key-status">
+      <span><span class="dot {{ 'live' if line_has_token else 'off' }}"></span> <code>LINE_CHANNEL_ACCESS_TOKEN</code> {{ 'ตั้งค่าแล้ว' if line_has_token else 'ยังไม่ได้ตั้ง' }}</span>
+      <span><span class="dot {{ 'live' if line_has_secret else 'off' }}"></span> <code>LINE_CHANNEL_SECRET</code> {{ 'ตั้งค่าแล้ว' if line_has_secret else 'ยังไม่ได้ตั้ง' }}</span>
+      <span><span class="dot {{ 'live' if line_target else 'wait' }}"></span> ปลายทาง LINE {{ 'เชื่อมแล้ว' if line_target else 'ยังไม่เชื่อม (ทัก OA หรือเพิ่มเป็นเพื่อนก่อน)' }}</span>
+    </div>
+    <label class="field">Webhook URL <span class="hint">ก๊อปไปวางใน LINE Developers Console → Messaging API → Webhook URL แล้วเปิด Use webhook</span>
+      <input value="{{ line_webhook }}" readonly onclick="this.select()" class="mono"></label>
+    <label class="check-row"><input type="checkbox" name="line_enabled" {{ 'checked' if settings.line_enabled == '1' }}>
+      <span>ส่งการ์ดรออนุมัติเข้า LINE<span class="hint">เมื่อ AI ร่างคำตอบลูกค้าใหม่ จะส่งข้อความ + ปุ่มอนุมัติ/ไม่ส่ง ไปที่ LINE ที่เชื่อมไว้</span></span></label>
+    <label class="check-row"><input type="checkbox" name="line_approve" {{ 'checked' if settings.line_approve == '1' }}>
+      <span>ให้กดอนุมัติ/ไม่ส่งจากปุ่มใน LINE ได้<span class="hint">ปิดไว้ = LINE แจ้งเตือนอย่างเดียว ต้องมากดอนุมัติที่หน้าเว็บ</span></span></label>
+    {% if not line_configured %}
+      <div class="note warn">ต้องสร้าง LINE Messaging API channel แล้วใส่ <code>LINE_CHANNEL_ACCESS_TOKEN</code> กับ <code>LINE_CHANNEL_SECRET</code> ใน Variables ของ Railway ก่อน จากนั้นวาง Webhook URL ด้านบน แล้วทัก OA 1 ครั้งเพื่อเชื่อมปลายทาง</div>
+    {% endif %}
+  </section>
+  <div class="save-bar">
+    <span class="muted small">การตั้งค่าในหน้านี้จะมีผลเมื่อกดบันทึก</span>
+    <button class="primary">{{ icon('check', 15) }} บันทึกการตั้งค่า</button>
+  </div>
+</form>
+{% endblock %}

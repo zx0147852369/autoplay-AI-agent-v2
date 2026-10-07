@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}Log ระบบ{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Log ระบบ</h1>
+    <p class="sub">บันทึกการทำงานของบอท · เก็บเป็นไฟล์รายวันบน Volume ถาวร วันละ 1 ไฟล์ 30 วันล่าสุด เลือกดู/ดาวน์โหลดย้อนหลังได้ · "วันนี้ (สด)" อัปเดตเรียลไทม์</p>
+  </div>
+</div>
+
+<section class="panel" id="logpanel">
+  <div class="panel-head logbar">
+    <h2>{{ cicon('logs', 20) }} บันทึกการทำงาน</h2>
+    <div class="logtools">
+      <form method="get" action="/logs" id="logForm">
+        <select name="day" onchange="document.getElementById('logForm').submit()">
+          <option value="" {{ 'selected' if not day }}>วันนี้ (สด)</option>
+          {% for d in days %}<option value="{{ d }}" {{ 'selected' if day == d }}>{{ d }}{{ ' (วันนี้)' if loop.first and not day }}</option>{% endfor %}
+        </select>
+        <select name="level" onchange="document.getElementById('logForm').submit()">
+          {% for v, lbl in [('', 'ทุกระดับ'), ('INFO', 'INFO ขึ้นไป'), ('WARNING', 'คำเตือนขึ้นไป'), ('ERROR', 'ข้อผิดพลาดเท่านั้น')] %}
+            <option value="{{ v }}" {{ 'selected' if level == v }}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% if day or days %}<a class="btn sm" href="/logs/download?day={{ day or days[0] }}">{{ icon('external', 13) }} ดาวน์โหลด</a>{% endif %}
+      {% if live %}<label class="check-inline"><input type="checkbox" id="logFollow" checked> ตามอัตโนมัติ</label>{% endif %}
+      <button type="button" class="btn sm" id="logClear">ล้างหน้าจอ</button>
+    </div>
+  </div>
+  <div class="logview" id="logview" tabindex="0"></div>
+  <div class="panel-foot"><span class="muted small" id="logStatus">กำลังโหลด…</span></div>
+</section>
+<script type="application/json" id="logInit">{{ {"records": logs, "last": last} | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script>
+  (() => {
+    const view = document.getElementById('logview');
+    const status = document.getElementById('logStatus');
+    const follow = document.getElementById('logFollow');
+    const live = {{ 'true' if live else 'false' }};
+    const level = new URLSearchParams(location.search).get('level') || '';
+    let last = 0, shown = 0;
+
+    function atBottom() {
+      return view.scrollHeight - view.scrollTop - view.clientHeight < 40;
+    }
+    function fmtTime(iso) {
+      const d = new Date(iso);
+      return isNaN(d) ? '' : d.toLocaleTimeString('th-TH', { hour12: false });
+    }
+    function add(recs) {
+      if (!recs.length) return;
+      const stick = (!follow || follow.checked) && atBottom();
+      const frag = document.createDocumentFragment();
+      for (const r of recs) {
+        const line = document.createElement('div');
+        line.className = 'logline lv-' + r.level;
+        const t = document.createElement('time'); t.textContent = fmtTime(r.ts);
+        const lv = document.createElement('span'); lv.className = 'lv'; lv.textContent = r.level;
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name;
+        const msg = document.createElement('span'); msg.className = 'lmsg'; msg.textContent = r.msg;
+        line.append(t, lv, nm, msg);
+        frag.append(line);
+        last = Math.max(last, r.id);
+      }
+      view.append(frag);
+      shown += recs.length;
+      // จำกัดไม่ให้ DOM บวมเกิน (เก็บล่าสุด ~1000 บรรทัดบนหน้าจอ)
+      while (view.childElementCount > 1000) view.removeChild(view.firstChild);
+      if (stick) view.scrollTop = view.scrollHeight;
+      status.textContent = `แสดง ${shown} บรรทัด · อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH', { hour12: false })}`;
+    }
+
+    try {
+      const init = JSON.parse(document.getElementById('logInit').textContent);
+      add(init.records); last = Math.max(last, init.last || 0);
+      view.scrollTop = view.scrollHeight;
+    } catch (e) {}
+    if (!shown) status.textContent = 'ยังไม่มี log ในช่วงนี้';
+    else if (!live) status.textContent = `แสดง ${shown} บรรทัด (ไฟล์ย้อนหลัง)`;
+
+    async function poll() {
+      try {
+        const r = await fetch(`/api/logs?after=${last}&level=${encodeURIComponent(level)}`);
+        if (r.ok) { const d = await r.json(); add(d.records); }
+      } catch (e) {}
+    }
+    if (live) setInterval(poll, 3000);
+    document.getElementById('logClear').addEventListener('click', () => { view.replaceChildren(); shown = 0; status.textContent = 'ล้างหน้าจอแล้ว (log ใหม่จะแสดงต่อ)'; });
+  })();
+</script>
+{% endblock %}

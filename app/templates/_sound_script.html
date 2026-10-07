@@ -1,0 +1,22 @@
+<script>
+  (() => {
+    if (!document.getElementById('sndOn')) return;
+    const s = notifySound.settings();
+    const on = document.getElementById('sndOn'), type = document.getElementById('sndType');
+    const vol = document.getElementById('sndVol'), rep = document.getElementById('sndRepeat');
+    const volText = document.getElementById('sndVolText');
+    Object.entries(notifySound.SOUNDS).forEach(([k, v]) => type.add(new Option(v.label, k, false, k === s.sound)));
+    on.checked = s.on; vol.value = s.volume; rep.value = String(s.repeat);
+    const showVol = () => { volText.textContent = vol.value + '%'; };
+    showVol();
+    const test = () => {
+      if (!notifySound.play()) document.getElementById('sndHint').classList.add('error-text');
+    };
+    on.addEventListener('change', () => { notifySound.save({ on: on.checked }); if (on.checked) test(); });
+    type.addEventListener('change', () => { notifySound.save({ sound: type.value }); test(); });
+    vol.addEventListener('input', showVol);
+    vol.addEventListener('change', () => { notifySound.save({ volume: +vol.value }); test(); });
+    rep.addEventListener('change', () => notifySound.save({ repeat: +rep.value }));
+    document.getElementById('sndTest').addEventListener('click', test);
+  })();
+</script>

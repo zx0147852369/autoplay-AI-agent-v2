@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}คู่มือตอบคำถาม{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>คู่มือตอบคำถาม</h1>
+    <p class="sub">เมื่อลูกค้าสอบถามวิธีใช้งานหลังบ้าน (ไม่ได้แจ้งปัญหา) AI จะร่างคำตอบจากคู่มือในหน้านี้ พร้อมแนบรูปประกอบ ไม่เปิด ticket และยังต้องอนุมัติก่อนส่งเสมอ</p>
+  </div>
+  <button type="button" class="primary" data-guide-new>{{ icon('plus', 14) }} เพิ่มคู่มือ</button>
+</div>
+
+<div class="strip compact" style="--cols:3">
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('book-open-lightbulb', 22) }}</span><span class="strip-label">คู่มือทั้งหมด</span><span class="strip-value">{{ total }}</span></div>
+  <div class="strip-cell"><span class="strip-ic {{ 'alive' if questions }}">{{ cicon('question-circle', 22) }}</span><span class="strip-label">คำถามที่ยังไม่มีในคู่มือ</span><span class="strip-value {{ 'hot' if questions }}">{{ questions | length }}</span></div>
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('send', 22) }}</span><span class="strip-label">ใช้ตอบลูกค้าไปแล้ว</span><span class="strip-value">{{ used }} ครั้ง</span></div>
+</div>
+
+{% if questions %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ cicon('chat-bubbles-question', 20) }} คำถามที่ลูกค้าถามแต่ยังไม่มีในคู่มือ</h2>
+    <span class="count">AI ตอบลูกค้าว่าขอตรวจสอบข้อมูลก่อน · เพิ่มคู่มือเพื่อให้ตอบได้ครั้งต่อไป</span>
+  </div>
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr><th class="shrink">เวลา</th><th>คำถาม</th><th class="shrink">ลูกค้า</th><th class="shrink"></th></tr></thead>
+    <tbody>
+    {% for qn in questions %}
+      <tr class="q-row">
+        <td class="when">{{ qn.created_at | localtime }}</td>
+        <td class="fill"><strong>{{ qn.question }}</strong></td>
+        <td class="nowrap small">{{ qn.asked_by or '-' }}<div class="muted">{{ chat_titles.get(qn.chat_id, qn.chat_id) }}</div></td>
+        <td class="shrink">
+          <div class="row" style="flex-wrap:nowrap;align-items:center">
+            <button type="button" class="sm primary" data-guide-new data-question-id="{{ qn.id }}"
+                    data-question="{{ qn.question }}" data-asked-by="{{ qn.asked_by }}">{{ icon('plus', 13) }} เพิ่มเป็นคู่มือ</button>
+            <form method="post" action="/guides/questions/{{ qn.id }}/dismiss"><button class="sm ghost">ไม่ต้อง</button></form>
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ cicon('book-open', 20) }} คู่มือ</h2>
+    <form method="get" action="/guides" class="row" style="flex-wrap:nowrap">
+      <input name="q" value="{{ q }}" placeholder="ค้นหาหัวข้อ คำค้น หรือคำตอบ" style="min-width:260px">
+      <button>ค้นหา</button>
+    </form>
+  </div>
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr>
+      <th class="shrink">#</th><th>หัวข้อ / คำตอบ</th><th class="shrink">รูป</th><th class="shrink">คำค้น</th>
+      <th class="shrink center">ใช้ตอบ</th><th class="shrink">แก้ไขล่าสุด</th><th class="shrink"></th>
+    </tr></thead>
+    <tbody>
+    {% for g in guides %}
+      {% set pics = guide_data[g.id].images %}
+      <tr>
+        <td class="shrink muted">{{ g.id }}</td>
+        <td class="fill"><a href="/guides?edit={{ g.id }}" data-guide-edit="{{ g.id }}"><strong>{{ g.title }}</strong></a>
+          <div class="guide-answer">{{ g.answer }}</div></td>
+        <td class="shrink">
+          {% if pics %}<div class="guide-pics">{% for p in pics[:3] %}<img src="/media/{{ p }}" alt="รูปประกอบ" loading="lazy">{% endfor %}
+            {% if pics | length > 3 %}<span class="more">+{{ pics | length - 3 }}</span>{% endif %}</div>
+          {% else %}<span class="zero">—</span>{% endif %}
+        </td>
+        <td class="kw-cell">{% for k in (g.keywords or '').split(',') if k.strip() %}<span class="kw">{{ k.strip() }}</span>{% else %}<span class="zero">—</span>{% endfor %}</td>
+        <td class="shrink center mono">{{ g.used_count }}</td>
+        <td class="shrink small">{{ g.updated_by or '-' }}<div class="when">{{ g.updated_at | localtime }}</div></td>
+        <td class="shrink">
+          <div class="row" style="flex-wrap:nowrap;align-items:center">
+            <button type="button" class="sm" data-guide-edit="{{ g.id }}">{{ icon('edit', 13) }} แก้ไข</button>
+            <form method="post" action="/guides/{{ g.id }}/delete" data-confirm-title="ลบคู่มือ #{{ g.id }}?"
+                  data-confirm="{{ g.title }} — AI จะไม่ใช้คู่มือนี้ตอบลูกค้าอีก" data-confirm-ok="ลบคู่มือ" data-confirm-tone="danger">
+              <button class="icon-btn sm del" title="ลบคู่มือ" aria-label="ลบคู่มือ #{{ g.id }}">{{ cicon('delete', 17) }}</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+    {% else %}
+      <tr class="empty-row"><td colspan="7">{{ icon('note', 24) }}
+        <strong>{{ 'ไม่พบคู่มือที่ค้นหา' if q else 'ยังไม่มีคู่มือ' }}</strong>
+        {% if not q %}เพิ่มคำถามที่ลูกค้าถามบ่อยเกี่ยวกับการใช้งานหลังบ้าน พร้อมคำตอบหรือขั้นตอน และรูปประกอบ เช่น "เพิ่มบัญชีธนาคารยังไง" "ดูรายงานยอดฝากตรงไหน"{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<dialog class="mdialog" id="guideDialog" aria-labelledby="gdTitle">
+  <form method="post" action="/guides/new" enctype="multipart/form-data" id="guideForm">
+    <header class="md-head">
+      <span class="md-ic">{{ cicon('book-open-lightbulb', 24) }}</span>
+      <div>
+        <h3 id="gdTitle">เพิ่มคู่มือ</h3>
+        <p class="muted small" style="margin:0">AI จะใช้คำตอบและรูปนี้ตอบลูกค้าที่ถามเรื่องเดียวกัน</p>
+      </div>
+      <button type="button" class="icon-btn" data-close aria-label="ปิด">{{ icon('x', 16) }}</button>
+    </header>
+    <div class="md-body">
+      <input type="hidden" name="question_id" value="0">
+      <div class="note" id="gdQuestion" hidden></div>
+      <label class="field">หัวข้อ / คำถาม
+        <input name="title" required maxlength="255" placeholder="เช่น เพิ่มบัญชีธนาคารในหลังบ้านยังไง"></label>
+      <label class="field">คำค้นที่ลูกค้ามักใช้ <span class="hint">ไม่บังคับ · คั่นด้วยจุลภาค ช่วยให้ AI หาคู่มือเจอเมื่อมีคู่มือเยอะ</span>
+        <input name="keywords" placeholder="เพิ่มบัญชี, ผูกบัญชี, บัญชีธนาคาร"></label>
+      <label class="field">คำตอบ / ขั้นตอน
+        <textarea name="answer" rows="8" required placeholder="1. เข้าเมนู ...&#10;2. กด ...&#10;3. ...&#10;&#10;ดูวิดีโอ: https://..."></textarea>
+        <span class="hint">เขียนแบบที่อยากให้ส่งถึงลูกค้า ใส่ชื่อเมนู ขั้นตอน หรือลิงก์วิดีโอได้</span></label>
+      <div class="field">
+        <span>รูปประกอบ <span class="hint">ไม่บังคับ · สูงสุด {{ max_images }} รูป · JPG PNG GIF WEBP ไม่เกิน 8 MB · ส่งให้ลูกค้าพร้อมคำตอบ (ยังต้องอนุมัติก่อน)</span></span>
+        <div class="dropzone" id="gdDrop">
+          <div class="up-thumbs" id="gdThumbs"></div>
+          <label class="drop-add" id="gdAdd">
+            {{ cicon('add-circle', 24) }}
+            <span><strong>เลือกรูป</strong> หรือลากรูปมาวาง · กด Ctrl+V เพื่อวางภาพหน้าจอ</span>
+            <input type="file" name="images" accept="image/jpeg,image/png,image/gif,image/webp" multiple id="gdFiles">
+          </label>
+        </div>
+        <span class="hint" id="gdMsg"></span>
+      </div>
+    </div>
+    <footer class="md-foot">
+      <span class="muted small" id="gdCount"></span>
+      <button type="button" class="ghost" data-close>ยกเลิก</button>
+      <button class="go" id="gdSave">{{ icon('check', 15) }} <span>บันทึก</span></button>
+    </footer>
+  </form>
+</dialog>
+<script type="application/json" id="guideData">{{ guide_data | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const GUIDES = JSON.parse(document.getElementById('guideData').textContent);
+  const MAX = {{ max_images }}, MAX_BYTES = 8 * 1024 * 1024;
+  const dlg = document.getElementById('guideDialog'), form = document.getElementById('guideForm');
+  const input = document.getElementById('gdFiles'), thumbs = document.getElementById('gdThumbs');
+  const msg = document.getElementById('gdMsg'), addBox = document.getElementById('gdAdd');
+  let added = new DataTransfer(), existing = [], removed = new Set(), dirty = false;
+
+  const total = () => existing.length - removed.size + added.files.length;
+
+  function thumb(src, label, onToggle, isRemoved) {
+    const el = document.createElement('div');
+    el.className = 'up-thumb' + (isRemoved ? ' removed' : '');
+    const img = document.createElement('img'); img.src = src; img.alt = '';
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'thumb-x';
+    btn.title = isRemoved ? 'เอากลับมา' : 'เอารูปนี้ออก';
+    btn.textContent = isRemoved ? '↺' : '×';
+    btn.onclick = onToggle;
+    el.append(img, btn);
+    if (label) { const tag = document.createElement('span'); tag.className = 'thumb-tag'; tag.textContent = label; el.append(tag); }
+    return el;
+  }
+
+  function render() {
+    thumbs.replaceChildren();
+    existing.forEach(name => thumbs.append(thumb('/media/' + name, removed.has(name) ? 'จะลบ' : '', () => {
+      if (removed.has(name)) { if (total() >= MAX) return note(`แนบได้สูงสุด ${MAX} รูป`); removed.delete(name); }
+      else removed.add(name);
+      dirty = true; render();
+    }, removed.has(name))));
+    [...added.files].forEach((f, i) => thumbs.append(thumb(URL.createObjectURL(f), 'ใหม่', () => {
+      const next = new DataTransfer();
+      [...added.files].forEach((x, j) => j !== i && next.items.add(x));
+      added = next; render();
+    })));
+    input.files = added.files;
+    form.querySelectorAll('input[name=remove_images]').forEach(e => e.remove());
+    removed.forEach(name => {
+      const h = document.createElement('input');
+      h.type = 'hidden'; h.name = 'remove_images'; h.value = name; form.append(h);
+    });
+    addBox.hidden = total() >= MAX;
+    document.getElementById('gdCount').textContent = `รูปประกอบ ${total()}/${MAX}`;
+  }
+
+  function note(text) { msg.textContent = text; msg.classList.toggle('error-text', !!text); }
+
+  function addFiles(list) {
+    note('');
+    const skipped = [];
+    for (const f of list) {
+      if (!/^image\/(jpeg|png|gif|webp)$/.test(f.type)) { skipped.push(`${f.name || 'ไฟล์'} ไม่ใช่รูป`); continue; }
+      if (f.size > MAX_BYTES) { skipped.push(`${f.name} ใหญ่เกิน 8 MB`); continue; }
+      if (total() >= MAX) { skipped.push(`แนบได้สูงสุด ${MAX} รูป`); break; }
+      added.items.add(f);
+      dirty = true;
+    }
+    render();
+    if (skipped.length) note('ข้าม: ' + skipped.join(' · '));
+  }
+
+  function open(id, question) {
+    form.reset(); note('');
+    added = new DataTransfer(); removed = new Set(); dirty = false;
+    const g = id ? GUIDES[id] : null;
+    existing = g ? [...g.images] : [];
+    form.action = g ? `/guides/${id}` : '/guides/new';
+    document.getElementById('gdTitle').textContent = g ? `แก้ไขคู่มือ #${id}` : 'เพิ่มคู่มือ';
+    document.querySelector('#gdSave span').textContent = g ? 'บันทึก' : 'เพิ่มคู่มือ';
+    form.elements.title.value = g ? g.title : (question ? question.text : '');
+    form.elements.keywords.value = g ? g.keywords : '';
+    form.elements.answer.value = g ? g.answer : '';
+    form.elements.question_id.value = question ? question.id : 0;
+    const qn = document.getElementById('gdQuestion');
+    qn.hidden = !question;
+    qn.textContent = question ? `คำถามจากลูกค้า: ${question.text}` + (question.by ? ` · ${question.by}` : '') : '';
+    render();
+    dlg.showModal();
+    (g || question ? form.elements.answer : form.elements.title).focus();
+  }
+
+  document.querySelectorAll('[data-guide-new]').forEach(b => b.addEventListener('click', () => open(null,
+    b.dataset.questionId ? { id: b.dataset.questionId, text: b.dataset.question, by: b.dataset.askedBy } : null)));
+  document.querySelectorAll('[data-guide-edit]').forEach(b => b.addEventListener('click', e => {
+    e.preventDefault(); open(b.dataset.guideEdit);
+  }));
+
+  input.addEventListener('change', () => { const picked = [...input.files]; input.files = added.files; addFiles(picked); });
+  const drop = document.getElementById('gdDrop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, () => drop.classList.remove('over')));
+  drop.addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
+  document.addEventListener('paste', e => {
+    if (!dlg.open) return;
+    const pics = [...e.clipboardData.files].filter(f => f.type.startsWith('image/'));
+    if (pics.length) { e.preventDefault(); addFiles(pics.map((f, i) => new File([f], `screenshot-${Date.now()}-${i}.png`, { type: f.type }))); }
+  });
+  form.addEventListener('input', () => { dirty = true; });
+
+  // ปิดโดยไม่บันทึก -> ถามก่อนถ้ามีการแก้ไข
+  async function tryClose() {
+    if (dirty && !(await askConfirm({ title: 'ปิดโดยไม่บันทึก?', message: 'ข้อความและรูปที่เพิ่มไว้จะหายไป', ok: 'ปิดเลย', tone: 'warn' }))) return;
+    dlg.close();
+  }
+  dlg.addEventListener('cancel', e => { e.preventDefault(); tryClose(); });
+  dlg.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', tryClose));
+  form.addEventListener('submit', () => {
+    const save = document.getElementById('gdSave');
+    setTimeout(() => { save.disabled = true; save.querySelector('span').textContent = 'กำลังบันทึก…'; });
+  });
+
+  // เปิดจากลิงก์ /guides?new=1 / ?edit=ID / ?new=1&question_id=ID
+  const params = new URLSearchParams(location.search);
+  if (params.get('edit') && GUIDES[params.get('edit')]) open(params.get('edit'));
+  else if (params.get('new')) {
+    const qb = params.get('question_id') && document.querySelector(`[data-question-id="${CSS.escape(params.get('question_id'))}"]`);
+    qb ? qb.click() : open(null);
+  }
+  if (params.has('edit') || params.has('new')) history.replaceState(null, '', '/guides' + (params.get('q') ? `?q=${encodeURIComponent(params.get('q'))}` : ''));
+})();
+</script>
+{% endblock %}

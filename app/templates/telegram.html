@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}บัญชี Telegram{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>บัญชี Telegram</h1>
+    <p class="sub">ระบบใช้บัญชี Telegram ของคุณเองในการอ่านแชทลูกค้าและส่งข้อความที่อนุมัติแล้ว</p>
+  </div>
+</div>
+
+{% if connected %}
+<section class="card">
+  <div class="account-row">
+    <img class="avatar lg logo" src="/static/brand/avatar.png" width="44" height="44" alt="">
+    <div class="grow">
+      <strong>{{ account.me_name }}</strong>
+      <div class="muted small"><span class="mono" title="ซ่อนเบอร์โทรไว้เพื่อความเป็นส่วนตัว">{{ account.phone | mask_phone }}</span> · <span class="dot live"></span> ออนไลน์</div>
+    </div>
+    <a class="btn" href="/chats">เลือกแชทที่จะติดตาม</a>
+    <form method="post" action="/telegram/logout" data-confirm-title="ออกจากระบบ Telegram?"
+          data-confirm="ระบบจะหยุดรับข้อความลูกค้าและส่งข้อความไม่ได้ จนกว่าจะเข้าสู่ระบบใหม่" data-confirm-ok="ออกจากระบบ" data-confirm-tone="warn">
+      <button class="danger">ออกจากระบบ Telegram</button>
+    </form>
+  </div>
+</section>
+{% else %}
+  {% if account.last_error %}<div class="note error" style="margin-bottom:16px">{{ account.last_error }}</div>{% endif %}
+  {% set st = account.status %}
+  <div class="steps">
+    <div class="step {{ 'done' if st in ('code_sent', 'password_needed') else 'current' }}">
+      <div class="step-num">1</div>
+      <section class="card">
+        <div class="card-head"><h2>ข้อมูลแอปและเบอร์โทร</h2></div>
+        <p class="muted small" style="margin:-4px 0 14px">API ID และ API Hash สร้างได้ที่ <a href="https://my.telegram.org/apps" target="_blank" rel="noopener">my.telegram.org/apps</a> โดยล็อกอินด้วยเบอร์ของคุณ</p>
+        <form method="post" action="/telegram/send-code" class="stack">
+          <div class="row">
+            <label class="field">API ID <input name="api_id" inputmode="numeric" class="mono" value="{{ account.api_id or '' }}" required></label>
+            <label class="field">API Hash <input name="api_hash" autocomplete="off" class="mono" placeholder="{{ 'บันทึกไว้แล้ว เว้นว่างเพื่อใช้ค่าเดิม' if has_api_hash else '' }}" {{ '' if has_api_hash else 'required' }}></label>
+          </div>
+          <label class="field">เบอร์โทรศัพท์ <input name="phone" class="mono" placeholder="+66812345678" value="{{ account.phone }}" required></label>
+          <div class="actions end"><button class="primary">ส่งรหัสยืนยัน</button></div>
+        </form>
+      </section>
+    </div>
+
+    <div class="step {{ 'current' if st == 'code_sent' else 'done' if st == 'password_needed' else 'locked' }}">
+      <div class="step-num">2</div>
+      <section class="card">
+        <div class="card-head"><h2>รหัสยืนยัน</h2></div>
+        <form method="post" action="/telegram/verify-code" class="row">
+          <label class="field">รหัสที่ได้รับในแอป Telegram <input name="code" inputmode="numeric" class="mono" autocomplete="one-time-code" required></label>
+          <button class="primary">ยืนยัน</button>
+        </form>
+      </section>
+    </div>
+
+    <div class="step {{ 'current' if st == 'password_needed' else 'locked' }}">
+      <div class="step-num">3</div>
+      <section class="card">
+        <div class="card-head"><h2>รหัสผ่าน Telegram</h2><span class="muted small">เฉพาะบัญชีที่เปิดยืนยันสองขั้นตอน</span></div>
+        <form method="post" action="/telegram/verify-password" class="row">
+          <label class="field">รหัสผ่าน <input name="password" type="password" autocomplete="off" required></label>
+          <button class="primary">เข้าสู่ระบบ</button>
+        </form>
+        <p class="muted small" style="margin:10px 0 0">ใช้ครั้งเดียวตอนเข้าสู่ระบบ ระบบไม่เก็บรหัสผ่านนี้</p>
+      </section>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

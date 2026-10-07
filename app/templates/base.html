@@ -1,0 +1,296 @@
+{% from "_icons.html" import icon, cicon %}<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    (function () {
+      var t = 'system';
+      try { t = localStorage.getItem('theme') || 'system'; } catch (e) {}
+      var dark = t === 'dark' || (t === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    })();
+  </script>
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}หลังบ้าน{% endblock %} · autopay Support</title>
+  <link rel="icon" href="/static/brand/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/brand/mark-64.png">
+  <link rel="apple-touch-icon" href="/static/brand/mark-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=50">
+</head>
+<body>
+{% if user %}
+{% macro nav_item(href, ic, label, badge='') -%}
+  {% set active = (path == '/' and href == '/') or (href != '/' and path.startswith(href)) %}
+  <a href="{{ href }}" class="nav-item {{ 'active' if active }}">{{ cicon(ic, 20) }}<span>{{ label }}</span>
+    {%- if badge %}<span class="nav-badge {{ 'hot' if badge == 'badge-pending' }}" id="{{ badge }}"></span>{% endif %}</a>
+{%- endmacro %}
+<aside class="sidebar" id="sidebar">
+  <a class="brand" href="/">
+    <img class="brand-logo logo-light" src="/static/brand/logo.png" alt="autopay" width="186" height="38"><img class="brand-logo logo-dark" src="/static/brand/logo-dark.png" alt="autopay" width="186" height="38">
+    <span class="brand-sub">Support Desk · ทีมดูแลลูกค้า</span>
+  </a>
+  <nav class="nav">
+    {% if user.role in ('admin', 'agent') %}
+      {{ nav_item('/', 'home', 'ภาพรวม') }}
+      {{ nav_item('/replies', 'mail-clock', 'รออนุมัติ', 'badge-pending') }}
+    {% endif %}
+    {{ nav_item('/tickets', 'clipboard-task', 'Tickets', 'badge-tickets') }}
+    {% if user.role in ('admin', 'agent') %}
+      {{ nav_item('/chats', 'chat-multiple', 'แชทลูกค้า') }}
+      {{ nav_item('/guides', 'book-open-lightbulb', 'คู่มือตอบคำถาม') }}
+    {% endif %}
+    {% if user.role == 'admin' %}
+      <div class="nav-label">ระบบ</div>
+      {{ nav_item('/telegram', 'telegram', 'บัญชี Telegram') }}
+      {{ nav_item('/settings', 'settings', 'ตั้งค่า') }}
+      {{ nav_item('/system', 'gauge', 'ทรัพยากรเครื่อง') }}
+      {{ nav_item('/logs', 'logs', 'Log ระบบ') }}
+      {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
+    {% endif %}
+  </nav>
+  {% if quota_info and quota_info.is_gemini and quota_info.current %}
+  {% set qcur = quota_info.current %}
+  <a class="quota-mini" href="/#quota" title="โควตา Gemini วันนี้ (นับจากระบบนี้)">
+    <span class="quota-mini-head"><span>โควตา AI วันนี้</span>
+      <b>{% if qcur.limit %}เหลือ {{ qcur.left }}{% else %}ใช้ {{ qcur.used }}{% endif %}</b></span>
+    {% if qcur.limit %}<span class="qbar {{ qcur.level }}"><span style="width: {{ qcur.pct }}%"></span></span>{% endif %}
+    <span class="quota-mini-foot">{{ qcur.used }}{% if qcur.limit %}/{{ qcur.limit }}{% endif %} ครั้ง · รีเซ็ตใน {{ quota_info.reset_in }}</span>
+  </a>
+  {% endif %}
+  <div class="sidebar-foot">
+    <a class="user-chip" href="/account">
+      <img class="avatar logo" src="/static/brand/avatar.png" width="30" height="30" alt="">
+      <span class="user-meta"><strong>{{ user.username }}</strong><small>{{ ROLES[user.role] }}</small></span>
+    </a>
+    {% if user.role in ('admin', 'agent') %}
+    <button type="button" class="icon-btn sound-btn" id="soundBtn" title="เสียงแจ้งเตือน" aria-label="เปิด/ปิดเสียงแจ้งเตือน">
+      <span class="on">{{ icon('volume', 17) }}</span><span class="off">{{ icon('volume-off', 17) }}</span></button>
+    {% endif %}
+    <button type="button" class="icon-btn theme-btn" id="themeBtn" aria-label="สลับโหมดมืด/สว่าง">
+      <span class="to-dark">{{ icon('moon', 17) }}</span><span class="to-light">{{ icon('sun', 17) }}</span></button>
+    <form method="post" action="/logout"><button class="icon-btn" title="ออกจากระบบ" aria-label="ออกจากระบบ">{{ icon('logout', 17) }}</button></form>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<div class="shell">
+  <header class="mobilebar">
+    <button type="button" class="icon-btn" id="menuBtn" aria-label="เมนู">{{ icon('menu', 20) }}</button>
+    <a class="brand" href="/"><img class="brand-logo sm logo-light" src="/static/brand/logo.png" alt="autopay" width="127" height="26"><img class="brand-logo sm logo-dark" src="/static/brand/logo-dark.png" alt="autopay" width="127" height="26"></a>
+  </header>
+  <main class="content">
+    {% if EPHEMERAL_STORAGE and user.role == 'admin' %}
+      <div class="note error storage-warn">
+        <strong>ข้อมูลยังไม่ถูกเก็บถาวร</strong> ตั้งค่า ticket และการเชื่อมต่อ Telegram จะหายทุกครั้งที่ deploy ใหม่
+        แก้โดยเปิด Railway → service นี้ → คลิกขวา (หรือ ⌘K) เลือก <em>Attach Volume</em> → Mount path ใส่ <code>/data</code> แล้วรอ deploy ใหม่
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+  {% block auth %}{% endblock %}
+{% endif %}
+
+<dialog class="cdialog" id="confirmDialog" aria-labelledby="cdTitle" aria-describedby="cdMsg">
+  <form method="dialog">
+    <div class="cd-body">
+      <span class="cd-ic"><img id="cdIcon" src="/static/icons/question-circle.svg" width="26" height="26" alt=""></span>
+      <div class="cd-text">
+        <h3 class="cd-title" id="cdTitle">ยืนยัน</h3>
+        <p class="cd-msg" id="cdMsg"></p>
+      </div>
+      <div class="cd-preview" id="cdPreview" hidden></div>
+    </div>
+    <div class="cd-actions">
+      <button value="cancel" class="ghost" id="cdCancel">ยกเลิก</button>
+      <button value="ok" id="cdOk">ตกลง</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toasts">
+  {% for f in flashes %}
+    <div class="toast {{ f.kind }}" role="status">
+      <span class="toast-ic">{{ icon('check' if f.kind == 'ok' else 'alert', 15) }}</span>
+      <span class="toast-msg">{{ f.message }}</span>
+      <button type="button" class="toast-x" aria-label="ปิด">{{ icon('x', 14) }}</button>
+    </div>
+  {% endfor %}
+</div>
+
+<script>
+  document.querySelectorAll('.toast').forEach(t => {
+    const close = () => { t.classList.add('leaving'); setTimeout(() => t.remove(), 200); };
+    t.querySelector('.toast-x').onclick = close;
+    if (t.classList.contains('ok')) setTimeout(close, 4000);
+  });
+  // popup ยืนยันแทน confirm() ของเบราว์เซอร์
+  // ใส่ data-confirm="ข้อความ" ที่ <form> หรือปุ่ม submit
+  //   data-confirm-title, data-confirm-ok (ข้อความปุ่ม), data-confirm-tone (danger / send / warn)
+  //   data-confirm-preview (selector ช่องข้อความที่จะแสดงตัวอย่าง), data-confirm-count (selector ที่นับแทน {n})
+  const cd = document.getElementById('confirmDialog');
+  const CD_ICONS = { danger: 'delete', send: 'send', warn: 'warning' };
+  const CD_OK = { danger: 'danger-solid', send: 'go', warn: 'primary' };
+  function askConfirm(o) {
+    const tone = o.tone || 'warn';
+    cd.className = 'cdialog ' + tone;
+    document.getElementById('cdIcon').src = '/static/icons/' + (CD_ICONS[tone] || 'question-circle') + '.svg';
+    document.getElementById('cdTitle').textContent = o.title || 'ยืนยันการทำรายการ';
+    document.getElementById('cdMsg').textContent = o.message || '';
+    const pv = document.getElementById('cdPreview');
+    pv.hidden = !o.preview; pv.textContent = o.preview || '';
+    cd.classList.toggle('wide', !!o.preview);  // มีตัวอย่างข้อความ -> กล่องใหญ่ขึ้นให้อ่านง่าย
+    const ok = document.getElementById('cdOk');
+    ok.textContent = o.ok || 'ตกลง';
+    ok.className = CD_OK[tone] || 'primary';
+    cd.returnValue = '';
+    cd.showModal();
+    (tone === 'danger' ? document.getElementById('cdCancel') : ok).focus();
+    return new Promise(resolve => cd.addEventListener('close', () => resolve(cd.returnValue === 'ok'), { once: true }));
+  }
+  cd.addEventListener('click', e => { if (e.target === cd) cd.close(); });  // คลิกนอกกล่อง = ยกเลิก
+  document.addEventListener('submit', async e => {
+    const form = e.target, btn = e.submitter;
+    const src = btn && btn.dataset.confirm !== undefined ? btn : (form.dataset.confirm !== undefined ? form : null);
+    if (!src) return;
+    if (form.dataset.confirmed) { delete form.dataset.confirmed; return; }
+    e.preventDefault();
+    const d = src.dataset;
+    const count = d.confirmCount ? document.querySelectorAll(d.confirmCount).length : 0;
+    const fill = s => (s || '').replace('{n}', count);
+    const previewEl = d.confirmPreview ? document.querySelector(d.confirmPreview) : null;
+    const yes = await askConfirm({ title: fill(d.confirmTitle), message: fill(d.confirm), ok: d.confirmOk,
+                                   tone: d.confirmTone, preview: previewEl ? previewEl.value.trim() : '' });
+    if (!yes) return;
+    form.dataset.confirmed = '1';
+    btn ? form.requestSubmit(btn) : form.requestSubmit();
+  });
+  // ---------------- โหมดมืด / สว่าง ----------------
+  const theme = (() => {
+    const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+    const get = () => { try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; } };
+    const isDark = t => t === 'dark' || (t === 'system' && mq && mq.matches);
+    function apply() {
+      const t = get(), dark = isDark(t);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      const btn = document.getElementById('themeBtn');
+      if (btn) btn.title = (dark ? 'โหมดมืด' : 'โหมดสว่าง') + (t === 'system' ? ' (ตามระบบเครื่อง)' : '') + ' · กดเพื่อเปลี่ยนเป็น' + (dark ? 'โหมดสว่าง' : 'โหมดมืด');
+    }
+    function set(t) { try { localStorage.setItem('theme', t); } catch (e) {} apply(); }
+    document.getElementById('themeBtn')?.addEventListener('click', () => set(isDark(get()) ? 'light' : 'dark'));
+    mq?.addEventListener?.('change', () => { if (get() === 'system') apply(); });
+    window.addEventListener('storage', e => { if (e.key === 'theme') apply(); });
+    apply();
+    return { get, set, apply };
+  })();
+  const menuBtn = document.getElementById('menuBtn');
+  if (menuBtn) {
+    menuBtn.onclick = () => document.body.classList.add('menu-open');
+    document.getElementById('scrim').onclick = () => document.body.classList.remove('menu-open');
+  }
+</script>
+{% if user %}
+<script>
+  // ---------------- เสียงแจ้งเตือน (ตั้งค่าเก็บในเบราว์เซอร์เครื่องนี้) ----------------
+  const notifySound = (() => {
+    const KEY = 'soundSettings', DEFAULTS = { on: true, sound: 'chime', volume: 70, repeat: 0 };
+    const store = {
+      get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    };
+    let ctx = null;
+    function audio() {
+      try {
+        ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
+      } catch (e) { return null; }
+      return ctx;
+    }
+    // เบราว์เซอร์ให้เล่นเสียงได้หลังผู้ใช้คลิกในหน้าเว็บ -> ปลดล็อกเมื่อคลิกครั้งแรก
+    ['pointerdown', 'keydown'].forEach(t => document.addEventListener(t, () => { audio(); paint(); }, { once: true }));
+
+    function tone(c, freq, at, dur, vol, type = 'sine', toFreq = 0) {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, at);
+      if (toFreq) o.frequency.exponentialRampToValueAtTime(toFreq, at + dur);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), at + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g).connect(c.destination);
+      o.start(at); o.stop(at + dur + 0.05);
+    }
+    const SOUNDS = {
+      chime: { label: 'กริ๊ง (2 โน้ต)', play: (c, t, v) => { tone(c, 880, t, 0.35, v); tone(c, 1318.5, t + 0.16, 0.6, v); } },
+      bell: { label: 'ระฆัง', play: (c, t, v) => { tone(c, 660, t, 1.4, v); tone(c, 1320, t, 0.9, v * 0.35); tone(c, 1980, t, 0.5, v * 0.15); } },
+      dingdong: { label: 'ติ๊งต่อง', play: (c, t, v) => { tone(c, 1046.5, t, 0.5, v); tone(c, 784, t + 0.35, 0.8, v); } },
+      pop: { label: 'ป๊อป (สั้น)', play: (c, t, v) => { tone(c, 520, t, 0.12, v, 'triangle', 980); tone(c, 620, t + 0.14, 0.12, v, 'triangle', 1180); } },
+      alert: { label: 'บี๊บ 3 ครั้ง (ดัง)', play: (c, t, v) => { [0, 0.18, 0.36].forEach(d => tone(c, 1000, t + d, 0.11, v * 0.6, 'square')); } },
+    };
+    function settings() {
+      let s = {};
+      try { s = JSON.parse(store.get(KEY) || '{}'); } catch (e) {}
+      return { ...DEFAULTS, ...s };
+    }
+    function save(patch) { store.set(KEY, JSON.stringify({ ...settings(), ...patch })); paint(); }
+    function play(name) {
+      const s = settings(), c = audio();
+      if (!c || c.state !== 'running') return false;
+      (SOUNDS[name || s.sound] || SOUNDS.chime).play(c, c.currentTime + 0.02, Math.pow(s.volume / 100, 1.6) * 0.5);
+      store.set('soundLastPlayed', Date.now());
+      return true;
+    }
+    function paint() {
+      const btn = document.getElementById('soundBtn');
+      if (!btn) return;
+      const s = settings(), blocked = s.on && (!ctx || ctx.state !== 'running');
+      btn.classList.toggle('muted', !s.on);
+      btn.classList.toggle('blocked', blocked);
+      btn.title = !s.on ? 'เสียงแจ้งเตือน: ปิด (กดเพื่อเปิด)'
+        : blocked ? 'เสียงแจ้งเตือน: เปิด · คลิกที่ใดก็ได้ในหน้าเว็บ 1 ครั้ง เพื่อให้เบราว์เซอร์เล่นเสียงได้'
+        : 'เสียงแจ้งเตือน: เปิด (กดเพื่อปิด)';
+    }
+    // มีรายการรออนุมัติเพิ่มขึ้น -> เล่นเสียง (จำค่าล่าสุดร่วมกันทุกแท็บ จะได้ไม่ดังซ้ำ)
+    function check(pending) {
+      const s = settings(), prev = parseInt(store.get('soundLastPending') ?? '-1', 10);
+      store.set('soundLastPending', pending);
+      if (!s.on) return;
+      const last = parseInt(store.get('soundLastPlayed') || '0', 10);
+      if (prev >= 0 && pending > prev) play();
+      else if (s.repeat > 0 && pending > 0 && Date.now() - last >= s.repeat * 60000) play();
+    }
+    document.getElementById('soundBtn')?.addEventListener('click', () => {
+      const on = !settings().on;
+      save({ on });
+      if (on) play();
+    });
+    window.addEventListener('storage', e => { if (e.key === KEY) paint(); });
+    paint();
+    return { SOUNDS, settings, save, play, check, paint };
+  })();
+
+  async function refreshBadges() {
+    try {
+      const r = await fetch('/api/badge');
+      if (!r.ok) return;
+      const d = await r.json();
+      {% if user.role in ('admin', 'agent') %}notifySound.check(d.pending || 0);{% endif %}
+      const p = document.getElementById('badge-pending');
+      const t = document.getElementById('badge-tickets');
+      if (p) p.textContent = d.pending || '';
+      if (t) t.textContent = d.open_tickets || '';
+      document.title = (d.pending ? `(${d.pending}) ` : '') + document.title.replace(/^\(\d+\) /, '');
+    } catch (e) {}
+  }
+  refreshBadges();
+  setInterval(refreshBadges, 10000);
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>
