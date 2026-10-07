@@ -14,7 +14,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
-from . import ai_service
+from . import ai_service, line_service
 from .config import MEDIA_DIR
 from .database import (
     Chat,
@@ -109,7 +109,14 @@ async def queue_ticket(ticket_id: int) -> str:
             db.add(TicketEvent(ticket_id=ticket_id, kind="dev", author="ระบบ",
                                body="รอแอดมินอนุมัติก่อนส่งเข้ากลุ่มโปรแกรมเมอร์"))
             db.commit()
-            return "pending"
+        else:
+            ticket = None
+    if ticket is not None:
+        try:
+            await line_service.notify_dev_ticket(ticket_id)  # แจ้งการ์ดรออนุมัติเข้า LINE (ถ้าเปิดไว้)
+        except Exception:  # noqa: BLE001 - แจ้ง LINE ไม่สำเร็จ ไม่ให้กระทบการเข้าคิว
+            log.exception("line notify failed for dev ticket %s", ticket_id)
+        return "pending"
     result = await post_ticket(ticket_id)
     return "sent" if result.startswith("ส่งเข้ากลุ่ม") else ""
 

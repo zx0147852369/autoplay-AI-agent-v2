@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
@@ -763,10 +763,10 @@ async def line_webhook(request: Request):
                     db.commit()
                 target = src
                 if rtoken:
-                    await line_service.reply(rtoken, line_service.text_message(
-                        "เชื่อมต่อ LINE สำหรับแจ้งเตือนรออนุมัติเรียบร้อยแล้วค่ะ ✅ เมื่อมีข้อความรออนุมัติจะส่งมาที่นี่"))
+                    await line_service.reply(rtoken, line_service.notice_message(
+                        "เชื่อมต่อ LINE สำหรับแจ้งเตือนรออนุมัติเรียบร้อยแล้วค่ะ เมื่อมีข้อความรออนุมัติจะส่งมาที่นี่", "ok"))
             elif etype == "message" and rtoken:
-                await line_service.reply(rtoken, line_service.text_message("ระบบแจ้งเตือนรออนุมัติพร้อมใช้งานแล้วค่ะ ✅"))
+                await line_service.reply(rtoken, line_service.notice_message("ระบบแจ้งเตือนรออนุมัติพร้อมใช้งานแล้วค่ะ", "info"))
         elif etype == "postback" and src:
             data = ev.get("postback", {}).get("data", "")
             action, _, rid = data.partition(":")
@@ -777,23 +777,44 @@ async def line_webhook(request: Request):
             rid = int(rid)
             if not allow_approve:
                 if rtoken:
-                    await line_service.reply(rtoken, line_service.text_message("ปิดการอนุมัติจาก LINE ไว้ · อนุมัติได้ที่หน้าเว็บ"))
+                    await line_service.reply(rtoken, line_service.notice_message("ปิดการอนุมัติจาก LINE ไว้ · อนุมัติได้ที่หน้าเว็บ", "warn"))
+                continue
+            if action in ("postdev", "skipdev"):  # การ์ด ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์ (rid = เลข ticket)
+                by = f"LINE:{src[-4:]}"
+                with SessionLocal() as db:
+                    t = db.get(Ticket, rid)
+                    is_pending = bool(t and t.dev_status == "pending")
+                if not is_pending:
+                    out, tone = f"ticket #{rid} ถูกดำเนินการไปแล้ว", "info"
+                elif action == "postdev":
+                    try:
+                        result = await dev_bridge.post_ticket(rid, force=True, approver=by)
+                    except Exception as e:  # noqa: BLE001
+                        log.exception("post ticket from LINE failed")
+                        result = f"ส่งไม่สำเร็จ: {e}"
+                    out, tone = ((f"ส่ง ticket #{rid} เข้ากลุ่มโปรแกรมเมอร์แล้ว", "ok") if result.startswith("ส่งเข้ากลุ่ม")
+                                 else (result or "ส่งไม่สำเร็จ ลองที่หน้าเว็บอีกครั้ง", "bad"))
+                else:
+                    dev_bridge.skip_ticket(rid, by)
+                    out, tone = f"ไม่ส่ง ticket #{rid} เข้ากลุ่มโปรแกรมเมอร์", "bad"
+                if rtoken:
+                    await line_service.reply(rtoken, line_service.notice_message(out, tone))
                 continue
             pending = _load_pending(rid)
             if not pending:
                 if rtoken:
-                    await line_service.reply(rtoken, line_service.text_message("รายการนี้ถูกดำเนินการไปแล้ว"))
+                    await line_service.reply(rtoken, line_service.notice_message("รายการนี้ถูกดำเนินการไปแล้ว", "info"))
                 continue
             if action == "approve":
                 status, _ = await deliver_reply(rid, pending.final_text, f"LINE:{src[-4:]}")
-                out = "ส่งข้อความถึงลูกค้าแล้ว ✅" if status == "sent" else "ส่งไม่สำเร็จ ลองที่หน้าเว็บอีกครั้ง"
+                out, tone = ("ส่งข้อความถึงลูกค้าแล้ว", "ok") if status == "sent" else ("ส่งไม่สำเร็จ ลองที่หน้าเว็บอีกครั้ง", "bad")
             elif action == "reject":
                 reject_reply(rid, "ปฏิเสธจาก LINE", f"LINE:{src[-4:]}")
-                out = "ไม่ส่งข้อความนี้แล้ว ❌"
+                out, tone = "ไม่ส่งข้อความนี้แล้ว", "bad"
             else:
-                out = ""
+                out, tone = "", "info"
             if out and rtoken:
-                await line_service.reply(rtoken, line_service.text_message(out))
+                await line_service.reply(rtoken, line_service.notice_message(out, tone))
     return JSONResponse({"ok": True})
 
 
@@ -805,7 +826,8 @@ async def line_page(request: Request):
     return render(request, "line.html", user, settings=settings,
                   line_configured=line_service.configured(), line_has_token=bool(line_service.token()),
                   line_has_secret=bool(line_service.secret()), line_target=settings.get("line_target", ""),
-                  line_webhook=str(request.base_url).rstrip("/") + "/line/webhook")
+                  line_webhook=str(request.base_url).rstrip("/") + "/line/webhook",
+                  line_public_url=line_service.public_url())
 
 
 @app.post("/line")
@@ -819,6 +841,27 @@ async def line_save(request: Request):
             db.merge(row)
         db.commit()
     flash(request, "บันทึกการตั้งค่า LINE แล้ว")
+    return back("/line")
+
+
+@app.post("/line/test")
+async def line_test(request: Request):
+    """ส่งการ์ดตัวอย่างเข้า LINE ที่เชื่อมไว้ เพื่อดูหน้าตาจริง (ไม่เกี่ยวกับรายการจริง กดปุ่มในการ์ดไม่มีผลต่อข้อมูล)"""
+    current_user(request, "admin")
+    with SessionLocal() as db:
+        target = get_settings(db).get("line_target", "")
+    if not line_service.configured():
+        flash(request, "ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET", "error")
+    elif not target:
+        flash(request, "ยังไม่ได้เชื่อมปลายทาง LINE · ทัก OA หรือเพิ่มเป็นเพื่อนก่อน", "error")
+    elif await line_service.push(target, line_service.sample_messages()):
+        if not line_service.public_url():
+            flash(request, "ส่งการ์ดทดสอบแล้ว แต่ยังไม่มีที่อยู่เว็บสาธารณะ จึงยังไม่แสดงรูปและปุ่ม \"เปิดดูในเว็บ\" "
+                           "· Generate Domain ใน Railway หรือตั้ง PUBLIC_URL", "error")
+        else:
+            flash(request, "ส่งข้อความทดสอบเข้า LINE แล้ว · เปิดดูที่แชท LINE OA (ถ้ารูปไม่ขึ้น ดูสาเหตุที่หน้า Log ระบบ)")
+    else:
+        flash(request, "ส่งเข้า LINE ไม่สำเร็จ · ดูสาเหตุที่หน้า Log ระบบ", "error")
     return back("/line")
 
 
@@ -1289,6 +1332,21 @@ async def media(request: Request, name: str):
     if path.parent != MEDIA_DIR.resolve() or not path.is_file():
         return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(path)
+
+
+@app.get("/pub/media/{token}/{name}")
+def public_media(token: str, name: str):
+    """รูปสำหรับการ์ด LINE: LINE ดึงรูปโดยไม่ล็อกอิน จึงเปิดได้ด้วยลิงก์ที่เซ็นลายเซ็นและมีวันหมดอายุเท่านั้น
+    (เดาลิงก์ไม่ได้ และเปิดได้เฉพาะไฟล์ที่ลายเซ็นระบุ) · แปลงเป็น JPEG/PNG ด้านยาวไม่เกิน 1024px ตามที่ LINE กำหนด"""
+    path = (MEDIA_DIR / name).resolve()
+    if not line_service.check_media(token, name) or path.parent != MEDIA_DIR.resolve() or not path.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    prepared = line_service.prepare_image(path)
+    if not prepared:
+        return JSONResponse({"error": "unsupported image"}, status_code=415)
+    data, mime = prepared
+    return Response(content=data, media_type=mime,
+                    headers={"Cache-Control": "private, max-age=86400", "X-Robots-Tag": "noindex"})
 
 
 # ---------------------------------------------------------------- settings & users

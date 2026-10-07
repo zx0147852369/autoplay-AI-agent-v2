@@ -16,16 +16,21 @@
       <span><span class="dot {{ 'live' if line_has_token else 'off' }}"></span> <code>LINE_CHANNEL_ACCESS_TOKEN</code> {{ 'ตั้งค่าแล้ว' if line_has_token else 'ยังไม่ได้ตั้ง' }}</span>
       <span><span class="dot {{ 'live' if line_has_secret else 'off' }}"></span> <code>LINE_CHANNEL_SECRET</code> {{ 'ตั้งค่าแล้ว' if line_has_secret else 'ยังไม่ได้ตั้ง' }}</span>
       <span><span class="dot {{ 'live' if line_target else 'wait' }}"></span> ปลายทาง LINE {{ 'เชื่อมแล้ว' if line_target else 'ยังไม่เชื่อม (ทัก OA หรือเพิ่มเป็นเพื่อนก่อน)' }}</span>
+      <span><span class="dot {{ 'live' if line_public_url else 'wait' }}"></span> รูปภาพในการ์ด {% if line_public_url %}พร้อมใช้ · ที่อยู่เว็บ <code>{{ line_public_url }}</code>{% else %}ยังไม่พร้อม · ต้องมีโดเมน HTTPS (Generate Domain ใน Railway หรือตั้ง <code>PUBLIC_URL</code>){% endif %}</span>
     </div>
     <label class="field">Webhook URL <span class="hint">ก๊อปไปวางใน LINE Developers Console → Messaging API → Webhook URL แล้วเปิด Use webhook</span>
       <input value="{{ line_webhook }}" readonly onclick="this.select()" class="mono"></label>
     <label class="check-row"><input type="checkbox" name="line_enabled" {{ 'checked' if settings.line_enabled == '1' }}>
-      <span>ส่งการ์ดรออนุมัติเข้า LINE<span class="hint">เมื่อ AI ร่างคำตอบลูกค้าใหม่ จะส่งข้อความ + ปุ่มอนุมัติ/ไม่ส่ง ไปที่ LINE ที่เชื่อมไว้</span></span></label>
+      <span>ส่งการ์ดรออนุมัติเข้า LINE<span class="hint">ส่งการ์ดพร้อมปุ่มอนุมัติ/ไม่ส่งไปที่ LINE ที่เชื่อมไว้ ทั้งเมื่อ AI ร่างคำตอบลูกค้า (มีบทสนทนาล่าสุด รายละเอียด ticket หมายเหตุ และข้อความร่างครบ) และเมื่อมี ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์</span></span></label>
     <label class="check-row"><input type="checkbox" name="line_approve" {{ 'checked' if settings.line_approve == '1' }}>
       <span>ให้กดอนุมัติ/ไม่ส่งจากปุ่มใน LINE ได้<span class="hint">ปิดไว้ = LINE แจ้งเตือนอย่างเดียว ต้องมากดอนุมัติที่หน้าเว็บ</span></span></label>
     {% if not line_configured %}
       <div class="note warn">ต้องสร้าง LINE Messaging API channel แล้วใส่ <code>LINE_CHANNEL_ACCESS_TOKEN</code> กับ <code>LINE_CHANNEL_SECRET</code> ใน Variables ของ Railway ก่อน จากนั้นวาง Webhook URL ด้านบน แล้วทัก OA 1 ครั้งเพื่อเชื่อมปลายทาง</div>
     {% endif %}
+    <div class="line-test">
+      <button type="submit" formaction="/line/test" {{ '' if line_configured and line_target else 'disabled' }}>{{ icon('send', 14) }} ส่งข้อความทดสอบเข้า LINE</button>
+      <span class="hint">ส่งการ์ดตัวอย่าง 2 ใบ (ตอบลูกค้า และ ticket ส่งเข้ากลุ่มโปรแกรมเมอร์) ไปที่ LINE ที่เชื่อมไว้ เพื่อดูหน้าตาจริง ไม่กระทบรายการจริง · ยังไม่ได้เชื่อมปลายทาง ปุ่มจะกดไม่ได้</span>
+    </div>
   </section>
   <div class="save-bar">
     <span class="muted small">การตั้งค่าในหน้านี้จะมีผลเมื่อกดบันทึก</span>
