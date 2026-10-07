@@ -9,14 +9,6 @@
   </div>
 </div>
 
-<div class="strip compact" style="--cols:3">
-  <div class="strip-cell"><span class="strip-ic {{ '' if key_set else 'dim' }}">{{ cicon('lock-closed', 22) }}</span><span class="strip-label">API key</span>
-    <span class="strip-value text"><span class="dot {{ 'live' if key_set else 'off' }}"></span>{{ 'ตั้งค่าแล้ว ' ~ key_mask if key_set else 'ยังไม่ได้ตั้ง' }}</span></div>
-  <div class="strip-cell"><span class="strip-ic {{ '' if ready else 'dim' }}">{{ cicon('checkmark-circle', 22) }}</span><span class="strip-label">การเชื่อมต่อ</span>
-    <span class="strip-value text"><span class="dot {{ 'live' if ready else 'wait' }}"></span>{{ 'พร้อมใช้งาน' if ready else 'ยังไม่ครบ' }}</span></div>
-  <div class="strip-cell"><span class="strip-ic">{{ cicon('apps-list', 22) }}</span><span class="strip-label">โมเดลที่ตั้งไว้</span><span class="strip-value">{{ models | length }}</span></div>
-</div>
-
 <form method="post" action="/ai/save">
 
   {# ======================= 1. การเชื่อมต่อ ======================= #}
