@@ -751,16 +751,57 @@ async def line_webhook(request: Request):
         settings = get_settings(db)
     target = settings.get("line_target", "")
     allow_approve = settings.get("line_approve", "1") == "1"
+
+    def save(**values: str) -> None:
+        with SessionLocal() as db:
+            for key, value in values.items():
+                db.merge(Setting(key=key, value=value))
+            db.commit()
+        settings.update(values)
+
     for ev in events:
-        src = line_service.source_id(ev.get("source", {}))
+        source = ev.get("source") or {}
+        src = line_service.source_id(source)  # แชทที่ส่ง event (user/group/room) = ปลายทางที่ส่งการ์ดไป
+        user_id = source.get("userId", "")    # คนที่ส่ง/กดจริงๆ (ในกลุ่มคือสมาชิกคนนั้น) ใช้เช็กสิทธิ์
         rtoken = ev.get("replyToken", "")
         etype = ev.get("type")
+        allowed = line_service.load_allowed(settings.get("line_allowed", ""))
+        member = line_service.find_allowed(allowed, user_id)  # None = ไม่ได้รับอนุญาต
+
+        # รหัสเชื่อมผู้อนุมัติ: แอดมินสร้างรหัสบนเว็บ คนที่จะเป็นผู้อนุมัติพิมพ์รหัสส่งหา OA (หรือในกลุ่ม)
+        message = ev.get("message") or {}
+        if etype == "message" and message.get("type") == "text":
+            old_pair = settings.get("line_pair", "")
+            state, new_pair = line_service.check_pair(old_pair, message.get("text", ""))
+            if new_pair != old_pair:
+                save(line_pair=new_pair)
+            if state == "ok":
+                if not user_id:
+                    out = ("ระบบอ่านไอดีผู้ใช้ LINE ของคุณไม่ได้ · ลองเพิ่ม OA เป็นเพื่อนก่อน แล้วส่งรหัสในแชทส่วนตัวกับ OA", "warn")
+                else:
+                    name = await line_service.display_name(source)
+                    users = [u for u in allowed if u["id"] != user_id]
+                    users.append({"id": user_id, "name": name, "added": utcnow().strftime("%Y-%m-%d %H:%M")})
+                    save(line_allowed=line_service.dump_allowed(users))
+                    note = ""
+                    if not target and src:  # ยังไม่มีปลายทางแจ้งเตือน -> ใช้แชทที่ส่งรหัสมาเป็นปลายทาง
+                        save(line_target=src, line_enabled="1")
+                        target, note = src, " และตั้งแชทนี้เป็นปลายทางแจ้งเตือน"
+                    out = (f"เพิ่ม {name or 'คุณ'} เป็นผู้อนุมัติแล้ว{note}", "ok")
+                if rtoken:
+                    await line_service.reply(rtoken, line_service.notice_message(*out))
+                continue
+            if state == "wrong":
+                if rtoken:
+                    await line_service.reply(rtoken, line_service.notice_message("รหัสไม่ถูกต้องหรือหมดอายุ · ขอรหัสใหม่จากผู้ดูแลระบบ", "warn"))
+                continue
+
         if etype in ("follow", "join", "message") and src:
-            if src != target:  # จับปลายทางอัตโนมัติ (คนแรกที่ทัก/เพิ่ม OA)
-                with SessionLocal() as db:
-                    db.merge(Setting(key="line_target", value=src))
-                    db.merge(Setting(key="line_enabled", value="1"))
-                    db.commit()
+            # เปลี่ยนปลายทางแจ้งเตือนได้เฉพาะผู้อนุมัติ (กันคนแปลกหน้าที่ทัก OA แย่งรับข้อมูลลูกค้า) · คนอื่นไม่ตอบอะไร
+            if not member:
+                continue
+            if src != target:
+                save(line_target=src, line_enabled="1")
                 target = src
                 if rtoken:
                     await line_service.reply(rtoken, line_service.notice_message(
@@ -779,8 +820,19 @@ async def line_webhook(request: Request):
                 if rtoken:
                     await line_service.reply(rtoken, line_service.notice_message("ปิดการอนุมัติจาก LINE ไว้ · อนุมัติได้ที่หน้าเว็บ", "warn"))
                 continue
+            if not allowed:
+                if rtoken:
+                    await line_service.reply(rtoken, line_service.notice_message(
+                        "ยังไม่ได้ตั้งผู้ที่อนุมัติจาก LINE ได้ · ให้ผู้ดูแลระบบเพิ่มที่หน้า แจ้งเตือน LINE ในเว็บ", "warn"))
+                continue
+            if not member:  # ผู้กดไม่อยู่ในรายชื่อ (เช่น สมาชิกคนอื่นในกลุ่ม) ห้ามอนุมัติ/ปฏิเสธ
+                log.warning("LINE postback จากผู้ที่ไม่ได้รับอนุญาต: …%s", user_id[-6:])
+                if rtoken:
+                    await line_service.reply(rtoken, line_service.notice_message(
+                        "คุณไม่ได้รับอนุญาตให้อนุมัติหรือไม่ส่งจาก LINE · ติดต่อผู้ดูแลระบบ", "warn"))
+                continue
+            by = f"LINE:{line_service.user_label(member)}"[:60]  # บันทึกว่าใครกด (แสดงในประวัติ "ดำเนินการโดย")
             if action in ("postdev", "skipdev"):  # การ์ด ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์ (rid = เลข ticket)
-                by = f"LINE:{src[-4:]}"
                 with SessionLocal() as db:
                     t = db.get(Ticket, rid)
                     is_pending = bool(t and t.dev_status == "pending")
@@ -806,10 +858,10 @@ async def line_webhook(request: Request):
                     await line_service.reply(rtoken, line_service.notice_message("รายการนี้ถูกดำเนินการไปแล้ว", "info"))
                 continue
             if action == "approve":
-                status, _ = await deliver_reply(rid, pending.final_text, f"LINE:{src[-4:]}")
+                status, _ = await deliver_reply(rid, pending.final_text, by)
                 out, tone = ("ส่งข้อความถึงลูกค้าแล้ว", "ok") if status == "sent" else ("ส่งไม่สำเร็จ ลองที่หน้าเว็บอีกครั้ง", "bad")
             elif action == "reject":
-                reject_reply(rid, "ปฏิเสธจาก LINE", f"LINE:{src[-4:]}")
+                reject_reply(rid, "ปฏิเสธจาก LINE", by)
                 out, tone = "ไม่ส่งข้อความนี้แล้ว", "bad"
             else:
                 out, tone = "", "info"
@@ -827,7 +879,9 @@ async def line_page(request: Request):
                   line_configured=line_service.configured(), line_has_token=bool(line_service.token()),
                   line_has_secret=bool(line_service.secret()), line_target=settings.get("line_target", ""),
                   line_webhook=str(request.base_url).rstrip("/") + "/line/webhook",
-                  line_public_url=line_service.public_url())
+                  line_public_url=line_service.public_url(),
+                  line_allowed=line_service.load_allowed(settings.get("line_allowed", "")),
+                  line_pair=line_service.pair_state(settings.get("line_pair", "")))
 
 
 @app.post("/line")
@@ -841,6 +895,43 @@ async def line_save(request: Request):
             db.merge(row)
         db.commit()
     flash(request, "บันทึกการตั้งค่า LINE แล้ว")
+    return back("/line")
+
+
+@app.post("/line/pair")
+async def line_pair_new(request: Request):
+    """สร้างรหัสเชื่อมผู้อนุมัติ (6 หลัก หมดอายุ 10 นาที ใช้ได้ครั้งเดียว) · คนที่จะเป็นผู้อนุมัติพิมพ์รหัสส่งหา LINE OA"""
+    current_user(request, "admin")
+    _, stored = line_service.new_pair_code()
+    with SessionLocal() as db:
+        db.merge(Setting(key="line_pair", value=stored))
+        db.commit()
+    flash(request, "สร้างรหัสเชื่อมแล้ว · ดูรหัสในกล่องด้านล่าง ให้ผู้อนุมัติพิมพ์ส่งใน LINE ภายใน 10 นาที")
+    return back("/line")
+
+
+@app.post("/line/pair/cancel")
+async def line_pair_cancel(request: Request):
+    current_user(request, "admin")
+    with SessionLocal() as db:
+        db.merge(Setting(key="line_pair", value=""))
+        db.commit()
+    flash(request, "ยกเลิกรหัสเชื่อมแล้ว")
+    return back("/line")
+
+
+@app.post("/line/users/remove")
+async def line_user_remove(request: Request, uid: str = Form("")):
+    """ลบผู้อนุมัติออกจากรายชื่อ (คนนั้นจะกดอนุมัติ/ไม่ส่งจาก LINE ไม่ได้อีก)"""
+    current_user(request, "admin")
+    with SessionLocal() as db:
+        users = line_service.load_allowed(get_settings(db).get("line_allowed", ""))
+        kept = [u for u in users if u["id"] != uid]
+        removed = [u for u in users if u["id"] == uid]
+        db.merge(Setting(key="line_allowed", value=line_service.dump_allowed(kept)))
+        db.commit()
+    if removed:
+        flash(request, f"ลบ {line_service.user_label(removed[0])} ออกจากผู้อนุมัติแล้ว")
     return back("/line")
 
 

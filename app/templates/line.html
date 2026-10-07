@@ -23,9 +23,44 @@
     <label class="check-row"><input type="checkbox" name="line_enabled" {{ 'checked' if settings.line_enabled == '1' }}>
       <span>ส่งการ์ดรออนุมัติเข้า LINE<span class="hint">ส่งการ์ดพร้อมปุ่มอนุมัติ/ไม่ส่งไปที่ LINE ที่เชื่อมไว้ ทั้งเมื่อ AI ร่างคำตอบลูกค้า (มีบทสนทนาล่าสุด รายละเอียด ticket หมายเหตุ และข้อความร่างครบ) และเมื่อมี ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์</span></span></label>
     <label class="check-row"><input type="checkbox" name="line_approve" {{ 'checked' if settings.line_approve == '1' }}>
-      <span>ให้กดอนุมัติ/ไม่ส่งจากปุ่มใน LINE ได้<span class="hint">ปิดไว้ = LINE แจ้งเตือนอย่างเดียว ต้องมากดอนุมัติที่หน้าเว็บ</span></span></label>
+      <span>ให้กดอนุมัติ/ไม่ส่งจากปุ่มใน LINE ได้<span class="hint">เฉพาะผู้ที่อยู่ในรายชื่อด้านล่างเท่านั้น · ปิดไว้ = LINE แจ้งเตือนอย่างเดียว ต้องมากดอนุมัติที่หน้าเว็บ</span></span></label>
+
+    <div class="allow-box">
+      <h3>ผู้ที่อนุมัติ / ไม่ส่งจาก LINE ได้</h3>
+      <p class="hint">ระบบเช็กจาก LINE User ID ของ <strong>คนที่กดปุ่มจริง</strong> ถ้าเป็นกลุ่ม LINE สมาชิกคนอื่นที่ไม่อยู่ในรายชื่อกดแล้วจะถูกปฏิเสธ ทุกครั้งที่อนุมัติ ระบบบันทึกชื่อผู้กดไว้ในประวัติ</p>
+      {% if not line_allowed %}
+        <div class="note warn">ยังไม่มีผู้อนุมัติ ตอนนี้ <strong>ไม่มีใครกดอนุมัติจาก LINE ได้</strong> (ยังได้รับการแจ้งเตือนตามปกติ และอนุมัติที่หน้าเว็บได้) กด "สร้างรหัสเชื่อม" แล้วให้คนที่ต้องการพิมพ์รหัสส่งหา LINE OA</div>
+      {% else %}
+        <div class="list">
+          {% for u in line_allowed %}
+          <div class="list-item">
+            <span class="avatar">{{ (u.name or '?')[:1] | upper }}</span>
+            <span class="li-main"><span class="li-title">{{ u.name or 'ไม่ทราบชื่อ' }}</span>
+              <span class="li-sub">User ID …{{ u.id[-6:] }}{% if u.added %} · เพิ่มเมื่อ {{ u.added }} UTC{% endif %}</span></span>
+            <button type="submit" formaction="/line/users/remove" name="uid" value="{{ u.id }}" class="sm danger"
+              data-confirm-title="ลบ {{ u.name or 'ผู้อนุมัติคนนี้' }} ออกจากผู้อนุมัติ?" data-confirm="คนนี้จะกดอนุมัติหรือไม่ส่งจาก LINE ไม่ได้อีก" data-confirm-ok="ลบ" data-confirm-tone="danger">ลบ</button>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if line_pair %}
+        <div class="pair-box">
+          <div>
+            <div class="hint">รหัสเชื่อมผู้อนุมัติ · เหลือประมาณ {{ ((line_pair[1] + 59) // 60) }} นาที</div>
+            <div class="pair-code" aria-label="รหัสเชื่อม">{{ line_pair[0] }}</div>
+            <div class="hint">ให้ผู้อนุมัติพิมพ์เลข 6 หลักนี้ส่งใน LINE OA (หรือในกลุ่มที่เชื่อมไว้) ใช้ได้ครั้งเดียว · ใส่ผิดครบ 5 ครั้งรหัสจะถูกยกเลิก</div>
+          </div>
+          <button type="submit" formaction="/line/pair/cancel" class="sm">ยกเลิกรหัส</button>
+        </div>
+      {% else %}
+        <div class="line-test">
+          <button type="submit" formaction="/line/pair">{{ icon('user', 14) }} สร้างรหัสเชื่อมผู้อนุมัติ</button>
+          <span class="hint">รหัสหมดอายุใน 10 นาที · ผู้อนุมัติพิมพ์รหัสส่งหา LINE OA แล้วระบบจะเพิ่มชื่อเข้ารายการให้เอง</span>
+        </div>
+      {% endif %}
+    </div>
     {% if not line_configured %}
-      <div class="note warn">ต้องสร้าง LINE Messaging API channel แล้วใส่ <code>LINE_CHANNEL_ACCESS_TOKEN</code> กับ <code>LINE_CHANNEL_SECRET</code> ใน Variables ของ Railway ก่อน จากนั้นวาง Webhook URL ด้านบน แล้วทัก OA 1 ครั้งเพื่อเชื่อมปลายทาง</div>
+      <div class="note warn">ต้องสร้าง LINE Messaging API channel แล้วใส่ <code>LINE_CHANNEL_ACCESS_TOKEN</code> กับ <code>LINE_CHANNEL_SECRET</code> ใน Variables ของ Railway ก่อน จากนั้นวาง Webhook URL ด้านบน แล้วกด "สร้างรหัสเชื่อมผู้อนุมัติ" และพิมพ์รหัสส่งหา OA เพื่อเชื่อมปลายทาง (คนที่ทัก OA เฉยๆ จะไม่ถูกเชื่อมอัตโนมัติ)</div>
     {% endif %}
     <div class="line-test">
       <button type="submit" formaction="/line/test" {{ '' if line_configured and line_target else 'disabled' }}>{{ icon('send', 14) }} ส่งข้อความทดสอบเข้า LINE</button>

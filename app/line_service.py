@@ -15,6 +15,8 @@ import io
 import json
 import logging
 import os
+import re
+import secrets
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -82,6 +84,100 @@ def verify(body: bytes, signature: str) -> bool:
         return False
     mac = hmac.new(s.encode("utf-8"), body, hashlib.sha256).digest()
     return hmac.compare_digest(base64.b64encode(mac).decode(), signature)
+
+
+# ---------------------------------------------------------------- ผู้ที่ได้รับอนุญาตให้กดอนุมัติ/ไม่ส่ง
+# เก็บเป็น LINE userId (ไม่ใช่ชื่อ เพราะเปลี่ยนได้/ซ้ำได้) เพิ่มคนด้วยรหัสเชื่อม 6 หลักที่แอดมินสร้างบนเว็บ
+PAIR_TTL = 600        # รหัสเชื่อมหมดอายุใน 10 นาที
+PAIR_MAX_FAILS = 5    # ใส่รหัสผิดครบกี่ครั้งแล้วยกเลิกรหัส (กันการไล่เดา)
+
+
+def load_allowed(raw: str) -> list[dict]:
+    """อ่านรายชื่อผู้อนุมัติจากค่าที่เก็บไว้ (JSON) ข้อมูลเสีย/รูปแบบผิดจะถูกข้าม ไม่ล้ม"""
+    try:
+        data = json.loads(raw or "[]")
+    except ValueError:
+        return []
+    users = []
+    for u in data if isinstance(data, list) else []:
+        if isinstance(u, dict) and isinstance(u.get("id"), str) and u["id"].strip():
+            users.append({"id": u["id"].strip(), "name": str(u.get("name") or "").strip(), "added": str(u.get("added") or "")})
+    return users
+
+
+def dump_allowed(users: list[dict]) -> str:
+    return json.dumps(users, ensure_ascii=False)
+
+
+def find_allowed(users: list[dict], user_id: str) -> dict | None:
+    """หาผู้อนุมัติจาก LINE userId (userId ว่าง = ไม่มีสิทธิ์เสมอ)"""
+    if not user_id:
+        return None
+    return next((u for u in users if u["id"] == user_id), None)
+
+
+def user_label(user: dict) -> str:
+    """ชื่อที่แสดง/บันทึกว่าใครกดอนุมัติ (ไม่มีชื่อใช้ท้าย userId แทน)"""
+    return user.get("name") or f"…{user['id'][-6:]}"
+
+
+def new_pair_code(now: float | None = None) -> tuple[str, str]:
+    """สร้างรหัสเชื่อมผู้อนุมัติ -> (รหัส 6 หลัก, ค่าที่เก็บ "รหัส|หมดอายุ|ผิดกี่ครั้ง")"""
+    code = f"{secrets.randbelow(10 ** 6):06d}"
+    return code, f"{code}|{int((now if now is not None else time.time()) + PAIR_TTL)}|0"
+
+
+def _pair_parts(raw: str) -> tuple[str, int, int] | None:
+    parts = (raw or "").split("|")
+    if len(parts) < 2 or not re.fullmatch(r"[0-9]{6}", parts[0]) or not re.fullmatch(r"[0-9]+", parts[1]):
+        return None
+    fails = int(parts[2]) if len(parts) > 2 and re.fullmatch(r"[0-9]+", parts[2]) else 0
+    return parts[0], int(parts[1]), fails
+
+
+def pair_state(raw: str, now: float | None = None) -> tuple[str, int] | None:
+    """รหัสเชื่อมที่ยังใช้ได้ -> (รหัส, วินาทีที่เหลือ) · ไม่มี/หมดอายุ -> None"""
+    p = _pair_parts(raw)
+    now = now if now is not None else time.time()
+    if not p or p[1] <= now:
+        return None
+    return p[0], int(p[1] - now)
+
+
+def check_pair(raw: str, text: str, now: float | None = None) -> tuple[str, str]:
+    """ตรวจข้อความที่ส่งเข้า LINE ว่าเป็นรหัสเชื่อมไหม -> (ผล, ค่าใหม่ที่ต้องเก็บ)
+    ผล: "none" = ไม่ใช่รหัส/ไม่มีรหัสที่รออยู่ (ข้อความธรรมดา) · "ok" = ตรงและใช้ได้ (รหัสถูกใช้ทิ้ง) ·
+    "wrong" = เป็นเลข 6 หลักแต่ไม่ตรง (นับครั้งที่ผิด ครบ PAIR_MAX_FAILS ยกเลิกรหัส)"""
+    state = pair_state(raw, now)
+    if not state:
+        return "none", ""  # ไม่มีรหัสที่รออยู่ หรือหมดอายุแล้ว (ล้างค่าเก่าทิ้งด้วย)
+    code, exp, fails = _pair_parts(raw)
+    t = (text or "").strip()
+    if not re.fullmatch(r"[0-9]{6}", t):
+        return "none", raw
+    if hmac.compare_digest(t, code):
+        return "ok", ""
+    fails += 1
+    return "wrong", "" if fails >= PAIR_MAX_FAILS else f"{code}|{exp}|{fails}"
+
+
+async def display_name(src: dict) -> str:
+    """ดึงชื่อที่แสดงใน LINE ของผู้ส่ง event (ใช้ตั้งชื่อในรายชื่อผู้อนุมัติ) · ไม่ได้ = ว่าง"""
+    uid, t = src.get("userId"), token()
+    if not uid or not t:
+        return ""
+    if src.get("groupId"):
+        path = f"/group/{src['groupId']}/member/{uid}"
+    elif src.get("roomId"):
+        path = f"/room/{src['roomId']}/member/{uid}"
+    else:
+        path = f"/profile/{uid}"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{API}{path}", headers={"Authorization": f"Bearer {t}"})
+        return (r.json().get("displayName") or "").strip()[:60] if r.status_code < 300 else ""
+    except (httpx.HTTPError, ValueError):
+        return ""
 
 
 # ---------------------------------------------------------------- รูปภาพสำหรับการ์ด LINE

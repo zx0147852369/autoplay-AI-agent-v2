@@ -1015,6 +1015,17 @@ tr[hidden] { display: none; }
 .line-test { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }
 .line-test .hint { flex: 1; min-width: 220px; }
 
+/* ---------- หน้า LINE: รายชื่อผู้อนุมัติ + รหัสเชื่อม ---------- */
+.allow-box { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
+.allow-box h3 { margin: 0 0 4px; }
+.allow-box .note { margin-top: 10px; }
+.allow-box .list { margin-top: 8px; }
+.pair-box {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 14px;
+  padding: 14px 16px; background: var(--pine-tint); border: 1px solid var(--line); border-radius: var(--r-lg);
+}
+.pair-code { font-family: var(--mono); font-size: 2.1rem; font-weight: 500; letter-spacing: .28em; line-height: 1.3; color: var(--pine-2); user-select: all; }
+
 /* ---------- อื่นๆ ---------- */
 .save-bar { border-radius: var(--r-lg); box-shadow: var(--shadow-md); }
 .toast { border-radius: 12px; }
