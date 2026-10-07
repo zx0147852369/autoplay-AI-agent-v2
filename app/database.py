@@ -347,7 +347,10 @@ DEFAULT_SETTINGS = {
     "custom_ai_base_url": "",                 # เช่น https://api.example.com/v1
     "custom_ai_models": "",                   # รายชื่อโมเดล บรรทัดละ 1 รุ่น ("id | ชื่อที่แสดง")
     "custom_ai_json_mode": "auto",            # auto / schema / object / prompt = วิธีบังคับให้ตอบเป็น JSON
-    "custom_ai_vision": "auto",               # auto / yes / no = ส่งรูปให้โมเดลไหม
+    "custom_ai_vision": "no",                 # no / auto / yes = ส่งรูปให้โมเดลไหม (ค่าเริ่มต้นไม่ส่ง: รูปสลิป/หน้าจอปกปิดไม่ได้)
+    "custom_ai_mask": "on",                   # on / off = ปกปิดเบอร์ อีเมล ลิงก์ เลขบัญชี ชื่ออื่นๆ ก่อนส่งให้ AI ภายนอก (privacy.py)
+    "custom_ai_mask_level": "strict",         # strict = ไม่ส่งข้อมูลธุรกิจ/ฐานความรู้/คู่มือ/บทเรียน + ปกปิดจำนวนเงินและชื่อแบรนด์ด้วย · standard = ปกปิดเฉพาะข้อมูลส่วนตัว
+    "custom_ai_mask_terms": "",               # คำที่ต้องปกปิดเพิ่ม บรรทัดละ 1 คำ (เช่น ชื่อแบรนด์ ชื่อระบบภายใน)
     "custom_ai_max_tokens": "0",              # 0 = ไม่กำหนด (บางเจ้าไม่รับพารามิเตอร์นี้)
     "custom_ai_timeout": "120",               # รอคำตอบสูงสุดกี่วินาที
     "custom_ai_caps": "",                     # JSON ผลทดสอบความสามารถของแต่ละโมเดล
@@ -378,6 +381,12 @@ def init_db() -> None:
         for key, value in DEFAULT_SETTINGS.items():
             if db.get(Setting, key) is None:
                 db.add(Setting(key=key, value=value))
+        # ครั้งเดียว: เดิมค่าเริ่มต้นของ AI ภายนอกคือส่งรูปอัตโนมัติ -> เปลี่ยนเป็นไม่ส่ง (รูปสลิปปกปิดข้อมูลไม่ได้) ยกเว้นแอดมินเลือก "ส่งเสมอ" ไว้เอง
+        if db.get(Setting, "custom_ai_privacy_v1") is None:
+            row = db.get(Setting, "custom_ai_vision")
+            if row is not None and row.value == "auto":
+                row.value = "no"
+            db.add(Setting(key="custom_ai_privacy_v1", value="1"))
         if db.get(TelegramAccount, 1) is None:
             db.add(TelegramAccount(id=1))
         db.commit()

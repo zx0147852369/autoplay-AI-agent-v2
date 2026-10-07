@@ -15,7 +15,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
-from . import custom_ai, quota
+from . import custom_ai, privacy, quota
 from .config import DISPLAY_TZ, MEDIA_DIR
 from .database import DEFAULT_SETTINGS, Message, Ticket
 
@@ -201,12 +201,22 @@ def _guides_text(guides: list, query: str, budget: int = 24000) -> str:
     return "คู่มือการใช้งาน (ใช้ตอบคำถามการใช้งานของลูกค้า):\n\n" + "\n---\n".join(blocks)
 
 
+def external_strict(settings: dict[str, str]) -> bool:
+    """ใช้ AI ภายนอก + เปิดปกปิด + ระดับเข้มงวด = ข้อมูลบริษัท (ข้อมูลธุรกิจ ฐานความรู้ คู่มือ บทเรียน) ต้องไม่ถูกส่งออกไป"""
+    return (custom_ai.is_custom(settings.get("ai_model") or "") and privacy.enabled(settings)
+            and privacy.level(settings) == "strict")
+
+
+WITHHELD = "(เก็บไว้ในระบบของบริษัท ไม่ส่งให้ AI ภายนอก · ถ้าต้องใช้ข้อมูลส่วนนี้ ให้ตอบว่าขอตรวจสอบข้อมูลก่อนแล้วจะรีบแจ้งกลับ)"
+
+
 def _system_text(settings: dict[str, str]) -> str:
+    withheld = external_strict(settings)
     return (
         SYSTEM_INSTRUCTIONS
         + GUIDE_RULES
-        + "\n\n# ข้อมูลธุรกิจ\n" + settings.get("business_context", "")
-        + "\n\n# ฐานความรู้ / วิธีตอบ\n" + settings.get("knowledge_base", "")
+        + "\n\n# ข้อมูลธุรกิจ\n" + (WITHHELD if withheld else settings.get("business_context", ""))
+        + "\n\n# ฐานความรู้ / วิธีตอบ\n" + (WITHHELD if withheld else settings.get("knowledge_base", ""))
         + "\n\n# สไตล์การตอบ\n" + settings.get("reply_style", "")
     )
 
@@ -225,6 +235,11 @@ def format_transcript(chat_title: str, history: list[Message], new_ids: set[int]
 
 
 # เนื้อหาที่ส่งให้ AI เก็บเป็นรายการกลาง: ("text", str) หรือ ("image", bytes, media_type)
+def _known_names(chat_title: str, history: list[Message]) -> list[str]:
+    """ชื่อที่ปรากฏในบทสนทนา (ชื่อแชท + ชื่อผู้ส่ง) สำหรับปกปิดก่อนส่งให้ AI ภายนอก"""
+    return [chat_title or "", *{m.sender_name for m in history if m.sender_name}]
+
+
 def _image_parts(messages: list[Message]) -> list[tuple]:
     parts: list[tuple] = []
     for m in [m for m in messages if m.media_path][-MAX_IMAGES:]:
@@ -246,26 +261,36 @@ def _open_tickets_text(tickets: list[Ticket]) -> str:
 
 
 async def _call(settings: dict[str, str], parts: list[tuple], schema: dict | None = None,
-                system: str | None = None) -> str:
+                system: str | None = None, names: tuple | list = ()) -> str:
+    """names = ชื่อคนที่ปรากฏในข้อความ (ผู้ส่ง ลูกค้า ชื่อแชท) ใช้ปกปิดก่อนส่งให้ AI ภายนอกเท่านั้น"""
     model = settings.get("ai_model") or DEFAULT_SETTINGS["ai_model"]
     system = system or _system_text(settings)
     if custom_ai.is_custom(model):
-        return await _call_custom(model, settings, system, parts, schema)
+        return await _call_custom(model, settings, system, parts, schema, names)
     if is_gemini(model):
         return await _call_gemini(model, system, parts, schema)
     return await _call_claude(model, settings, system, parts, schema)
 
 
 async def _call_custom(model: str, settings: dict[str, str], system: str, parts: list[tuple],
-                       schema: dict | None) -> str:
-    """AI ภายนอกที่เป็นรูปแบบ OpenAI (ดู custom_ai.py) · นับการใช้งานลงตารางเดียวกับ Gemini/Claude"""
+                       schema: dict | None, names: tuple | list = ()) -> str:
+    """AI ภายนอกที่เป็นรูปแบบ OpenAI (ดู custom_ai.py) · นับการใช้งานลงตารางเดียวกับ Gemini/Claude
+    ข้อมูลส่วนตัวถูกแทนด้วยตัวแทน (privacy.py) ก่อนส่งออก แล้วคืนค่าจริงในคำตอบ · ปกปิดไม่สำเร็จ = ไม่ส่งอะไรออกไปเลย"""
+    shield = None
+    if privacy.enabled(settings):
+        try:
+            shield = privacy.Shield(names=names, terms=settings.get("custom_ai_mask_terms") or "", level=privacy.level(settings))
+            system, parts = shield.mask(system), shield.mask_parts(parts)
+        except Exception as e:  # noqa: BLE001 - ปลอดภัยไว้ก่อน: ห้ามส่งข้อความดิบออกไปเมื่อปกปิดพัง
+            raise AIError("ปกปิดข้อมูลก่อนส่งให้ AI ภายนอกไม่สำเร็จ จึงไม่ส่งข้อความออกไป") from e
+        privacy.record(shield, model, system, parts)  # เก็บฉบับที่ปกปิดแล้ว (ที่ AI ภายนอกจะได้รับ) ให้แอดมินตรวจสอบ
     try:
         result = await custom_ai.chat(settings, model, system, parts, schema)
     except custom_ai.ProviderError as e:
         quota.record(model[:64], False, str(e.status or "err")[:16])
         raise AIError(str(e), retryable=e.retryable, quota=e.quota, bad_key=e.bad_key, key_blocked=e.key_blocked) from e
     quota.record(model[:64], True, "ok", result.input_tokens, result.output_tokens)
-    return result.text
+    return result.text if shield is None else shield.unmask(result.text, as_json=bool(schema))
 
 
 # ---------------------------------------------------------------- Google Gemini (AI Studio)
@@ -509,6 +534,8 @@ async def analyze_chat(
 ) -> Analysis:
     transcript = format_transcript(chat_title, history, {m.id for m in new_messages})
     query = " ".join(m.text or "" for m in new_messages if not m.is_outgoing)
+    if external_strict(settings):  # ข้อมูลบริษัทอยู่ในระบบเท่านั้น ไม่ส่งคู่มือ/บทเรียนให้ AI ภายนอก
+        guides, notes = [], ""
     parts = [
         ("text", _guides_text(guides or [], query)),
         *([("text", notes)] if notes else []),
@@ -520,13 +547,15 @@ async def analyze_chat(
         *_image_parts(new_messages),
         ("text", "วิเคราะห์ข้อความ [ใหม่] ตามคำแนะนำ แล้วตอบเป็น JSON ตาม schema"),
     ]
-    return _parse_analysis(await _call(settings, parts, ANALYSIS_SCHEMA))
+    return _parse_analysis(await _call(settings, parts, ANALYSIS_SCHEMA, names=_known_names(chat_title, history)))
 
 
 async def rewrite_reply(
     settings: dict[str, str], chat_title: str, history: list[Message], draft: str, instruction: str, notes: str = ""
 ) -> str:
     transcript = format_transcript(chat_title, history, set())
+    if external_strict(settings):
+        notes = ""
     prompt = (
         (notes + "\n\n" if notes else "")
         + "บทสนทนา:\n" + transcript
@@ -534,7 +563,7 @@ async def rewrite_reply(
         + "\n\nคำสั่งจากแอดมิน: " + instruction
         + "\n\nเขียนข้อความตอบกลับลูกค้าใหม่ตามคำสั่งของแอดมิน ตอบเฉพาะข้อความที่พร้อมส่งเท่านั้น"
     )
-    return await _call(settings, [("text", prompt)])
+    return await _call(settings, [("text", prompt)], names=_known_names(chat_title, history))
 
 
 # ---------------------------------------------------------------- ข้อความจากโปรแกรมเมอร์ในกลุ่มภายใน
@@ -590,7 +619,7 @@ async def classify_dev_message(settings: dict[str, str], ticket: Ticket, dev_tex
         f"สรุปปัญหา: {ticket.summary}\n\n"
         f"ข้อความจากโปรแกรมเมอร์:\n{dev_text}"
     )
-    text = await _call(settings, [("text", prompt)], DEV_SCHEMA, system=system)
+    text = await _call(settings, [("text", prompt)], DEV_SCHEMA, system=system, names=[ticket.customer_name or ""])
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:

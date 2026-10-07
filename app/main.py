@@ -19,7 +19,7 @@ from markupsafe import Markup, escape
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, custom_ai, dev_bridge, learning, line_service, quota, sysinfo
+from . import ai_service, analyzer, custom_ai, dev_bridge, learning, line_service, privacy, quota, sysinfo
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
@@ -1193,7 +1193,9 @@ async def ai_page(request: Request):
     return render(request, "ai.html", user, settings=settings, key_set=bool(key), key_mask=custom_ai.mask_key(key) if key else "",
                   base_error=custom_ai.check_base_url(settings.get("custom_ai_base_url") or os.getenv("CUSTOM_AI_BASE_URL") or ""),
                   models=models, caps={m: custom_ai.caps(settings, m) for m in models}, usage=usage,
-                  ready=custom_ai.ready(settings), main_model=settings.get("ai_model"), learn_model=learning.valid_model(settings))
+                  ready=custom_ai.ready(settings), main_model=settings.get("ai_model"), learn_model=learning.valid_model(settings),
+                  mask_on=privacy.enabled(settings), mask_level=privacy.level(settings), mask_stats=privacy.snapshot(),
+                  mask_recent=privacy.recent())
 
 
 @app.post("/ai/save")
@@ -1209,15 +1211,19 @@ async def ai_save(request: Request):
         flash(request, "ใส่โมเดลได้สูงสุด 40 รุ่น", "error")
         return back("/ai")
     json_mode = str(form.get("json_mode", "auto"))
-    vision = str(form.get("vision", "auto"))
+    vision = str(form.get("vision", "no"))
+    terms = privacy.clean_terms(str(form.get("mask_terms", "")))
     values = {
+        "custom_ai_mask": "off" if str(form.get("mask", "on")) == "off" else "on",
+        "custom_ai_mask_level": "standard" if str(form.get("mask_level", "strict")) == "standard" else "strict",
+        "custom_ai_mask_terms": "\n".join(terms),
         "custom_ai_name": str(form.get("name", "")).strip()[:60] or "AI ภายนอก",
         "custom_ai_base_url": base,
         # เก็บแบบสะอาด: บรรทัดละ "id" หรือ "id | ชื่อที่แสดง" (ตัดรายการซ้ำ/ชื่อรุ่นที่ไม่ถูกต้องทิ้งแล้ว)
         "custom_ai_models": "\n".join(m.removeprefix(custom_ai.PREFIX) + (f" | {label}" if label != m.removeprefix(custom_ai.PREFIX) else "")
                                       for m, label in models.items()),
         "custom_ai_json_mode": json_mode if json_mode in ("auto", *custom_ai.JSON_MODES) else "auto",
-        "custom_ai_vision": vision if vision in ("auto", "yes", "no") else "auto",
+        "custom_ai_vision": vision if vision in ("auto", "yes", "no") else "no",
     }
     for key, low, high in (("custom_ai_max_tokens", 0, 200000), ("custom_ai_timeout", 10, 600)):
         raw = str(form.get({"custom_ai_max_tokens": "max_tokens", "custom_ai_timeout": "timeout"}[key], "")).strip()
@@ -1267,6 +1273,19 @@ async def ai_api_models(request: Request):
     except custom_ai.ProviderError as e:
         return JSONResponse({"ok": False, "error": str(e)})
     return JSONResponse({"ok": True, "models": ids[:300]})
+
+
+@app.post("/ai/api/mask-preview")
+async def ai_api_mask_preview(request: Request):
+    """ตัวอย่างว่าข้อความจะถูกปกปิดอย่างไรก่อนส่งให้ AI ภายนอก (ไม่ส่งออกไปไหน ไม่เก็บข้อความ)"""
+    current_user(request, "admin")
+    body = await _json_body(request)
+    text = str(body.get("text") or "")[:4000]
+    with SessionLocal() as db:
+        settings = get_settings(db)
+    terms = body["terms"] if isinstance(body.get("terms"), str) else (settings.get("custom_ai_mask_terms") or "")
+    lvl = body["level"] if body.get("level") in privacy.LEVELS else privacy.level(settings)
+    return JSONResponse({"ok": True, **privacy.preview(text, terms, lvl=lvl)})
 
 
 @app.post("/ai/api/test")

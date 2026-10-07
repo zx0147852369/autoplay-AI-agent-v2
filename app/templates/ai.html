@@ -47,18 +47,69 @@
             {% for v, l in [('auto', 'อัตโนมัติ (แนะนำ) ลองแบบที่ผู้ให้บริการรองรับให้เอง'), ('schema', 'json_schema'), ('object', 'json_object'), ('prompt', 'ขอใน prompt เท่านั้น')] %}
               <option value="{{ v }}" {{ 'selected' if settings.custom_ai_json_mode == v }}>{{ l }}</option>{% endfor %}
           </select></label>
-        <label class="field">ส่งรูปภาพให้โมเดล
-          <select name="vision">
-            {% for v, l in [('auto', 'อัตโนมัติ (ส่งก่อน ถ้าไม่รับจะส่งเฉพาะข้อความ)'), ('yes', 'ส่งเสมอ'), ('no', 'ไม่ส่งรูป')] %}
-              <option value="{{ v }}" {{ 'selected' if settings.custom_ai_vision == v }}>{{ l }}</option>{% endfor %}
-          </select></label>
         <label class="field">max tokens <span class="hint">0 = ไม่กำหนด</span>
           <input type="number" name="max_tokens" min="0" max="200000" value="{{ settings.custom_ai_max_tokens }}"></label>
         <label class="field">รอคำตอบสูงสุด (วินาที)
           <input type="number" name="timeout" min="10" max="600" value="{{ settings.custom_ai_timeout }}"></label>
       </div>
-      <div class="note warn"><strong>ความเป็นส่วนตัว</strong> ข้อความและรูปภาพของลูกค้าที่ AI วิเคราะห์จะถูกส่งไปยังผู้ให้บริการรายนี้ทั้งหมด
-        ตรวจสอบความน่าเชื่อถือและนโยบายข้อมูลของผู้ให้บริการก่อนใช้งานจริง · แนะนำให้ลองกับ "โมเดลเรียนรู้" ก่อน (ระบบลบเบอร์ อีเมล เลขบัญชี ก่อนส่งทุกครั้ง)</div>
+
+      <div class="privacy-block">
+        <h3>{{ cicon('lock-closed', 18) }} ปกปิดข้อมูลก่อนส่งให้ AI ภายนอก</h3>
+        <p class="hint" style="margin:4px 0 10px">ก่อนส่ง ระบบเปลี่ยนข้อมูลส่วนตัวเป็นรหัสแทน เช่น <code>[PHONE_1]</code> <code>[EMAIL_1]</code> <code>[URL_1]</code> <code>[NAME_1]</code>
+          AI ภายนอกเห็นเฉพาะรหัส พอตอบกลับมา ระบบแทนค่าจริงกลับให้ (ร่างคำตอบลูกค้าจึงยังมีเบอร์/ลิงก์ที่ถูกต้อง) · ตารางรหัสอยู่ในหน่วยความจำชั่วคราว ไม่บันทึกลงฐานข้อมูลหรือ log
+          · ถ้าปกปิดไม่สำเร็จ ระบบจะไม่ส่งข้อความออกไปเลย</p>
+        <div class="row">
+          <label class="field">ปกปิดข้อมูล
+            <select name="mask">
+              <option value="on" {{ 'selected' if mask_on }}>เปิด (แนะนำ)</option>
+              <option value="off" {{ 'selected' if not mask_on }}>ปิด — ส่งข้อความจริงทั้งหมด</option>
+            </select></label>
+          <label class="field">ระดับการปกปิด
+            <select name="mask_level" id="cLevel">
+              <option value="strict" {{ 'selected' if mask_level == 'strict' }}>เข้มงวด (แนะนำ) — ไม่ส่งข้อมูลธุรกิจ/ฐานความรู้/คู่มือ/บทเรียน</option>
+              <option value="standard" {{ 'selected' if mask_level == 'standard' }}>มาตรฐาน — ส่งข้อมูลธุรกิจและคู่มือได้ (ปกปิดเฉพาะข้อมูลส่วนตัว)</option>
+            </select></label>
+          <label class="field">ส่งรูปภาพให้โมเดล <span class="hint">รูป (เช่น สลิป) ปกปิดไม่ได้</span>
+            <select name="vision">
+              {% for v, l in [('no', 'ไม่ส่งรูป (ปลอดภัยสุด · แนะนำ)'), ('auto', 'อัตโนมัติ (ส่งก่อน ถ้าไม่รับจะส่งเฉพาะข้อความ)'), ('yes', 'ส่งเสมอ')] %}
+                <option value="{{ v }}" {{ 'selected' if settings.custom_ai_vision == v }}>{{ l }}</option>{% endfor %}
+            </select></label>
+        </div>
+        <label class="field">คำที่ต้องปกปิดเพิ่ม <span class="hint">บรรทัดละ 1 คำ เช่น ชื่อแบรนด์ ชื่อระบบภายใน ชื่อพนักงาน (อย่างน้อย 3 ตัวอักษร)</span>
+          <textarea name="mask_terms" id="cTerms" rows="3" class="mono" placeholder="ชื่อแบรนด์ลูกค้า&#10;ชื่อระบบภายใน">{{ settings.custom_ai_mask_terms }}</textarea></label>
+        <div class="note info"><strong>ปกปิดอัตโนมัติ:</strong> คีย์/โทเคน รหัสผ่าน OTP อีเมล ลิงก์และโดเมน IP เบอร์โทร เลขยาว (บัตร บัญชี อ้างอิง) @ชื่อผู้ใช้ ยูสเซอร์ที่มีตัวเลข
+          และชื่อที่ระบบรู้จัก (ผู้ส่งข้อความ ลูกค้าใน ticket ชื่อแชท) <br>
+          <strong>ระดับเข้มงวดเพิ่ม:</strong> ข้อมูลธุรกิจ ฐานความรู้ คู่มือ และบทเรียนของ AI อยู่ในระบบเท่านั้น ไม่ถูกส่งออก · ปกปิดจำนวนเงิน ตัวเลข 4 หลักขึ้นไป และชื่อแบรนด์/ตัวย่อ (เช่น SCB, UFA168)
+          — AI จะตอบแบบทั่วไปและขอตรวจสอบข้อมูลก่อน (เลือก "มาตรฐาน" ถ้าต้องการให้ AI ใช้ฐานความรู้/คู่มือตอบ) <br>
+          <strong>ที่ปกปิดไม่ได้:</strong> ชื่อหรือที่อยู่ที่ลูกค้าพิมพ์เองในข้อความโดยระบบไม่รู้จัก (ใส่ในช่อง "คำที่ต้องปกปิดเพิ่ม" ได้) และข้อมูลในรูปภาพ <br>
+          <strong>เรื่องการเข้ารหัส:</strong> การส่งข้อมูลถึงผู้ให้บริการเข้ารหัสด้วย HTTPS อยู่แล้ว แต่ผู้ให้บริการต้องอ่านข้อความได้จึงจะตอบได้ จึงใช้การแทนด้วยรหัสและไม่ส่งข้อมูลบริษัทแทน</div>
+        <div class="mask-try">
+          <label class="field">ลองดูว่าข้อความถูกปกปิดอย่างไร <span class="hint">วางข้อความตัวอย่าง ไม่ได้ส่งไปไหน ไม่ถูกเก็บ</span>
+            <textarea id="pvIn" rows="3" placeholder="โทร 081-234-5678 อีเมล a@b.com ยูส ufa12345 เว็บ abc-bet.com โอนเข้า 123-4-56789-0"></textarea></label>
+          <div class="actions"><button type="button" id="pvBtn">{{ icon('refresh', 14) }} ดูตัวอย่าง</button></div>
+          <div id="pvOut" class="mask-out" hidden></div>
+        </div>
+        <p class="hint" style="margin:8px 0 0">
+          {% if mask_stats.requests %}ตั้งแต่เปิดระบบรอบนี้ ({{ mask_stats.since }} UTC): ปกปิดแล้ว <b>{{ mask_stats['items'] }}</b> รายการใน {{ mask_stats.requests }} คำขอ
+            {% if mask_stats.by_kind %}· {% for k, n in mask_stats.by_kind.items() %}{{ k }} {{ n }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
+          {% else %}ยังไม่มีการส่งข้อความให้ AI ภายนอกในรอบนี้{% endif %}</p>
+        {% if mask_recent %}
+        <details class="mask-recent">
+          <summary>ดูข้อความที่ส่งออกล่าสุด {{ mask_recent | length }} รายการ (ฉบับที่ปกปิดแล้ว = สิ่งที่ AI ภายนอกได้รับจริง)</summary>
+          {% for r in mask_recent %}
+          <div class="mask-out">
+            <div class="mask-sum">{{ r.at }} UTC · {{ r.model }} · ปกปิด {{ r['items'] }} รายการ</div>
+            <pre>{{ r.system }}</pre>
+            <pre>{{ r.body }}</pre>
+          </div>
+          {% endfor %}
+          <p class="hint" style="margin:6px 0 0">เก็บในหน่วยความจำชั่วคราว (หายเมื่อรีสตาร์ต) ไม่บันทึกลงฐานข้อมูล และไม่เก็บข้อความดิบก่อนปกปิด</p>
+        </details>
+        {% endif %}
+      </div>
+
+      <div class="note warn"><strong>ความเป็นส่วนตัว</strong> ข้อความที่ผ่านการปกปิดแล้วยังถูกส่งไปยังผู้ให้บริการรายนี้
+        ตรวจสอบความน่าเชื่อถือและนโยบายข้อมูลของผู้ให้บริการก่อนใช้งานจริง · แนะนำให้ลองกับ "โมเดลเรียนรู้" ก่อน</div>
       <div class="actions end">
         <button type="button" id="cFetch">{{ icon('refresh', 14) }} ดึงรายชื่อโมเดลจาก API</button>
         <button class="primary">{{ icon('check', 15) }} บันทึก</button>
@@ -139,6 +190,18 @@
       out.innerHTML = '<p class="hint" style="margin:0 0 6px">พบ ' + d.models.length + ' รุ่น · กดเพื่อเพิ่มเข้ารายชื่อ แล้วกด "บันทึก"</p><div class="chips">'
         + d.models.map(m => '<button type="button" class="chip" data-add="' + esc(m) + '">+ ' + esc(m) + '</button>').join('') + '</div>';
       out.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => { addModel(b.dataset.add); b.disabled = true; }));
+    } catch (e) { out.innerHTML = '<div class="note error">' + esc(e.message) + '</div>'; }
+    finally { btn.disabled = false; }
+  });
+
+  $('pvBtn').addEventListener('click', async () => {
+    const out = $('pvOut'), btn = $('pvBtn');
+    out.hidden = false; out.textContent = 'กำลังตรวจ…'; btn.disabled = true;
+    try {
+      const d = await api('/ai/api/mask-preview', { text: $('pvIn').value, terms: $('cTerms').value, level: $('cLevel').value });
+      const kinds = Object.entries(d.counts || {}).map(([k, n]) => k + ' ' + n).join(' · ');
+      out.innerHTML = '<div class="mask-sum">' + (d.total ? 'ปกปิด ' + d.total + ' รายการ · ' + esc(kinds) : 'ไม่พบข้อมูลที่ต้องปกปิดในข้อความนี้') + '</div><pre>' + esc(d.masked) + '</pre>'
+        + '<div class="hint">นี่คือข้อความที่ AI ภายนอกจะได้รับ</div>';
     } catch (e) { out.innerHTML = '<div class="note error">' + esc(e.message) + '</div>'; }
     finally { btn.disabled = false; }
   });

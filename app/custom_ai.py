@@ -343,7 +343,7 @@ async def chat(settings: dict, model: str, system: str, parts: list[tuple], sche
             chain = [known] + [m for m in JSON_MODES if m != known] if known in JSON_MODES else list(JSON_MODES)
 
     images_present = any(p[0] == "image" for p in parts)
-    vision_setting = (settings.get("custom_ai_vision") or "auto")
+    vision_setting = (settings.get("custom_ai_vision") or "no")  # ไม่ได้ตั้ง = ไม่ส่งรูป (รูปสลิป/หน้าจอปกปิดข้อมูลไม่ได้)
     if vision is not None:
         use_images = vision
     elif vision_setting == "no":

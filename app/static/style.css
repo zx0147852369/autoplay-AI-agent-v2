@@ -1059,6 +1059,15 @@ tr[hidden] { display: none; }
 .test-out { border-top: 1px solid var(--line); }
 .test-sum { padding: 12px 18px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: .92rem; }
 .test-out .grid-table { margin: 0; }
+.privacy-block { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2); }
+.privacy-block h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1rem; }
+.privacy-block .note { background: var(--surface); }
+.mask-try { display: grid; gap: 8px; }
+.mask-out { padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.mask-out pre { margin: 6px 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: .85rem; }
+.mask-sum { font-size: .88rem; color: var(--ink-2); font-weight: 600; }
+.mask-recent summary { cursor: pointer; font-size: .9rem; color: var(--ink-2); }
+.mask-recent .mask-out { margin-top: 8px; max-height: 320px; overflow: auto; }
 
 /* ---------- อื่นๆ ---------- */
 .save-bar { border-radius: var(--r-lg); box-shadow: var(--shadow-md); }
