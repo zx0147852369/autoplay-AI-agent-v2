@@ -23,6 +23,7 @@
 </nav>
 
 {% if status == 'pending' %}
+<button type="button" class="newbar" id="newBar" hidden onclick="location.reload()">มีรายการรออนุมัติใหม่ <b id="newCount"></b> · แตะเพื่อรีเฟรช</button>
 <nav class="boxtabs">
   <a class="boxtab {{ 'active' if box == 'customer' }}" href="/replies?box=customer">
     <span class="boxtab-ic">{{ cicon('chat', 24) }}</span>
@@ -149,15 +150,20 @@
       </div>
     </div>
     <div class="tools">
-      <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
-        <input type="hidden" name="text">
-        <input name="instruction" placeholder="แก้ทั้งข้อความ เช่น สั้นลง / ขอสลิปด้วย / สุภาพขึ้น" required>
-        <button>เขียนใหม่</button>
-      </form>
-      <form method="post" action="/replies/{{ r.id }}/reject">
-        <input name="reason" placeholder="เหตุผล (ไม่บังคับ)">
-        <button class="danger">ไม่ส่ง</button>
-      </form>
+      <details class="tools-fold" open>
+        <summary class="tools-sum">{{ icon('edit', 15) }} ให้ AI เขียนใหม่ / ไม่ส่งข้อความนี้</summary>
+        <div class="tools-in">
+          <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
+            <input type="hidden" name="text">
+            <input name="instruction" placeholder="แก้ทั้งข้อความ เช่น สั้นลง / ขอสลิปด้วย / สุภาพขึ้น" required>
+            <button>เขียนใหม่</button>
+          </form>
+          <form method="post" action="/replies/{{ r.id }}/reject">
+            <input name="reason" placeholder="เหตุผล (ไม่บังคับ)">
+            <button class="danger">ไม่ส่ง</button>
+          </form>
+        </div>
+      </details>
     </div>
   </article>
   {% else %}

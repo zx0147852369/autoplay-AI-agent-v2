@@ -42,7 +42,7 @@
 <section class="panel">
   <form method="get" class="toolbar">
     <input type="hidden" name="status" value="{{ status }}">
-    <label class="search">{{ icon('search', 15) }}<input name="q" value="{{ q }}" placeholder="ค้นหาเลข ticket, หัวข้อ, ชื่อลูกค้า, ลิงก์เว็บ"></label>
+    <label class="search">{{ icon('search', 15) }}<input name="q" value="{{ q }}" placeholder="ค้นหาเลข ticket, หัวข้อ, ชื่อลูกค้า, ลิงก์เว็บ" enterkeyhint="search" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
     <select name="category" onchange="this.form.submit()" aria-label="ประเภท">
       <option value="">ทุกประเภท</option>
       {% for k, v in CATEGORIES.items() if k != 'none' %}<option value="{{ k }}" {{ 'selected' if category == k }}>{{ v }}</option>{% endfor %}

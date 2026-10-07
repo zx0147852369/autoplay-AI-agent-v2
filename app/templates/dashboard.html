@@ -56,7 +56,7 @@
     <span class="count">รีเซ็ตใน {{ qi.reset_in }} · เวลา {{ qi.reset_at | localtime_hm }} น.</span>
   </div>
   <div class="table-wrap">
-  <table class="grid-table quota-table">
+  <table class="grid-table quota-table keep-table">
     <thead><tr><th>รุ่น</th><th>ใช้ไปวันนี้</th><th class="shrink center">เหลือ</th><th class="shrink center">ต่อนาที</th><th class="shrink">สถานะ</th></tr></thead>
     <tbody>
     {% for r in qi.rows %}

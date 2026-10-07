@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script>
     (function () {
       var t = 'system';
@@ -12,14 +12,22 @@
     })();
   </script>
   <meta name="color-scheme" content="light dark">
+  <meta name="format-detection" content="telephone=no, email=no, address=no">
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121311" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Support Desk">
+  <link rel="manifest" href="/static/manifest.webmanifest">
   <title>{% block title %}หลังบ้าน{% endblock %} · autopay Support</title>
   <link rel="icon" href="/static/brand/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="/static/brand/mark-64.png">
   <link rel="apple-touch-icon" href="/static/brand/mark-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=63">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=71">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
@@ -82,8 +90,9 @@
 
 <div class="shell">
   <header class="mobilebar">
+    <a class="mb-brand" href="/" aria-label="autopay Support Desk"><img src="/static/brand/mark-64.png" width="32" height="32" alt=""></a>
+    <span class="mb-title" id="mbTitle"></span>
     <button type="button" class="icon-btn" id="menuBtn" aria-label="เมนู">{{ icon('menu', 20) }}</button>
-    <a class="brand" href="/"><img class="brand-logo sm logo-light" src="/static/brand/logo.png" alt="autopay" width="127" height="26"><img class="brand-logo sm logo-dark" src="/static/brand/logo-dark.png" alt="autopay" width="127" height="26"></a>
   </header>
   <main class="content">
     {% if EPHEMERAL_STORAGE and user.role == 'admin' %}
@@ -95,6 +104,23 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+{# แถบเมนูล่าง (มือถือ): ใช้นิ้วโป้งกดง่าย · ตัวเลขแดงของ รออนุมัติ/Tickets อัปเดตจาก /api/badge #}
+{% macro tab_item(href, ic, label, badge='') -%}
+  {% set active = (path == '/' and href == '/') or (href != '/' and path.startswith(href)) %}
+  <a href="{{ href }}" class="tab {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ icon(ic, 22) }}<span>{{ label }}</span>{% if badge %}<span class="tab-badge" id="{{ badge }}"></span>{% endif %}</a>
+{%- endmacro %}
+<nav class="tabbar" aria-label="เมนูหลัก">
+  {% if user.role in ('admin', 'agent') %}
+    {{ tab_item('/', 'home', 'ภาพรวม') }}
+    {{ tab_item('/replies', 'inbox', 'รออนุมัติ', 'tab-pending') }}
+    {{ tab_item('/tickets', 'ticket', 'Tickets', 'tab-tickets') }}
+    {{ tab_item('/chats', 'chat', 'แชท') }}
+  {% else %}
+    {{ tab_item('/tickets', 'ticket', 'Tickets', 'tab-tickets') }}
+    {{ tab_item('/account', 'user', 'บัญชี') }}
+  {% endif %}
+  <button type="button" class="tab" id="menuTab">{{ icon('menu', 22) }}<span>เมนู</span></button>
+</nav>
 {% else %}
   {% block auth %}{% endblock %}
 {% endif %}
@@ -196,6 +222,59 @@
     menuBtn.onclick = () => document.body.classList.add('menu-open');
     document.getElementById('scrim').onclick = () => document.body.classList.remove('menu-open');
   }
+  // มือถือ: ตารางข้อมูลแสดงเป็นการ์ดต่อแถว (CSS ทำงานเฉพาะจอเล็ก) -> ใส่ป้ายกำกับจากหัวตารางให้แต่ละช่อง
+  document.querySelectorAll('table.grid-table').forEach(t => {
+    if (t.classList.contains('keep-table') || t.closest('.test-out') || !t.tHead || !t.tHead.rows[0]) return;
+    const heads = [...t.tHead.rows[0].cells];
+    t.querySelectorAll('tbody tr').forEach(tr => {
+      if (tr.classList.contains('empty-row')) return;
+      let i = 0;
+      [...tr.cells].forEach(td => {
+        const th = heads[i], label = th ? th.textContent.trim() : '';
+        if (th && th.classList.contains('m-hide')) td.classList.add('m-hide');      // คอลัมน์รอง: ซ่อนในการ์ดบนมือถือ
+        if (th && !th.classList.contains('shrink')) td.classList.add('m-main');   // คอลัมน์หลัก: เต็มบรรทัดในการ์ด
+        else if (label && label !== '#') td.dataset.label = label;                  // คอลัมน์เล็ก: "ป้าย ค่า" ต่อกันเป็นแถว
+        i += td.colSpan || 1;
+      });
+    });
+    t.classList.add('m-cards');
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') document.body.classList.remove('menu-open'); });
+  // มือถือ: ชื่อหน้าอยู่บนแถบบน (ซ่อนหัวข้อซ้ำในเนื้อหา) · แท็บ "เมนู" เปิดลิ้นชัก · พับเครื่องมือรองของร่างคำตอบ · เลื่อนแชทไปข้อความล่าสุด
+  (() => {
+    const title = document.title.split(' · ')[0];
+    const mb = document.getElementById('mbTitle');
+    if (mb) mb.textContent = title;
+    const h1 = document.querySelector('.page-head h1');
+    if (h1 && h1.textContent.trim() === title) {
+      h1.classList.add('dup-title');
+      const ph = h1.closest('.page-head');
+      if (ph && !ph.querySelector('.actions, form, button, a')) ph.classList.add('m-empty');
+    }
+    const tab = document.getElementById('menuTab');
+    if (tab) tab.addEventListener('click', () => document.body.classList.add('menu-open'));
+    if (window.matchMedia && matchMedia('(max-width: 700px)').matches) {
+      document.querySelectorAll('details.tools-fold').forEach(d => d.removeAttribute('open'));
+    }
+    document.querySelectorAll('.chatlog.compact').forEach(el => { el.scrollTop = el.scrollHeight; });
+
+    // คีย์บอร์ดมือถือเปิดอยู่ (พิมพ์ในช่อง): ซ่อนแถบเมนูล่างชั่วคราว ไม่ให้ลอยทับพื้นที่พิมพ์บน Android
+    const typing = el => el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !/^(checkbox|radio|button|submit|range)$/.test(el.type || '');
+    document.addEventListener('focusin', e => { if (typing(e.target)) document.body.classList.add('kb-open'); });
+    document.addEventListener('focusout', () => setTimeout(() => { if (!typing(document.activeElement)) document.body.classList.remove('kb-open'); }, 80));
+
+    // กันกดซ้ำ: ส่งฟอร์มแล้วปุ่มส่งถูกปิดทันที (มือถือแตะซ้ำง่าย เช่น "อนุมัติและส่ง" จะได้ไม่ส่งข้อความซ้ำ)
+    document.addEventListener('submit', e => {
+      const form = e.target;
+      if (!form || form.method === 'dialog' || form.closest('dialog')) return;   // ฟอร์มในหน้าต่างยืนยัน/ป๊อปอัปใช้ซ้ำได้ ไม่ต้องกัน
+      setTimeout(() => {
+        if (e.defaultPrevented || !form.isConnected) return;   // หน้าต่างยืนยันยังไม่ได้กดตกลง
+        form.querySelectorAll('button:not([type="button"])').forEach(b => { b.disabled = true; });
+        setTimeout(() => form.querySelectorAll('button:disabled').forEach(b => { b.disabled = false; }), 15000);  // เผื่อเซิร์ฟเวอร์ไม่ตอบ
+      }, 0);
+    });
+    window.addEventListener('pageshow', ev => { if (ev.persisted) document.querySelectorAll('button:disabled').forEach(b => { if (b.closest('form')) b.disabled = false; }); });
+  })();
   // แถบโหลดด้านบน: ขึ้นทันทีที่เริ่มเปลี่ยนหน้า (ลิงก์ แถวที่กดได้ ส่งฟอร์ม) ให้รู้ว่าระบบรับคำสั่งแล้วระหว่างรอเซิร์ฟเวอร์
   (() => {
     let skip = false, timer = 0;
@@ -303,11 +382,22 @@
       const t = document.getElementById('badge-tickets');
       if (p) p.textContent = d.pending || '';
       if (t) t.textContent = d.open_tickets || '';
+      const tp = document.getElementById('tab-pending'), tt = document.getElementById('tab-tickets');
+      if (tp) tp.textContent = d.pending || '';
+      if (tt) tt.textContent = d.open_tickets || '';
       document.title = (d.pending ? `(${d.pending}) ` : '') + document.title.replace(/^\(\d+\) /, '');
+      // หน้า รออนุมัติ: มีรายการใหม่เข้ามาหลังเปิดหน้า -> แถบ "แตะเพื่อรีเฟรช" (ไม่ต้องรีโหลดเอง)
+      const nb = document.getElementById('newBar');
+      if (nb) {
+        const now = d.pending || 0;
+        if (window.__pendingBase === undefined) window.__pendingBase = now;
+        else if (now > window.__pendingBase) { document.getElementById('newCount').textContent = '(+' + (now - window.__pendingBase) + ')'; nb.hidden = false; }
+      }
     } catch (e) {}
   }
   refreshBadges();
   setInterval(refreshBadges, 10000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshBadges(); });  // กลับมาเปิดแอป/แท็บ -> เช็กทันที
 </script>
 {% endif %}
 {% block scripts %}{% endblock %}

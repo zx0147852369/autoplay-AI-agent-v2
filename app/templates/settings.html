@@ -63,7 +63,7 @@
         <div class="note error">โมเดลที่เลือกยังเชื่อมต่อไม่ครบ ต้องมี <code>CUSTOM_AI_API_KEY</code> ใน Variables ของ Railway และ Base URL ที่หน้า <a href="/ai">เชื่อมต่อ AI</a></div>
       {% endif %}
       <div class="field">เพดานโควตาฟรีต่อรุ่น <span class="hint">ดูตัวเลขจริงของบัญชีคุณที่ <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">AI Studio</a> · ใส่ 0 = ไม่จำกัด</span>
-        <table class="grid-table limits-table">
+        <div class="table-wrap"><table class="grid-table limits-table keep-table">
           <thead><tr><th>รุ่น</th><th class="shrink">ต่อวัน</th><th class="shrink">ต่อนาที</th></tr></thead>
           <tbody>
           {% for model, lim in limits.items() %}
@@ -72,7 +72,7 @@
               <td><input name="rpm__{{ model }}" type="number" min="0" max="10000" value="{{ lim.rpm }}" class="mono"></td></tr>
           {% endfor %}
           </tbody>
-        </table>
+        </table></div>
         <input type="hidden" name="gemini_limits" value="1">
       </div>
       <label class="field">ความละเอียดในการคิด <span class="hint">ใช้กับ Claude เท่านั้น</span>

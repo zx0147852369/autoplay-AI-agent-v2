@@ -91,7 +91,7 @@
     <h2>2. โน้ตของ AI</h2>
     <form method="get" action="/brain" class="row" style="flex-wrap:nowrap">
       <input type="hidden" name="f" value="{{ f }}">
-      <input name="q" value="{{ q }}" placeholder="ค้นหาหัวข้อหรือเนื้อหา" style="min-width:240px">
+      <input name="q" value="{{ q }}" placeholder="ค้นหาหัวข้อหรือเนื้อหา" style="min-width:240px" enterkeyhint="search" autocomplete="off">
       <button>ค้นหา</button>
     </form>
   </div>

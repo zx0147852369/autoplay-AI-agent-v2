@@ -16,7 +16,7 @@
 
 <div class="grid-2 wide-left">
   <div>
-    <section class="card">
+    <section class="card sec-detail">
       <div class="card-head"><h2>รายละเอียด</h2></div>
       <dl class="facts">
         <dt>ลูกค้า</dt><dd>{{ ticket.customer_name or '-' }}</dd>
@@ -108,7 +108,7 @@
   </div>
 
   <aside class="sticky">
-    <section class="card">
+    <section class="card sec-manage">
       <div class="card-head"><h2>จัดการ</h2></div>
       <form method="post" action="/tickets/{{ ticket.id }}/update" class="stack">
         <label class="field">หัวข้อ <input name="title" value="{{ ticket.title }}" required></label>
@@ -136,7 +136,7 @@
       </form>
       {% endif %}
     </section>
-    <section class="card">
+    <section class="card sec-dev">
       <div class="card-head"><h2>กลุ่มโปรแกรมเมอร์</h2></div>
       {% if not dev_group_set %}
         <p class="muted small" style="margin:0">ยังไม่ได้เลือกกลุ่ม {% if user.role == 'admin' %}<a href="/settings">ตั้งค่า</a>{% endif %}</p>
@@ -162,7 +162,7 @@
       {% endif %}
     </section>
     {% if replies %}
-    <section class="card">
+    <section class="card sec-reply">
       <div class="card-head"><h2>ข้อความที่ตอบลูกค้า</h2></div>
       {% for r in replies %}
         <div class="mini-reply"><span class="tag rs-{{ r.status }}">{{ REPLY_STATUSES.get(r.status, r.status) }}</span>

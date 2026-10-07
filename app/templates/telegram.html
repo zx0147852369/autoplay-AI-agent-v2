@@ -37,7 +37,7 @@
             <label class="field">API ID <input name="api_id" inputmode="numeric" class="mono" value="{{ account.api_id or '' }}" required></label>
             <label class="field">API Hash <input name="api_hash" autocomplete="off" class="mono" placeholder="{{ 'บันทึกไว้แล้ว เว้นว่างเพื่อใช้ค่าเดิม' if has_api_hash else '' }}" {{ '' if has_api_hash else 'required' }}></label>
           </div>
-          <label class="field">เบอร์โทรศัพท์ <input name="phone" class="mono" placeholder="+66812345678" value="{{ account.phone }}" required></label>
+          <label class="field">เบอร์โทรศัพท์ <input name="phone" type="tel" inputmode="tel" autocomplete="tel" class="mono" placeholder="+66812345678" value="{{ account.phone }}" required></label>
           <div class="actions end"><button class="primary">ส่งรหัสยืนยัน</button></div>
         </form>
       </section>

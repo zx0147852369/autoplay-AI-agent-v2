@@ -30,7 +30,7 @@
   </div>
   {% if chats %}
   <div class="toolbar">
-    <div class="search">{{ icon('search', 16) }}<input type="search" id="chatSearch" placeholder="ค้นหาชื่อแชท…" autocomplete="off" aria-label="ค้นหาชื่อแชท"></div>
+    <div class="search">{{ icon('search', 16) }}<input type="search" id="chatSearch" placeholder="ค้นหาชื่อแชท…" autocomplete="off" aria-label="ค้นหาชื่อแชท" enterkeyhint="search"></div>
     <div class="seg" id="chatSeg" role="group" aria-label="กรองตามสถานะติดตาม">
       <button type="button" data-mode="all" class="on">ทั้งหมด<span class="n">{{ summary.total }}</span></button>
       <button type="button" data-mode="on">ติดตามอยู่<span class="n">{{ summary.monitored }}</span></button>
@@ -41,8 +41,8 @@
   <div class="table-wrap">
   <table class="grid-table" id="chatTable">
     <thead><tr>
-      <th>แชท</th><th class="shrink">ประเภท</th><th class="shrink">ติดตาม</th>
-      <th class="shrink center">วันนี้</th><th class="shrink center">ทั้งหมด</th><th class="shrink">ข้อความล่าสุด</th>
+      <th>แชท</th><th class="shrink m-hide">ประเภท</th><th class="shrink">ติดตาม</th>
+      <th class="shrink center">วันนี้</th><th class="shrink center m-hide">ทั้งหมด</th><th class="shrink m-hide">ข้อความล่าสุด</th>
       <th class="shrink center">Ticket ค้าง</th><th class="shrink center">รออนุมัติ</th><th class="shrink">การวิเคราะห์</th>
     </tr></thead>
     <tbody>
