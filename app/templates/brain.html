@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}สมอง AI{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>สมอง AI</h1>
+    <p class="sub">AI จดบทเรียนจากการทำงานจริง (ร่างที่แอดมินแก้หรือปฏิเสธ ticket ที่แก้เสร็จ) แล้วนำกลับมาใช้วิเคราะห์ครั้งต่อไปให้แม่นขึ้นเรื่อยๆ · ดู แก้ ปักหมุด หรือปิดโน้ตได้ทุกเมื่อ</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/brain/learn" id="learnForm">
+      <button class="go" id="learnBtn" {{ 'disabled' if learning_busy }}>{{ icon('sparkles', 15) }} <span>{{ 'กำลังเรียนรู้…' if learning_busy else 'เรียนรู้ตอนนี้' }}</span></button>
+    </form>
+    <button type="button" class="primary" id="noteAdd">{{ icon('plus', 15) }} เพิ่มโน้ตเอง</button>
+  </div>
+</div>
+
+<div class="strip compact">
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('book-open-lightbulb', 22) }}</span><span class="strip-label">โน้ตที่ใช้งานอยู่</span><span class="strip-value">{{ counts['global'] + counts['chat'] }}</span></div>
+  <div class="strip-cell"><span class="strip-ic {{ 'alive' if new_24h }}">{{ cicon('add-circle', 22) }}</span><span class="strip-label">AI จดเองใน 24 ชม.</span><span class="strip-value">{{ new_24h }}</span></div>
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('data-trending', 22) }}</span><span class="strip-label">นำไปใช้วิเคราะห์แล้ว (ครั้ง)</span><span class="strip-value">{{ uses }}</span></div>
+  <div class="strip-cell"><span class="strip-ic {{ 'alive' if pending }}">{{ cicon('history', 22) }}</span><span class="strip-label">สัญญาณใหม่รอเรียนรู้</span><span class="strip-value">{{ pending }}</span></div>
+</div>
+
+<form method="post" action="/brain/settings">
+  <section class="card">
+    <div class="card-head"><h2>{{ cicon('settings', 20) }} การเรียนรู้</h2>
+      <span class="muted small">
+        {% if learn_settings.auto_learn == '1' %}รอบถัดไป: {% if next_after %}{{ next_after | localtime }}{% else %}เร็วๆ นี้{% endif %}{% else %}ปิดการเรียนรู้อัตโนมัติอยู่{% endif %}
+      </span></div>
+    <label class="check-row"><input type="checkbox" name="auto_learn" {{ 'checked' if learn_settings.auto_learn == '1' }}>
+      <span>เรียนรู้และจดโน้ตอัตโนมัติ<span class="hint">AI ทบทวนสิ่งที่เกิดขึ้นเป็นรอบๆ (ไม่ใช่ทุกข้อความ จึงประหยัดโควตา) และจดเฉพาะสิ่งที่ใช้ซ้ำได้ ข้อมูลส่วนตัว (เบอร์ อีเมล เลขบัญชี ชื่อผู้ใช้) จะถูกลบก่อนเสมอ</span></span></label>
+    <label class="check-row"><input type="checkbox" name="learn_use_notes" {{ 'checked' if learn_settings.learn_use_notes == '1' }}>
+      <span>ให้ AI นำโน้ตไปใช้ตอนวิเคราะห์และร่างคำตอบ<span class="hint">ทุกครั้งที่ใช้ จะมีหมายเหตุบอกแอดมินว่าใช้บทเรียนข้อไหน (เช่น "ใช้บทเรียน AI #3, #7")</span></span></label>
+    <label class="check-row"><input type="checkbox" name="learn_ticket_notes" {{ 'checked' if learn_settings.learn_ticket_notes == '1' }}>
+      <span>เขียนโน้ต "สรุปการแก้ไข" ใส่ ticket ที่แก้เสร็จแล้วอัตโนมัติ<span class="hint">สาเหตุ → วิธีแก้ → คำแนะนำลูกค้า ดูได้ในไทม์ไลน์ของ ticket</span></span></label>
+    <div class="row" style="margin-top:14px">
+      <label class="field" style="flex: 2 1 280px">โมเดลที่ใช้เรียนรู้
+        <select name="learn_model">
+          <optgroup label="Google AI Studio (ฟรี)">
+            {% for m, label in GEMINI_MODELS.items() %}<option value="{{ m }}" {{ 'selected' if learn_model == m }}>{{ label }}</option>{% endfor %}
+          </optgroup>
+          <optgroup label="Anthropic Claude (เสียเงิน)">
+            {% for m, label in CLAUDE_MODELS.items() %}<option value="{{ m }}" {{ 'selected' if learn_model == m }}>{{ label }}</option>{% endfor %}
+          </optgroup>
+          {% if custom_models %}
+          <optgroup label="AI ภายนอก (API รูปแบบ OpenAI)">
+            {% for m, label in custom_models.items() %}<option value="{{ m }}" {{ 'selected' if learn_model == m }}>{{ label }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+        </select>
+        <span class="hint">แนะนำ Flash-Lite เพราะโควตาแยกจากโมเดลตอบลูกค้า จะไม่แย่งกัน
+          {% if learn_quota and learn_quota.limit %}· วันนี้ใช้ไป {{ learn_quota.used }}/{{ learn_quota.limit }} ครั้ง{% endif %}</span></label>
+      <label class="field">เรียนรู้ทุก (ชั่วโมง)
+        <input type="number" name="learn_interval_hours" min="1" max="72" value="{{ learn_settings.learn_interval_hours }}"></label>
+      <label class="field">สัญญาณใหม่อย่างน้อย (รายการ)
+        <input type="number" name="learn_min_signals" min="1" max="50" value="{{ learn_settings.learn_min_signals }}"></label>
+      <label class="field">โน้ตที่ใช้งานสูงสุด
+        <input type="number" name="learn_max_notes" min="20" max="500" value="{{ learn_settings.learn_max_notes }}"></label>
+    </div>
+    <div class="actions end" style="margin-top:12px"><button class="primary">{{ icon('check', 15) }} บันทึกการตั้งค่า</button></div>
+  </section>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ cicon('book-open', 20) }} โน้ตของ AI</h2>
+    <form method="get" action="/brain" class="row" style="flex-wrap:nowrap">
+      <input type="hidden" name="f" value="{{ f }}">
+      <input name="q" value="{{ q }}" placeholder="ค้นหาหัวข้อหรือเนื้อหา" style="min-width:240px">
+      <button>ค้นหา</button>
+    </form>
+  </div>
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="กรองโน้ต">
+      {% for key, label in filters.items() %}
+        <a class="seg-link {{ 'on' if f == key }}" href="/brain?f={{ key }}{{ '&q=' ~ q if q }}">{{ label }}<span class="n">{{ counts[key] }}</span></a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="brain-list">
+  {% for n in notes %}
+    <article class="brain-note {{ 'off' if n.status == 'disabled' }} {{ 'pin' if n.pinned }}">
+      <div class="bn-head">
+        <span class="tag k-{{ n.kind }}">{{ kinds.get(n.kind, n.kind) }}</span>
+        {% if n.scope == 'chat' %}<span class="tag st-in_progress" title="ใช้เฉพาะแชทนี้">เฉพาะแชท: {{ chat_titles.get(n.chat_id, n.chat_id) }}</span>{% else %}<span class="tag">ทั่วไป</span>{% endif %}
+        {% if n.source == 'auto' %}<span class="tag st-resolved">AI จดเอง</span>{% else %}<span class="tag st-open">แอดมินเขียน</span>{% endif %}
+        {% if n.pinned %}<span class="tag rs-sent">ปักหมุด</span>{% endif %}
+        {% if n.status == 'disabled' %}<span class="tag rs-superseded">ปิดอยู่</span>{% endif %}
+        <span class="bn-conf" title="ความมั่นใจ {{ n.confidence }}/5">{{ '●' * n.confidence }}{{ '○' * (5 - n.confidence) }}</span>
+        <span class="muted small">ใช้ {{ n.uses }} ครั้ง</span>
+      </div>
+      <h3 class="bn-title">{{ n.title }}</h3>
+      <p class="bn-body">{{ n.body }}</p>
+      {% if n.evidence %}<p class="small muted bn-evidence">ที่มา: {{ n.evidence }}</p>{% endif %}
+      <div class="bn-foot">
+        <span class="when">#{{ n.id }} · {{ n.updated_at | localtime }}</span>
+        <div class="actions">
+          <button type="button" class="sm" data-note-edit="{{ n.id }}">{{ icon('edit', 13) }} แก้ไข</button>
+          <form method="post" action="/brain/notes/{{ n.id }}/pin"><button class="sm ghost" title="ปักหมุด = ใช้เสมอ และ AI จะไม่แก้หรือปิดเอง">{{ 'เลิกปักหมุด' if n.pinned else 'ปักหมุด' }}</button></form>
+          <form method="post" action="/brain/notes/{{ n.id }}/toggle"><button class="sm ghost">{{ 'เปิดใช้' if n.status == 'disabled' else 'ปิดใช้' }}</button></form>
+          <form method="post" action="/brain/notes/{{ n.id }}/delete" data-confirm-title="ลบโน้ต #{{ n.id }}?"
+                data-confirm="{{ n.title }} — AI จะไม่ใช้โน้ตนี้อีก" data-confirm-ok="ลบโน้ต" data-confirm-tone="danger">
+            <button class="icon-btn sm del" title="ลบโน้ต" aria-label="ลบโน้ต #{{ n.id }}">{{ cicon('delete', 17) }}</button></form>
+        </div>
+      </div>
+    </article>
+  {% else %}
+    <div class="no-match" style="display:block">{{ icon('note', 24) }}
+      <strong>{{ 'ไม่พบโน้ตที่ค้นหา' if q else 'ยังไม่มีโน้ตในหมวดนี้' }}</strong>
+      {% if not q %}พอทีมแก้ร่างคำตอบ ปฏิเสธร่าง หรือปิด ticket ครบตามเกณฑ์ AI จะเริ่มจดเอง หรือกด "เรียนรู้ตอนนี้" / "เพิ่มโน้ตเอง" ได้เลย{% endif %}</div>
+  {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ cicon('history', 20) }} ประวัติการเรียนรู้</h2>
+    <span class="count">{{ runs | length }} รอบล่าสุด{% if last_ok %} · สำเร็จล่าสุด {{ last_ok.at | localtime }}{% endif %}</span></div>
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr><th class="shrink">เวลา</th><th class="shrink">ที่มา</th><th class="shrink">สถานะ</th><th class="shrink center">สัญญาณ</th><th>ผล</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td class="when">{{ r.at | localtime }}</td>
+        <td class="shrink small">{{ 'แอดมินกด' if r.trigger == 'manual' else 'อัตโนมัติ' }}<div class="muted mono small">{{ r.model }}</div></td>
+        <td class="shrink"><span class="state {{ {'ok': 'ok', 'skip': 'warn', 'error': 'bad'}[r.status] }}">{{ {'ok': 'สำเร็จ', 'skip': 'ข้ามรอบ', 'error': 'ผิดพลาด'}[r.status] }}</span></td>
+        <td class="num center">{{ r.signals }}</td>
+        <td class="small">{{ r.message }}</td>
+      </tr>
+    {% else %}
+      <tr class="empty-row"><td colspan="5">{{ icon('note', 24) }}<strong>ยังไม่เคยเรียนรู้</strong>กด "เรียนรู้ตอนนี้" หรือรอรอบอัตโนมัติ</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<dialog class="mdialog" id="noteDialog" aria-labelledby="ndTitle">
+  <form method="post" action="/brain/notes" id="noteForm">
+    <header class="md-head">
+      <span class="md-ic">{{ cicon('book-open-lightbulb', 24) }}</span>
+      <div>
+        <h3 id="ndTitle">เพิ่มโน้ต</h3>
+        <p class="muted small" style="margin:0">AI จะอ่านโน้ตนี้ทุกครั้งที่วิเคราะห์ที่เกี่ยวข้อง · โน้ตที่แอดมินเขียนหรือแก้ AI จะไม่แก้เอง</p>
+      </div>
+      <button type="button" class="icon-btn" data-close aria-label="ปิด">{{ icon('x', 16) }}</button>
+    </header>
+    <div class="md-body">
+      <label class="field">หัวข้อ
+        <input name="title" required maxlength="100" placeholder="เช่น ลูกค้าฝากไม่เข้า ให้ขอสลิปและเวลาโอนก่อนเสมอ"></label>
+      <div class="row">
+        <label class="field">ประเภท
+          <select name="kind">{% for k, label in kinds.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label>
+        <label class="field">ใช้กับ
+          <select name="scope" id="ndScope"><option value="global">ทุกแชท</option><option value="chat">เฉพาะแชทที่เลือก</option></select></label>
+        <label class="field">ความมั่นใจ
+          <select name="confidence">{% for i in range(5, 0, -1) %}<option value="{{ i }}">{{ i }} / 5</option>{% endfor %}</select></label>
+      </div>
+      <label class="field" id="ndChatWrap" hidden>แชท
+        <select name="chat_id"><option value="">— เลือกแชท —</option>{% for c in chats %}<option value="{{ c.id }}">{{ c.title }}</option>{% endfor %}</select></label>
+      <label class="field">เนื้อหา <span class="hint">เขียนเป็นคำแนะนำที่ AI ทำตามได้ทันที ไม่ควรใส่ข้อมูลส่วนตัวของลูกค้า</span>
+        <textarea name="body" rows="6" required maxlength="1000" placeholder="เช่น เมื่อลูกค้าแจ้งฝากเงินไม่เข้า ให้ขอสลิป เวลาที่โอน และยูสเซอร์ในข้อความเดียว และไม่สัญญาว่ายอดจะเข้าเมื่อไหร่"></textarea></label>
+    </div>
+    <footer class="md-foot">
+      <button type="button" class="ghost" data-close>ยกเลิก</button>
+      <button class="go" id="ndSave">{{ icon('check', 15) }} <span>เพิ่มโน้ต</span></button>
+    </footer>
+  </form>
+</dialog>
+<script type="application/json" id="noteData">{{ note_data | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const NOTES = JSON.parse(document.getElementById('noteData').textContent);
+  const dlg = document.getElementById('noteDialog'), form = document.getElementById('noteForm');
+  const scope = document.getElementById('ndScope'), wrap = document.getElementById('ndChatWrap');
+  const syncScope = () => { wrap.hidden = scope.value !== 'chat'; form.elements.chat_id.required = scope.value === 'chat'; };
+  scope.addEventListener('change', syncScope);
+  function open(id) {
+    form.reset();
+    const n = id ? NOTES[id] : null;
+    form.action = n ? `/brain/notes/${id}` : '/brain/notes';
+    document.getElementById('ndTitle').textContent = n ? `แก้ไขโน้ต #${id}` : 'เพิ่มโน้ต';
+    document.querySelector('#ndSave span').textContent = n ? 'บันทึก' : 'เพิ่มโน้ต';
+    if (n) {
+      form.elements.title.value = n.title; form.elements.body.value = n.body; form.elements.kind.value = n.kind;
+      form.elements.scope.value = n.scope; form.elements.chat_id.value = n.chat_id; form.elements.confidence.value = n.confidence;
+    }
+    syncScope();
+    dlg.showModal();
+    form.elements.title.focus();
+  }
+  document.getElementById('noteAdd').addEventListener('click', () => open(0));
+  document.querySelectorAll('[data-note-edit]').forEach(b => b.addEventListener('click', () => open(b.dataset.noteEdit)));
+  dlg.addEventListener('click', e => { if (e.target === dlg || e.target.closest('[data-close]')) dlg.close(); });
+  // เรียนรู้ใช้เวลาหลายวินาที: กันกดซ้ำและบอกสถานะ
+  document.getElementById('learnForm').addEventListener('submit', () => {
+    const b = document.getElementById('learnBtn'); b.disabled = true; b.querySelector('span').textContent = 'กำลังเรียนรู้… อาจใช้เวลาครึ่งนาที';
+  });
+})();
+</script>
+{% endblock %}

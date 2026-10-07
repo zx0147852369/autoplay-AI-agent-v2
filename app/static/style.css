@@ -1026,6 +1026,40 @@ tr[hidden] { display: none; }
 }
 .pair-code { font-family: var(--mono); font-size: 2.1rem; font-weight: 500; letter-spacing: .28em; line-height: 1.3; color: var(--pine-2); user-select: all; }
 
+/* ---------- หน้า สมอง AI ---------- */
+.seg { flex-wrap: wrap; }
+.seg a.seg-link { color: var(--muted); font-weight: 500; font-size: .88rem; padding: 5px 13px; border-radius: 8px; white-space: nowrap; }
+.seg a.seg-link:hover { color: var(--ink); text-decoration: none; }
+.seg a.seg-link.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 600; }
+.seg a.seg-link .n { font-family: var(--mono); font-size: .74rem; opacity: .65; margin-left: 5px; }
+.brain-list { display: flex; flex-direction: column; }
+.brain-note { padding: 16px 20px; border-bottom: 1px solid var(--line); transition: background .12s; }
+.brain-note:last-child { border-bottom: 0; }
+.brain-note:hover { background: var(--row-hover); }
+.brain-note.off { opacity: .6; }
+.brain-note.pin { box-shadow: inset 3px 0 0 var(--mint); }
+.bn-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.bn-conf { font-size: .72rem; letter-spacing: .12em; color: var(--pine); margin-left: auto; }
+.bn-title { margin: 2px 0 4px; font-size: 1rem; font-weight: 600; }
+.bn-body { margin: 0; color: var(--ink-2); font-size: .92rem; line-height: 1.65; white-space: pre-wrap; }
+.bn-evidence { margin: 6px 0 0; }
+.bn-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.bn-foot .actions { gap: 6px; }
+.k-lesson { background: var(--pine-tint); color: var(--pine); }
+.k-style { background: var(--blue-tint); color: var(--blue); }
+.k-fact { background: var(--grey-tint); color: var(--ink-2); }
+.k-pattern { background: var(--amber-tint); color: var(--amber); }
+.k-warning { background: var(--red-tint); color: var(--red); }
+
+/* ---------- หน้า เชื่อมต่อ AI ---------- */
+.fetch-out { padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--mono); font-size: .8rem; padding: 3px 10px; border-radius: 99px; }
+.chip:disabled { opacity: .45; }
+.test-out { border-top: 1px solid var(--line); }
+.test-sum { padding: 12px 18px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: .92rem; }
+.test-out .grid-table { margin: 0; }
+
 /* ---------- อื่นๆ ---------- */
 .save-bar { border-radius: var(--r-lg); box-shadow: var(--shadow-md); }
 .toast { border-radius: 12px; }

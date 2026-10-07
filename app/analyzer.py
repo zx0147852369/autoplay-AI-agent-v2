@@ -10,7 +10,7 @@ from difflib import SequenceMatcher
 
 from sqlalchemy import func, select
 
-from . import ai_service, dev_bridge, line_service
+from . import ai_service, dev_bridge, learning, line_service
 from .telegram_service import STICKER_TEXT
 from .database import (
     Chat, Guide, GuideQuestion, Message, Reply, SessionLocal, Ticket, TicketAttachment, TicketEvent, get_settings,
@@ -141,16 +141,29 @@ async def analyze(chat_id: int) -> str:
             return "มีแต่สติกเกอร์ ไม่ต้องวิเคราะห์"
         rejected = recent_rejected(chat_id)
 
+        notes_text, note_ids = "", []
+        if settings.get("learn_use_notes") == "1":  # โน้ตที่ AI เรียนรู้ไว้ (สมอง AI) · ดึงไม่ได้ก็วิเคราะห์ต่อได้ปกติ
+            try:
+                with SessionLocal() as db:
+                    notes_text, note_ids = learning.notes_for_prompt(
+                        db, chat_id, " ".join(m.text or "" for m in customer_new))
+            except Exception:  # noqa: BLE001
+                log.exception("load AI notes failed")
+
         try:
             result = await ai_service.analyze_chat(
                 settings, chat.title if chat else str(chat_id), history, new_messages, open_tickets,
                 rejected=[r for r, _ in rejected], chat_website=chat.website_url if chat else "", guides=guides,
+                notes=notes_text,
             )
         except ai_service.AIError as e:
             last_error[chat_id] = str(e)
             log.warning("AI error on chat %s: %s", chat_id, e)
             return f"ผิดพลาด: {e}"
         last_error.pop(chat_id, None)
+        if note_ids:  # บอกแอดมินว่าครั้งนี้ใช้บทเรียนข้อไหน (ตรวจสอบย้อนกลับได้ที่หน้า "สมอง AI")
+            shown = ", ".join(f"#{i}" for i in note_ids[:6]) + (f" +{len(note_ids) - 6}" if len(note_ids) > 6 else "")
+            result.note_for_admin = (result.note_for_admin + f" · ใช้บทเรียน AI {shown}").strip(" ·")
 
         ticket_id = None
         if result.is_issue and settings.get("auto_ticket") == "1":

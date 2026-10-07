@@ -249,7 +249,47 @@ class Reply(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reject_reason: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str] = mapped_column(Text, default="")
+    # JSON รายการคำสั่งที่แอดมินสั่งให้ AI เขียนใหม่ ["สั้นลง", "ขอสลิปด้วย", ...] ใช้เป็นสัญญาณให้ AI เรียนรู้
+    edit_log: Mapped[str] = mapped_column(Text, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AiNote(Base):
+    """โน้ตความจำของ AI: บทเรียนที่ได้จากการทำงานจริง (AI จดเอง หรือแอดมินเขียน) แล้วนำกลับไปใช้ตอนวิเคราะห์"""
+    __tablename__ = "ai_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(8), default="global", server_default="global")  # global / chat
+    chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="lesson", server_default="lesson")  # lesson/style/fact/pattern/warning
+    title: Mapped[str] = mapped_column(String(160), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(8), default="auto", server_default="auto")  # auto = AI จดเอง / manual = แอดมิน
+    status: Mapped[str] = mapped_column(String(8), default="active", server_default="active", index=True)  # active / disabled
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)  # ปักหมุด = ใช้เสมอ และ AI ห้ามแก้/ปิดเอง
+    confidence: Mapped[int] = mapped_column(Integer, default=3, server_default="3")  # 1-5
+    uses: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # ถูกนำไปใช้วิเคราะห์กี่ครั้ง
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    evidence: Mapped[str] = mapped_column(Text, default="")  # ที่มา เช่น "ร่าง #12 แอดมินแก้ · ticket #7"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class LearnRun(Base):
+    """ประวัติรอบที่ AI เรียนรู้ (แสดงในหน้า "สมอง AI")"""
+    __tablename__ = "learn_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    trigger: Mapped[str] = mapped_column(String(8), default="auto")  # auto / manual
+    model: Mapped[str] = mapped_column(String(64), default="")
+    status: Mapped[str] = mapped_column(String(8), default="ok")  # ok / skip / error
+    signals: Mapped[int] = mapped_column(Integer, default=0)
+    added: Mapped[int] = mapped_column(Integer, default=0)
+    updated: Mapped[int] = mapped_column(Integer, default=0)
+    disabled: Mapped[int] = mapped_column(Integer, default=0)
+    ticket_notes: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str] = mapped_column(Text, default="")
 
 
 DEFAULT_SETTINGS = {
@@ -293,6 +333,24 @@ DEFAULT_SETTINGS = {
     "line_approve": "1",   # อนุญาตให้กดอนุมัติจากปุ่มใน LINE
     "line_allowed": "[]",  # JSON รายชื่อผู้ที่กดอนุมัติ/ไม่ส่งจาก LINE ได้ [{"id": LINE userId, "name": ..., "added": ...}]
     "line_pair": "",       # รหัสเชื่อมผู้อนุมัติที่รอใช้งาน "รหัส|หมดอายุ|จำนวนครั้งที่ใส่ผิด" (ว่าง = ไม่มี)
+    # สมอง AI: ให้ AI เรียนรู้จากการทำงานจริงแล้วจดโน้ตไว้ใช้ครั้งต่อไป
+    "auto_learn": "1",                        # เรียนรู้และจดโน้ตอัตโนมัติเป็นรอบๆ
+    "learn_use_notes": "1",                   # นำโน้ตไปใช้ตอนวิเคราะห์/ร่างคำตอบ
+    "learn_ticket_notes": "1",                # เขียนโน้ต "สรุปการแก้ไข" ใส่ ticket ที่แก้เสร็จแล้วอัตโนมัติ
+    "learn_model": "gemini-3.5-flash-lite",   # โมเดลที่ใช้เรียนรู้ (แยกจากโมเดลตอบลูกค้า จะได้ไม่แย่งโควตา)
+    "learn_interval_hours": "6",              # เรียนรู้ทุกกี่ชั่วโมง
+    "learn_min_signals": "3",                 # ต้องมีสัญญาณใหม่อย่างน้อยกี่รายการถึงจะเรียนรู้ (ประหยัดโควตา)
+    "learn_max_notes": "150",                 # จำนวนโน้ตที่ใช้งานสูงสุด (เกินแล้วปิดโน้ตที่ใช้น้อย/มั่นใจต่ำ)
+    "learn_cursor": "",                       # JSON จุดที่เรียนรู้ถึงแล้ว {"reply_id", "ticket_ts", "last_try", "last_ok"}
+    # เชื่อมต่อ AI ภายนอกผ่าน API รูปแบบ OpenAI (API key อยู่ที่ตัวแปร CUSTOM_AI_API_KEY เท่านั้น ไม่เก็บในฐานข้อมูล)
+    "custom_ai_name": "AI ภายนอก",            # ชื่อผู้ให้บริการที่แสดงหน้าเว็บ
+    "custom_ai_base_url": "",                 # เช่น https://api.example.com/v1
+    "custom_ai_models": "",                   # รายชื่อโมเดล บรรทัดละ 1 รุ่น ("id | ชื่อที่แสดง")
+    "custom_ai_json_mode": "auto",            # auto / schema / object / prompt = วิธีบังคับให้ตอบเป็น JSON
+    "custom_ai_vision": "auto",               # auto / yes / no = ส่งรูปให้โมเดลไหม
+    "custom_ai_max_tokens": "0",              # 0 = ไม่กำหนด (บางเจ้าไม่รับพารามิเตอร์นี้)
+    "custom_ai_timeout": "120",               # รอคำตอบสูงสุดกี่วินาที
+    "custom_ai_caps": "",                     # JSON ผลทดสอบความสามารถของแต่ละโมเดล
 }
 
 

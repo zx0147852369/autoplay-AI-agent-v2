@@ -34,7 +34,13 @@
           <optgroup label="Anthropic Claude (เสียเงิน)">
             {% for m, label in CLAUDE_MODELS.items() %}<option value="{{ m }}" {{ 'selected' if settings.ai_model == m }}>{{ label }}</option>{% endfor %}
           </optgroup>
+          {% if custom_models %}
+          <optgroup label="AI ภายนอก (API รูปแบบ OpenAI)">
+            {% for m, label in custom_models.items() %}<option value="{{ m }}" {{ 'selected' if settings.ai_model == m }}>{{ label }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
         </select>
+        <span class="hint">ต้องการใช้ AI เจ้าอื่นที่เชื่อมต่อผ่าน API (เช่น DeepSeek, OpenRouter, เกตเวย์ต่างๆ)? ตั้งที่หน้า <a href="/ai">เชื่อมต่อ AI</a></span>
       </label>
       <div class="key-status">
         {% for label, masked, bad in gemini_keys %}
@@ -54,6 +60,8 @@
         <div class="note error">โมเดลที่เลือกต้องใช้ <code>GEMINI_API_KEY</code> สร้างฟรีที่ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> แล้วใส่ใน Variables ของ Railway</div>
       {% elif settings.ai_model.startswith('claude') and not has_claude_key %}
         <div class="note error">โมเดลที่เลือกต้องใช้ <code>ANTHROPIC_API_KEY</code></div>
+      {% elif settings.ai_model.startswith('oai:') and not custom_ready %}
+        <div class="note error">โมเดลที่เลือกยังเชื่อมต่อไม่ครบ ต้องมี <code>CUSTOM_AI_API_KEY</code> ใน Variables ของ Railway และ Base URL ที่หน้า <a href="/ai">เชื่อมต่อ AI</a></div>
       {% endif %}
       <div class="field">เพดานโควตาฟรีต่อรุ่น <span class="hint">ดูตัวเลขจริงของบัญชีคุณที่ <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">AI Studio</a> · ใส่ 0 = ไม่จำกัด</span>
         <table class="grid-table limits-table">

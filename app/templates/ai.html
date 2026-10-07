@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}เชื่อมต่อ AI{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>เชื่อมต่อ AI</h1>
+    <p class="sub">ใช้ AI เจ้าอื่นผ่าน API รูปแบบ OpenAI (เช่น DeepSeek, OpenRouter, เกตเวย์ AI ต่างๆ) เป็นโมเดลตอบลูกค้าหรือโมเดลเรียนรู้ได้ นอกเหนือจาก Gemini และ Claude</p>
+  </div>
+</div>
+
+<div class="strip compact" style="--cols:3">
+  <div class="strip-cell"><span class="strip-ic {{ '' if key_set else 'dim' }}">{{ cicon('lock-closed', 22) }}</span><span class="strip-label">API key</span>
+    <span class="strip-value text"><span class="dot {{ 'live' if key_set else 'off' }}"></span>{{ 'ตั้งค่าแล้ว ' ~ key_mask if key_set else 'ยังไม่ได้ตั้ง' }}</span></div>
+  <div class="strip-cell"><span class="strip-ic {{ '' if ready else 'dim' }}">{{ cicon('checkmark-circle', 22) }}</span><span class="strip-label">การเชื่อมต่อ</span>
+    <span class="strip-value text"><span class="dot {{ 'live' if ready else 'wait' }}"></span>{{ 'พร้อมใช้งาน' if ready else 'ยังไม่ครบ' }}</span></div>
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('apps-list', 22) }}</span><span class="strip-label">โมเดลที่ตั้งไว้</span><span class="strip-value">{{ models | length }}</span></div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ cicon('lock-closed', 20) }} API key</h2></div>
+  <div class="key-status">
+    <span><span class="dot {{ 'live' if key_set else 'off' }}"></span> <code>CUSTOM_AI_API_KEY</code>
+      {% if key_set %}ตั้งค่าแล้ว <span class="mono muted">{{ key_mask }}</span>{% else %}ยังไม่ได้ตั้ง{% endif %}</span>
+  </div>
+  <p class="hint" style="margin:8px 0 0">ใส่คีย์ที่ Railway → service นี้ → <b>Variables</b> → New Variable ชื่อ <code>CUSTOM_AI_API_KEY</code> แล้วกด Deploy
+    ระบบเก็บคีย์ไว้ในตัวแปรสภาพแวดล้อมเท่านั้น ไม่บันทึกในฐานข้อมูล ไม่แสดงบนหน้าเว็บ และไม่ปรากฏในข้อความ error · อย่าส่งคีย์ในแชทหรือวางในโค้ด</p>
+</section>
+
+<form method="post" action="/ai/save">
+  <section class="card">
+    <div class="card-head"><h2>{{ cicon('settings', 20) }} การเชื่อมต่อ</h2></div>
+    <div class="stack">
+      <div class="row">
+        <label class="field" style="flex: 1 1 180px">ชื่อผู้ให้บริการ <span class="hint">แสดงในรายการโมเดล</span>
+          <input name="name" value="{{ settings.custom_ai_name }}" maxlength="60" placeholder="เช่น Thirx"></label>
+        <label class="field" style="flex: 3 1 360px">Base URL
+          <input name="base_url" id="cBase" value="{{ settings.custom_ai_base_url }}" class="mono" maxlength="300" placeholder="https://api.example.com/v1" autocomplete="off">
+          <span class="hint">ที่อยู่ API ตามเอกสารของผู้ให้บริการ ปกติลงท้ายด้วย <code>/v1</code> (ถ้าวางลิงก์ที่ลงท้าย /chat/completions ระบบตัดให้เอง) ต้องเป็น https</span></label>
+      </div>
+      {% if base_error and (settings.custom_ai_base_url) %}<div class="note error">{{ base_error }}</div>{% endif %}
+      <label class="field">รายชื่อโมเดล <span class="hint">บรรทัดละ 1 รุ่น · ใส่ <code>ชื่อรุ่น | ชื่อที่ให้แสดง</code> ได้ · หรือกด "ดึงรายชื่อจาก API" ด้านล่าง</span>
+        <textarea name="models" id="cModels" rows="5" class="mono" placeholder="deepseek-v4.1-flash | DeepSeek v4.1 Flash&#10;gpt-6-sol | GPT-6 Sol">{{ settings.custom_ai_models }}</textarea></label>
+      <div class="row">
+        <label class="field">บังคับให้ตอบเป็น JSON
+          <select name="json_mode">
+            {% for v, l in [('auto', 'อัตโนมัติ (แนะนำ) ลองแบบที่ผู้ให้บริการรองรับให้เอง'), ('schema', 'json_schema'), ('object', 'json_object'), ('prompt', 'ขอใน prompt เท่านั้น')] %}
+              <option value="{{ v }}" {{ 'selected' if settings.custom_ai_json_mode == v }}>{{ l }}</option>{% endfor %}
+          </select></label>
+        <label class="field">ส่งรูปภาพให้โมเดล
+          <select name="vision">
+            {% for v, l in [('auto', 'อัตโนมัติ (ส่งก่อน ถ้าไม่รับจะส่งเฉพาะข้อความ)'), ('yes', 'ส่งเสมอ'), ('no', 'ไม่ส่งรูป')] %}
+              <option value="{{ v }}" {{ 'selected' if settings.custom_ai_vision == v }}>{{ l }}</option>{% endfor %}
+          </select></label>
+        <label class="field">max tokens <span class="hint">0 = ไม่กำหนด</span>
+          <input type="number" name="max_tokens" min="0" max="200000" value="{{ settings.custom_ai_max_tokens }}"></label>
+        <label class="field">รอคำตอบสูงสุด (วินาที)
+          <input type="number" name="timeout" min="10" max="600" value="{{ settings.custom_ai_timeout }}"></label>
+      </div>
+      <div class="note warn"><strong>ความเป็นส่วนตัว</strong> ข้อความและรูปภาพของลูกค้าที่ AI วิเคราะห์จะถูกส่งไปยังผู้ให้บริการรายนี้ทั้งหมด
+        ตรวจสอบความน่าเชื่อถือและนโยบายข้อมูลของผู้ให้บริการก่อนใช้งานจริง · แนะนำให้ลองกับ "โมเดลเรียนรู้" ก่อน (ระบบลบเบอร์ อีเมล เลขบัญชี ก่อนส่งทุกครั้ง)</div>
+      <div class="actions end">
+        <button type="button" id="cFetch">{{ icon('refresh', 14) }} ดึงรายชื่อโมเดลจาก API</button>
+        <button class="primary">{{ icon('check', 15) }} บันทึก</button>
+      </div>
+      <div id="cFetchOut" class="fetch-out" hidden></div>
+    </div>
+  </section>
+</form>
+
+<section class="panel">
+  <div class="panel-head"><h2>{{ cicon('apps-list', 20) }} โมเดลที่ตั้งไว้</h2>
+    <span class="count">ทดสอบก่อนใช้งานจริง (ใช้โทเคนไม่กี่ร้อยตัว)</span></div>
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr><th>โมเดล</th><th>ความสามารถที่ทดสอบ</th><th class="shrink center">วันนี้</th><th class="shrink"></th></tr></thead>
+    <tbody>
+    {% for m, label in models.items() %}
+      {% set c = caps[m] %}{% set u = usage.get(m) %}
+      <tr>
+        <td><strong>{{ label }}</strong>
+          <div class="mono small muted">{{ m }}</div>
+          {% if m == main_model %}<span class="tag st-resolved">โมเดลหลัก (ตอบลูกค้า)</span>{% endif %}
+          {% if m == learn_model %}<span class="tag st-in_progress">โมเดลเรียนรู้</span>{% endif %}</td>
+        <td class="small">
+          {% if c %}
+            <span class="tag {{ 'st-resolved' if c.json else 'rs-failed' }}">JSON: {{ {'schema': 'schema', 'object': 'json_object', 'prompt': 'ผ่าน prompt'}.get(c.json, 'ไม่ผ่าน') }}</span>
+            <span class="tag {{ 'st-resolved' if c.vision else 'rs-superseded' }}">รูปภาพ: {{ 'อ่านได้' if c.vision else 'ไม่รองรับ' }}</span>
+            <div class="when">ทดสอบ {{ c.tested_at }} UTC</div>
+          {% else %}<span class="muted">ยังไม่เคยทดสอบ</span>{% endif %}
+        </td>
+        <td class="shrink center small">{% if u %}{{ u.ok }}<span class="muted">/{{ u.calls }}</span>
+            <div class="muted mono">{{ '{:,}'.format(u.tokens_in + u.tokens_out) }} tok</div>{% else %}<span class="zero">—</span>{% endif %}</td>
+        <td class="shrink">
+          <div class="actions">
+            <button type="button" class="sm" data-test="{{ m }}">{{ icon('activity', 13) }} ทดสอบ</button>
+            <form method="post" action="/ai/use"><input type="hidden" name="model" value="{{ m }}"><input type="hidden" name="target" value="ai_model">
+              <button class="sm" {{ 'disabled' if m == main_model }}>ใช้เป็นโมเดลหลัก</button></form>
+            <form method="post" action="/ai/use"><input type="hidden" name="model" value="{{ m }}"><input type="hidden" name="target" value="learn_model">
+              <button class="sm" {{ 'disabled' if m == learn_model }}>ใช้เรียนรู้</button></form>
+          </div>
+        </td>
+      </tr>
+    {% else %}
+      <tr class="empty-row"><td colspan="4">{{ icon('bot', 24) }}<strong>ยังไม่มีโมเดล</strong>ใส่ Base URL และรายชื่อโมเดลด้านบน แล้วกดบันทึก</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div id="cTestOut" class="test-out" hidden></div>
+</section>
+<script type="application/json" id="aiBoot">{{ {'ready': ready} | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  async function api(path, body) {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.redirected || !(r.headers.get('content-type') || '').includes('json')) throw new Error('เซสชันหมดอายุหรือเซิร์ฟเวอร์ตอบกลับผิดรูปแบบ กรุณาโหลดหน้าใหม่');
+    return r.json();
+  }
+  const currentModels = () => new Set($('cModels').value.split(/\n/).map(l => l.split('|')[0].trim()).filter(Boolean));
+  function addModel(id) {
+    if (currentModels().has(id)) return;
+    const v = $('cModels').value.replace(/\s+$/, '');
+    $('cModels').value = (v ? v + '\n' : '') + id;
+  }
+
+  $('cFetch').addEventListener('click', async () => {
+    const out = $('cFetchOut'), btn = $('cFetch');
+    out.hidden = false; out.innerHTML = '<span class="muted">กำลังดึงรายชื่อโมเดล…</span>'; btn.disabled = true;
+    try {
+      const d = await api('/ai/api/models', { base_url: $('cBase').value });
+      if (!d.ok) { out.innerHTML = '<div class="note error">' + esc(d.error) + '</div>'; return; }
+      if (!d.models.length) { out.innerHTML = '<div class="note warn">ผู้ให้บริการไม่ได้ส่งรายชื่อโมเดลกลับมา (ใส่ชื่อรุ่นเองได้ในช่องรายชื่อโมเดล)</div>'; return; }
+      out.innerHTML = '<p class="hint" style="margin:0 0 6px">พบ ' + d.models.length + ' รุ่น · กดเพื่อเพิ่มเข้ารายชื่อ แล้วกด "บันทึก"</p><div class="chips">'
+        + d.models.map(m => '<button type="button" class="chip" data-add="' + esc(m) + '">+ ' + esc(m) + '</button>').join('') + '</div>';
+      out.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => { addModel(b.dataset.add); b.disabled = true; }));
+    } catch (e) { out.innerHTML = '<div class="note error">' + esc(e.message) + '</div>'; }
+    finally { btn.disabled = false; }
+  });
+
+  document.querySelectorAll('[data-test]').forEach(b => b.addEventListener('click', async () => {
+    const out = $('cTestOut');
+    out.hidden = false; out.innerHTML = '<div class="muted" style="padding:14px 18px">กำลังทดสอบ ' + esc(b.dataset.test) + ' (ข้อความ → JSON → รูปภาพ) อาจใช้เวลาประมาณครึ่งนาที…</div>';
+    b.disabled = true;
+    try {
+      const d = await api('/ai/api/test', { model: b.dataset.test, base_url: $('cBase').value, save: true });
+      if (d.error) { out.innerHTML = '<div class="note error" style="margin:14px 18px">' + esc(d.error) + '</div>'; return; }
+      const rows = d.checks.map(c => '<tr><td>' + (c.ok ? '<span class="state ok">ผ่าน</span>' : '<span class="state bad">ไม่ผ่าน</span>') + '</td><td>' + esc(c.name)
+        + '</td><td class="num">' + c.ms + ' ms</td><td class="small ' + (c.ok ? 'muted' : 'error-text') + '">' + esc(c.detail) + '</td></tr>').join('');
+      const j = d.caps.json ? ({schema: 'json_schema', object: 'json_object', prompt: 'ขอใน prompt'}[d.caps.json]) : null;
+      out.innerHTML = '<div class="test-sum">' + (d.ok
+          ? '<strong>เชื่อมต่อสำเร็จ</strong> · โหมด JSON ที่ใช้ได้: ' + (j ? esc(j) : '<span class="error-text">ไม่มี (ระบบต้องการ JSON ในการวิเคราะห์ อาจใช้ไม่ได้)</span>') + ' · รูปภาพ: ' + (d.caps.vision ? 'อ่านได้' : 'ไม่รองรับ (ระบบจะส่งเฉพาะข้อความ)') + ' · ใช้ ' + d.tokens + ' โทเคน · บันทึกผลทดสอบแล้ว'
+          : '<strong class="error-text">เชื่อมต่อไม่สำเร็จ</strong> · ดูสาเหตุในตารางด้านล่าง')
+        + '</div><table class="grid-table"><thead><tr><th class="shrink">ผล</th><th>รายการทดสอบ</th><th class="shrink">เวลา</th><th>รายละเอียด</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      if (d.ok) setTimeout(() => location.reload(), 4000);
+    } catch (e) { out.innerHTML = '<div class="note error" style="margin:14px 18px">' + esc(e.message) + '</div>'; }
+    finally { b.disabled = false; }
+  }));
+})();
+</script>
+{% endblock %}

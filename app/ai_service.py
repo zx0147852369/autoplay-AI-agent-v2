@@ -15,7 +15,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
-from . import quota
+from . import custom_ai, quota
 from .config import DISPLAY_TZ, MEDIA_DIR
 from .database import DEFAULT_SETTINGS, Message, Ticket
 
@@ -156,6 +156,15 @@ def is_gemini(model: str) -> bool:
     return model.startswith("gemini")
 
 
+def custom_models(settings: dict[str, str]) -> dict[str, str]:
+    """โมเดลจาก AI ภายนอกที่ตั้งไว้ในหน้า "เชื่อมต่อ AI" -> {"oai:ชื่อรุ่น": ชื่อที่แสดง}"""
+    return custom_ai.models(settings)
+
+
+def all_models(settings: dict[str, str]) -> dict[str, str]:
+    return {**GEMINI_MODELS, **CLAUDE_MODELS, **custom_models(settings)}
+
+
 GUIDE_RULES = """
 3) คำถามการใช้งานหลังบ้าน / คู่มือ (ลูกค้าสอบถามเฉยๆ ไม่ใช่แจ้งปัญหา)
 - เช่น ถามวิธีตั้งค่า เพิ่มบัญชี ดูรายงาน เปลี่ยนรหัส ใช้เมนูต่างๆ ในหลังบ้าน -> issue_category = "none" ไม่เปิด ticket
@@ -240,9 +249,23 @@ async def _call(settings: dict[str, str], parts: list[tuple], schema: dict | Non
                 system: str | None = None) -> str:
     model = settings.get("ai_model") or DEFAULT_SETTINGS["ai_model"]
     system = system or _system_text(settings)
+    if custom_ai.is_custom(model):
+        return await _call_custom(model, settings, system, parts, schema)
     if is_gemini(model):
         return await _call_gemini(model, system, parts, schema)
     return await _call_claude(model, settings, system, parts, schema)
+
+
+async def _call_custom(model: str, settings: dict[str, str], system: str, parts: list[tuple],
+                       schema: dict | None) -> str:
+    """AI ภายนอกที่เป็นรูปแบบ OpenAI (ดู custom_ai.py) · นับการใช้งานลงตารางเดียวกับ Gemini/Claude"""
+    try:
+        result = await custom_ai.chat(settings, model, system, parts, schema)
+    except custom_ai.ProviderError as e:
+        quota.record(model[:64], False, str(e.status or "err")[:16])
+        raise AIError(str(e), retryable=e.retryable, quota=e.quota, bad_key=e.bad_key, key_blocked=e.key_blocked) from e
+    quota.record(model[:64], True, "ok", result.input_tokens, result.output_tokens)
+    return result.text
 
 
 # ---------------------------------------------------------------- Google Gemini (AI Studio)
@@ -467,6 +490,12 @@ def _parse_analysis(text: str) -> Analysis:
     )
 
 
+async def generate(settings: dict[str, str], system: str, prompt: str, schema: dict | None = None,
+                   model: str = "") -> str:
+    """เรียก AI ทั่วไป (ใช้กับงานเบื้องหลัง เช่น เรียนรู้) · model ว่าง = ใช้โมเดลหลักตามตั้งค่า"""
+    return await _call(dict(settings, ai_model=model) if model else settings, [("text", prompt)], schema, system=system)
+
+
 async def analyze_chat(
     settings: dict[str, str],
     chat_title: str,
@@ -476,11 +505,13 @@ async def analyze_chat(
     rejected: list[str] | None = None,
     chat_website: str = "",
     guides: list | None = None,
+    notes: str = "",
 ) -> Analysis:
     transcript = format_transcript(chat_title, history, {m.id for m in new_messages})
     query = " ".join(m.text or "" for m in new_messages if not m.is_outgoing)
     parts = [
         ("text", _guides_text(guides or [], query)),
+        *([("text", notes)] if notes else []),
         ("text", _open_tickets_text(open_tickets)),
         *([("text", f"เว็บไซต์ของลูกค้าแชทนี้ (แอดมินตั้งไว้ เชื่อถือได้): {chat_website}")] if chat_website else []),
         *([("text", "ร่างคำตอบที่แอดมินปฏิเสธไปแล้ว ห้ามร่างเนื้อหาเดิมซ้ำ ถ้าไม่มีเรื่องใหม่จากลูกค้าให้ needs_reply=false:\n"
@@ -493,11 +524,12 @@ async def analyze_chat(
 
 
 async def rewrite_reply(
-    settings: dict[str, str], chat_title: str, history: list[Message], draft: str, instruction: str
+    settings: dict[str, str], chat_title: str, history: list[Message], draft: str, instruction: str, notes: str = ""
 ) -> str:
     transcript = format_transcript(chat_title, history, set())
     prompt = (
-        "บทสนทนา:\n" + transcript
+        (notes + "\n\n" if notes else "")
+        + "บทสนทนา:\n" + transcript
         + "\n\nร่างคำตอบเดิม:\n" + draft
         + "\n\nคำสั่งจากแอดมิน: " + instruction
         + "\n\nเขียนข้อความตอบกลับลูกค้าใหม่ตามคำสั่งของแอดมิน ตอบเฉพาะข้อความที่พร้อมส่งเท่านั้น"
