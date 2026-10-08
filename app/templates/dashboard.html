@@ -10,36 +10,23 @@
   {% if pending %}<a href="/replies" class="btn primary">{{ icon('inbox', 15) }} ตรวจข้อความที่รอ ({{ pending }})</a>{% endif %}
 </div>
 
-<div class="strip">
-  <a class="strip-cell" href="/replies">
-    <span class="strip-ic {{ 'alive' if pending }}">{{ cicon('mail-clock') }}</span>
-    <span class="strip-label">รออนุมัติ</span>
-    <span class="strip-value {{ 'hot' if pending }}">{{ pending }}</span>
-  </a>
-  <a class="strip-cell" href="/tickets">
-    <span class="strip-ic">{{ cicon('clipboard-task') }}</span>
-    <span class="strip-label">Ticket ค้าง</span>
-    <span class="strip-value">{{ open_by_cat.values() | sum }}</span>
-  </a>
-  <a class="strip-cell" href="/chats">
-    <span class="strip-ic">{{ cicon('chat-multiple') }}</span>
-    <span class="strip-label">แชทที่ติดตาม</span>
-    <span class="strip-value">{{ monitored }}</span>
-  </a>
-  <a class="strip-cell" href="/telegram">
-    <span class="strip-ic {{ '' if connected else 'dim' }}">{{ cicon('telegram') }}</span>
-    <span class="strip-label">Telegram</span>
-    <span class="strip-value text"><span class="dot {{ 'live' if connected else 'off' }}"></span>{{ 'ออนไลน์' if connected else 'ไม่ได้เชื่อมต่อ' }}</span>
-  </a>
-</div>
+{# ---------- สรุปงาน: ตารางตัวเลข 2 แถว (ตอนนี้ / วันนี้) ---------- #}
+<section class="panel kpi-panel" aria-label="สรุปงาน">
+  <div class="kpi">
+    <div class="kpi-row-label">ตอนนี้</div>
+    <a class="kpi-cell" href="/replies"><span class="kpi-label">รออนุมัติ</span><span class="kpi-value {{ 'hot' if pending }}">{{ pending }}</span></a>
+    <a class="kpi-cell" href="/tickets"><span class="kpi-label">Ticket ค้าง</span><span class="kpi-value">{{ open_by_cat.values() | sum }}</span></a>
+    <a class="kpi-cell" href="/chats"><span class="kpi-label">แชทที่ติดตาม</span><span class="kpi-value">{{ monitored }}</span></a>
+    <a class="kpi-cell" href="/telegram"><span class="kpi-label">Telegram</span>
+      <span class="kpi-value text"><span class="dot {{ 'live' if connected else 'off' }}"></span>{{ 'ออนไลน์' if connected else 'ไม่ได้เชื่อมต่อ' }}</span></a>
 
-<p class="section-label">{{ icon('clock', 13) }} วันนี้</p>
-<div class="strip compact">
-  <div class="strip-cell"><span class="strip-ic">{{ cicon('chat', 22) }}</span><span class="strip-label">ข้อความลูกค้าเข้า</span><span class="strip-value">{{ today_counts.messages }}</span></div>
-  <div class="strip-cell"><span class="strip-ic">{{ cicon('add-circle', 22) }}</span><span class="strip-label">Ticket เปิดใหม่</span><span class="strip-value">{{ today_counts.tickets }}</span></div>
-  <div class="strip-cell"><span class="strip-ic">{{ cicon('checkmark-circle', 22) }}</span><span class="strip-label">แก้ไขเสร็จ</span><span class="strip-value">{{ today_counts.resolved }}</span></div>
-  <div class="strip-cell"><span class="strip-ic">{{ cicon('send', 22) }}</span><span class="strip-label">คำตอบที่ส่ง</span><span class="strip-value">{{ today_counts.sent }}</span></div>
-</div>
+    <div class="kpi-row-label">วันนี้</div>
+    <div class="kpi-cell"><span class="kpi-label">ข้อความลูกค้าเข้า</span><span class="kpi-value">{{ today_counts.messages }}</span></div>
+    <div class="kpi-cell"><span class="kpi-label">Ticket เปิดใหม่</span><span class="kpi-value">{{ today_counts.tickets }}</span></div>
+    <div class="kpi-cell"><span class="kpi-label">แก้ไขเสร็จ</span><span class="kpi-value">{{ today_counts.resolved }}</span></div>
+    <div class="kpi-cell"><span class="kpi-label">คำตอบที่ส่ง</span><span class="kpi-value">{{ today_counts.sent }}</span></div>
+  </div>
+</section>
 
 {% if ai_errors %}
 <div class="note error" style="margin-bottom:16px">
@@ -48,89 +35,28 @@
 </div>
 {% endif %}
 
-{% if quota_info %}
-{% set qi = quota_info %}
-<section class="panel" id="quota">
-  <div class="panel-head">
-    <h2>{{ cicon('gauge', 20) }} โควตา Gemini วันนี้{% if qi.key_count > 1 %} <span class="tag st-resolved">{{ qi.key_count }} คีย์ · สลับอัตโนมัติ</span>{% endif %}</h2>
-    <span class="count">รีเซ็ตใน {{ qi.reset_in }} · เวลา {{ qi.reset_at | localtime_hm }} น.</span>
-  </div>
-  <div class="table-wrap">
-  <table class="grid-table quota-table keep-table">
-    <thead><tr><th>รุ่น</th><th>ใช้ไปวันนี้</th><th class="shrink center">เหลือ</th><th class="shrink center">ต่อนาที</th><th class="shrink">สถานะ</th></tr></thead>
-    <tbody>
-    {% for r in qi.rows %}
-      <tr class="{{ 'is-current' if r.selected }}">
-        <td class="nowrap"><span class="mono small">{{ r.model }}</span>
-          {% if r.selected %}<span class="tag st-resolved">รุ่นหลัก</span>{% else %}<span class="tag">สำรอง</span>{% endif %}</td>
-        <td>
-          {% if r.key_rows | length > 1 %}
-            {% for k in r.key_rows %}
-              <div class="qkey">
-                <span class="qkey-label small {{ 'muted' if k.slot > 1 }}">{{ k.label }}</span>
-                {% if k.limit %}<div class="qbar {{ k.level }}"><span style="width: {{ k.pct }}%"></span></div>{% endif %}
-                <span class="small muted nowrap">{{ k.used }}{% if k.limit %} / {{ k.limit }}{% endif %}{% if k.failed %} · ล้มเหลว {{ k.failed }}{% endif %}</span>
-              </div>
-            {% endfor %}
-          {% elif r.limit %}
-            <div class="qbar {{ r.level }}"><span style="width: {{ r.pct }}%"></span></div>
-            <div class="small muted">{{ r.used }} / {{ r.limit }} ครั้ง ({{ r.pct }}%){% if r.failed %} · ล้มเหลว {{ r.failed }}{% endif %}</div>
-          {% else %}<span class="small">{{ r.used }} ครั้ง (ไม่ได้ตั้งเพดาน)</span>{% endif %}
-        </td>
-        <td class="num center"><b class="{{ 'error-text' if r.limit and not r.left }}">{{ r.left if r.limit else '—' }}</b></td>
-        <td class="num center small">{{ r.per_min }}{% if r.rpm %}/{{ r.rpm }}{% endif %}</td>
-        <td class="shrink small">
-          {% if r.key_rows | length > 1 %}
-            {% for k in r.key_rows %}
-              <div class="qkey-state">
-              {% if k.limit and not k.left %}<span class="state bad"><span class="dot off"></span>{{ k.label }} หมดแล้ว</span>
-              {% elif k.blocked %}<span class="state bad" title="{{ k.why }}"><span class="dot off"></span>{{ k.label }} เครดิตหมด</span>
-              {% elif not k.ready %}<span class="state warn" title="{{ k.why }}"><span class="dot wait"></span>{{ k.label }} พักชั่วคราว</span>
-              {% elif k.last_429 %}<span class="state warn"><span class="dot wait"></span>{{ k.label }} Google แจ้งเต็ม {{ k.last_429 | localtime_hm }}</span>
-              {% else %}<span class="state ok"><span class="dot live"></span>{{ k.label }} พร้อมใช้</span>{% endif %}
-              </div>
-            {% endfor %}
-          {% elif r.limit and not r.left %}<span class="state bad"><span class="dot off"></span>หมดแล้ว</span>
-          {% elif r.last_429 %}<span class="state warn"><span class="dot wait"></span>Google แจ้งเต็ม {{ r.last_429 | localtime_hm }}</span>
-          {% elif r.level in ('high', 'mid') %}<span class="state warn"><span class="dot wait"></span>ใกล้หมด</span>
-          {% else %}<span class="state ok"><span class="dot live"></span>พร้อมใช้</span>{% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  <div class="panel-foot">
-    <span>รวมทุกรุ่น <b>{{ qi.total_used }}</b>{% if qi.total_limit %} / <b>{{ qi.total_limit }}</b> ครั้ง · เหลือ <b>{{ qi.total_left }}</b>{% endif %}</span>
-    <span>โทเคนวันนี้ <b>{{ "{:,}".format(qi.input_tokens) }}</b> เข้า · <b>{{ "{:,}".format(qi.output_tokens) }}</b> ออก</span>
-    <span>นับจากระบบนี้ · ตัวเลขจริงดูที่ <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">AI Studio</a></span>
-  </div>
-</section>
-{% endif %}
-
+{# ---------- เริ่มต้นใช้งาน: แสดงเฉพาะข้อที่ยังไม่เสร็จ ---------- #}
 {% set done = setup_done %}
 {% if done < setup | length %}
-<section class="panel">
-  <div class="panel-head">
-    <h2>{{ cicon('checkmark-circle', 20) }} เริ่มต้นใช้งาน</h2>
-    <span class="progress">เสร็จแล้ว {{ done }}/{{ setup | length }}</span>
+<section class="panel setup-bar">
+  <div class="setup-head">
+    <h2>เริ่มต้นใช้งาน</h2>
+    <span class="setup-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ setup | length }}" aria-valuenow="{{ done }}"><span style="width: {{ (done / (setup | length) * 100) | round }}%"></span></span>
+    <span class="count">เสร็จแล้ว {{ done }}/{{ setup | length }}</span>
   </div>
-  <table class="grid-table checklist">
-    {% for label, ok, href in setup %}
-      <tr class="{{ 'is-done' if ok }}">
-        <td>{% if ok %}<span class="done">{{ icon('check-circle', 18) }}</span>{% else %}<span class="todo">{{ icon('circle', 18) }}</span>{% endif %}</td>
-        <td class="task">{{ loop.index }}. {{ label }}</td>
-        <td class="shrink">{% if ok %}<span class="state ok">เรียบร้อย</span>{% else %}<a class="btn sm" href="{{ href }}">ไปตั้งค่า {{ icon('arrow-right', 13) }}</a>{% endif %}</td>
-      </tr>
-    {% endfor %}
-  </table>
+  <ul class="setup-todo">
+  {% for label, ok, href in setup if not ok %}
+    <li><span class="setup-n">{{ loop.index }}</span><span class="setup-t">{{ label }}</span><a class="btn sm" href="{{ href }}">ไปตั้งค่า {{ icon('arrow-right', 13) }}</a></li>
+  {% endfor %}
+  </ul>
 </section>
 {% endif %}
 
-<div class="grid-2">
+{# ---------- งานที่ต้องทำ ---------- #}
+<div class="grid-2 dash">
   <section class="panel">
     <div class="panel-head">
-      <h2>{{ cicon('mail-clock', 20) }} รออนุมัติล่าสุด</h2>
+      <h2>{{ icon('inbox', 16) }} รออนุมัติล่าสุด</h2>
       <a href="/replies" class="small">ดูทั้งหมด</a>
     </div>
     <div class="table-wrap">
@@ -140,7 +66,7 @@
       {% for r in pending_list %}
         <tr onclick="location.href='/replies'" style="cursor:pointer">
           <td class="when">{{ r.created_at | localtime }}</td>
-          <td class="nowrap">{{ chat_titles.get(r.chat_id, r.chat_id) }}</td>
+          <td class="nowrap chat-cell" title="{{ chat_titles.get(r.chat_id, r.chat_id) }}">{{ chat_titles.get(r.chat_id, r.chat_id) }}</td>
           <td class="fill"><span class="truncate">{{ r.final_text }}</span></td>
         </tr>
       {% else %}
@@ -152,26 +78,8 @@
   </section>
 
   <section class="panel">
-    <div class="panel-head"><h2>{{ cicon('data-trending', 20) }} สถานะระบบ</h2></div>
-    <table class="grid-table">
-      <thead><tr><th>รายการ</th><th class="shrink">สถานะ</th><th>รายละเอียด</th></tr></thead>
-      <tbody>
-      {% for label, ok, detail in system %}
-        <tr>
-          <td class="nowrap">{{ label }}</td>
-          <td class="shrink"><span class="state {{ 'ok' if ok else 'bad' }}"><span class="dot {{ 'live' if ok else 'off' }}"></span>{{ 'ปกติ' if ok else 'ต้องแก้ไข' }}</span></td>
-          <td class="small">{{ detail }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </section>
-</div>
-
-<div class="grid-2">
-  <section class="panel">
     <div class="panel-head">
-      <h2>{{ cicon('clipboard-task', 20) }} Ticket ล่าสุด</h2>
+      <h2>{{ icon('ticket', 16) }} Ticket ล่าสุด</h2>
       <a href="/tickets?status=all" class="small">ดูทั้งหมด</a>
     </div>
     <div class="table-wrap">
@@ -192,9 +100,28 @@
     </table>
     </div>
   </section>
+</div>
+
+{# ---------- สถานะระบบ / ปัญหาค้าง ---------- #}
+<div class="grid-2 dash">
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('activity', 16) }} สถานะระบบ</h2></div>
+    <table class="grid-table">
+      <thead><tr><th>รายการ</th><th class="shrink">สถานะ</th><th>รายละเอียด</th></tr></thead>
+      <tbody>
+      {% for label, ok, detail in system %}
+        <tr>
+          <td class="nowrap">{{ label }}</td>
+          <td class="shrink"><span class="state {{ 'ok' if ok else 'bad' }}"><span class="dot {{ 'live' if ok else 'off' }}"></span>{{ 'ปกติ' if ok else 'ต้องแก้ไข' }}</span></td>
+          <td class="small">{{ detail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
 
   <section class="panel">
-    <div class="panel-head"><h2>{{ cicon('warning', 20) }} ปัญหาค้างตามประเภท</h2></div>
+    <div class="panel-head"><h2>{{ icon('alert', 16) }} ปัญหาค้างตามประเภท</h2></div>
     {% set top = (open_by_cat.values() | max) if open_by_cat else 1 %}
     <table class="grid-table">
       <thead><tr><th>ประเภท</th><th class="shrink center">จำนวน</th><th>สัดส่วน</th></tr></thead>
@@ -214,4 +141,76 @@
     </div>
   </section>
 </div>
+
+{# ---------- โควตา Gemini: สรุปบรรทัดเดียว กดขยายดูรายรุ่น (เปิดเองเมื่อใกล้หมด/มีปัญหา) ---------- #}
+{% if quota_info %}
+{% set qi = quota_info %}
+{% set ns = namespace(warn=false) %}
+{% for r in qi.rows %}{% if r.level in ('high', 'mid') or (r.limit and not r.left) or r.last_429 %}{% set ns.warn = true %}{% endif %}{% endfor %}
+{% set tpct = ((qi.total_used / qi.total_limit * 100) | round | int) if qi.total_limit else 0 %}
+<section class="panel quota-fold" id="quota">
+  <details {{ 'open' if ns.warn }}>
+    <summary class="panel-head">
+      <h2>{{ icon('gauge', 16) }} โควตา Gemini วันนี้{% if qi.key_count > 1 %} <span class="tag st-resolved">{{ qi.key_count }} คีย์ · สลับอัตโนมัติ</span>{% endif %}</h2>
+      <span class="quota-sum">
+        ใช้ <b>{{ qi.total_used }}</b>{% if qi.total_limit %} / {{ qi.total_limit }}{% endif %} ครั้ง{% if qi.total_limit %} · เหลือ <b>{{ qi.total_left }}</b>
+        <span class="qbar"><span style="width: {{ tpct }}%"></span></span>{% endif %}
+      </span>
+      <span class="count">รีเซ็ตใน {{ qi.reset_in }} · เวลา {{ qi.reset_at | localtime_hm }} น.</span>
+      <span class="chev" aria-hidden="true">{{ icon('arrow-right', 14) }}</span>
+    </summary>
+    <div class="table-wrap">
+    <table class="grid-table quota-table keep-table">
+      <thead><tr><th>รุ่น</th><th>ใช้ไปวันนี้</th><th class="shrink center">เหลือ</th><th class="shrink center">ต่อนาที</th><th class="shrink">สถานะ</th></tr></thead>
+      <tbody>
+      {% for r in qi.rows %}
+        <tr class="{{ 'is-current' if r.selected }}">
+          <td class="nowrap"><span class="mono small">{{ r.model }}</span>
+            {% if r.selected %}<span class="tag st-resolved">รุ่นหลัก</span>{% else %}<span class="tag">สำรอง</span>{% endif %}</td>
+          <td>
+            {% if r.key_rows | length > 1 %}
+              {% for k in r.key_rows %}
+                <div class="qkey">
+                  <span class="qkey-label small {{ 'muted' if k.slot > 1 }}">{{ k.label }}</span>
+                  {% if k.limit %}<div class="qbar {{ k.level }}"><span style="width: {{ k.pct }}%"></span></div>{% endif %}
+                  <span class="small muted nowrap">{{ k.used }}{% if k.limit %} / {{ k.limit }}{% endif %}{% if k.failed %} · ล้มเหลว {{ k.failed }}{% endif %}</span>
+                </div>
+              {% endfor %}
+            {% elif r.limit %}
+              <div class="qbar {{ r.level }}"><span style="width: {{ r.pct }}%"></span></div>
+              <div class="small muted">{{ r.used }} / {{ r.limit }} ครั้ง ({{ r.pct }}%){% if r.failed %} · ล้มเหลว {{ r.failed }}{% endif %}</div>
+            {% else %}<span class="small">{{ r.used }} ครั้ง (ไม่ได้ตั้งเพดาน)</span>{% endif %}
+          </td>
+          <td class="num center"><b class="{{ 'error-text' if r.limit and not r.left }}">{{ r.left if r.limit else '—' }}</b></td>
+          <td class="num center small">{{ r.per_min }}{% if r.rpm %}/{{ r.rpm }}{% endif %}</td>
+          <td class="shrink small">
+            {% if r.key_rows | length > 1 %}
+              {% for k in r.key_rows %}
+                <div class="qkey-state">
+                {% if k.limit and not k.left %}<span class="state bad"><span class="dot off"></span>{{ k.label }} หมดแล้ว</span>
+                {% elif k.blocked %}<span class="state bad" title="{{ k.why }}"><span class="dot off"></span>{{ k.label }} เครดิตหมด</span>
+                {% elif not k.ready %}<span class="state warn" title="{{ k.why }}"><span class="dot wait"></span>{{ k.label }} พักชั่วคราว</span>
+                {% elif k.last_429 %}<span class="state warn"><span class="dot wait"></span>{{ k.label }} Google แจ้งเต็ม {{ k.last_429 | localtime_hm }}</span>
+                {% else %}<span class="state ok"><span class="dot live"></span>{{ k.label }} พร้อมใช้</span>{% endif %}
+                </div>
+              {% endfor %}
+            {% elif r.limit and not r.left %}<span class="state bad"><span class="dot off"></span>หมดแล้ว</span>
+            {% elif r.last_429 %}<span class="state warn"><span class="dot wait"></span>Google แจ้งเต็ม {{ r.last_429 | localtime_hm }}</span>
+            {% elif r.level in ('high', 'mid') %}<span class="state warn"><span class="dot wait"></span>ใกล้หมด</span>
+            {% else %}<span class="state ok"><span class="dot live"></span>พร้อมใช้</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="panel-foot">
+      <span>รวมทุกรุ่น <b>{{ qi.total_used }}</b>{% if qi.total_limit %} / <b>{{ qi.total_limit }}</b> ครั้ง · เหลือ <b>{{ qi.total_left }}</b>{% endif %}</span>
+      <span>โทเคนวันนี้ <b>{{ "{:,}".format(qi.input_tokens) }}</b> เข้า · <b>{{ "{:,}".format(qi.output_tokens) }}</b> ออก</span>
+      <span>นับจากระบบนี้ · ตัวเลขจริงดูที่ <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">AI Studio</a></span>
+    </div>
+  </details>
+</section>
+<script>if (location.hash === '#quota') { const d = document.querySelector('#quota details'); if (d) d.open = true; }</script>
+{% endif %}
 {% endblock %}

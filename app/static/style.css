@@ -1164,6 +1164,126 @@ tr[hidden] { display: none; }
 @media (max-width: 760px) { .logline { grid-template-columns: auto auto 1fr; } .logline .nm { display: none; } }
 
 /* =====================================================================
+   โทนทางการ (ทั้งระบบ): ไอคอนเส้นสีเดียว · ตารางตัวเลขติดกัน · ลดความหวือหวา · เข้าถึงง่าย
+   ===================================================================== */
+/* ไอคอนสีสด (อีโมจิ 3 มิติ) ที่ยังเหลือในบางหน้า: เป็นเฉดเทา มีสีเฉพาะที่ต้องให้สังเกต/ตอนชี้ */
+.cicon { filter: grayscale(1) opacity(.72); }
+a:hover > .cicon, a.strip-cell:hover .cicon, .strip-ic.alive .cicon, .strip-cell.active .cicon, .boxtab.active .cicon, .boxtab:hover .cicon, button:hover .cicon { filter: none; }
+a.strip-cell:hover, .boxtab:hover { transform: none; }
+
+/* แถบตัวเลขสรุปทุกหน้า: เป็นกรอบเดียวมีเส้นแบ่งช่อง (แบบตาราง) ไม่ใช่การ์ดแยกใบ · ไม่มีไอคอนสีสด */
+.strip { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); overflow: hidden; gap: 0; margin-bottom: 18px; }
+.strip-cell, .strip-cell:last-child, .strip-cell:nth-child(2n) {
+  background: transparent; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
+  margin: 0 -1px -1px 0; padding: 14px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; align-items: start; transform: none;
+}
+a.strip-cell:hover { background: var(--surface-2); box-shadow: none; transform: none; border-color: var(--line); }
+.strip-cell.active, a.strip-cell.active { background: var(--surface-2); box-shadow: inset 0 -3px 0 var(--pine); }
+.strip-ic { display: none; }
+.strip-label { font-size: .84rem; font-weight: 500; color: var(--muted); }
+.strip-value { font-family: inherit; font-size: 1.65rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.strip-value.text { font-size: 1.02rem; font-weight: 600; padding-top: 6px; letter-spacing: 0; }
+.strip.compact .strip-cell { padding: 11px 20px; }
+.strip.compact .strip-value { font-size: 1.3rem; }
+@media (max-width: 1100px) { .strip { --cols: 3 !important; } }
+
+/* หน้าเข้าสู่ระบบ (จอกว้าง): ฟอร์มซ้าย + แผงแนะนำระบบขวา */
+.login-aside { display: none; }
+@media (min-width: 1000px) {
+  .login { grid-template-columns: minmax(440px, 42%) minmax(0, 1fr); }
+  .login-aside {
+    display: flex; align-items: center; justify-content: center; padding: 64px; position: relative; overflow: hidden; color: #e6eee8;
+    background: radial-gradient(900px 500px at 85% 0%, rgba(56, 226, 145, .22), transparent 60%), linear-gradient(155deg, #0e1a14 0%, #0a3526 62%, #0b6b47 135%);
+  }
+  .login-aside::before {
+    content: ""; position: absolute; inset: 0; opacity: .08;
+    background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px); background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(circle at 70% 30%, #000 0%, transparent 70%); mask-image: radial-gradient(circle at 70% 30%, #000 0%, transparent 70%);
+  }
+}
+.la-inner { position: relative; max-width: 520px; }
+.la-eyebrow { display: inline-block; padding: 4px 12px; border: 1px solid rgba(255, 255, 255, .25); border-radius: 99px; font-size: .8rem; letter-spacing: .06em; color: #b9e9d0; }
+.login-aside h2 { margin: 18px 0 10px; font-size: 2rem; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; color: #fff; }
+.la-lead { margin: 0 0 30px; font-size: 1.05rem; color: #c3d6cb; line-height: 1.7; }
+.la-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.la-points li { display: flex; gap: 12px; align-items: flex-start; }
+.la-points .ic { color: #38e291; margin-top: 3px; }
+.la-points strong { display: block; color: #fff; font-weight: 650; }
+.la-points span { color: #b4c8bb; font-size: .95rem; line-height: 1.6; }
+
+/* เมนูข้าง: ไอคอนเส้นสีเดียว */
+.nav-item { font-weight: 500; gap: 11px; }
+.nav-item .ic { stroke-width: 1.7; }
+.nav-item.active { font-weight: 650; }
+.panel-head h2 .ic, .card-head h2 .ic { color: var(--ink-2); }
+.panel-head h2 { display: flex; align-items: center; gap: 8px; }
+
+/* ปุ่มข้ามไปเนื้อหา (คีย์บอร์ด/โปรแกรมอ่านหน้าจอ) */
+.skip-link { position: absolute; left: 12px; top: -64px; z-index: 200; padding: 10px 16px; background: #1c1b19; color: #fff; border-radius: 8px; font-weight: 600; transition: top .15s; }
+.skip-link:focus { top: 12px; text-decoration: none; }
+.content:focus { outline: none; }
+a:focus-visible, summary:focus-visible, .kpi-cell:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; border-radius: 4px; }
+
+/* สรุปงาน: ตารางตัวเลข 2 แถว (ตอนนี้ / วันนี้) */
+.kpi-panel { margin-bottom: 18px; }
+.kpi { display: grid; grid-template-columns: 96px repeat(4, minmax(0, 1fr)); }
+.kpi > * { border-right: 1px solid var(--line); }
+.kpi > :nth-child(5n) { border-right: 0; }
+.kpi > :nth-child(n+6) { border-top: 1px solid var(--line); }
+.kpi-row-label { display: flex; align-items: center; padding: 0 16px; background: var(--surface-2); color: var(--muted); font-size: .8rem; font-weight: 600; letter-spacing: .04em; }
+.kpi-cell { display: flex; flex-direction: column; gap: 2px; padding: 16px 22px; color: var(--ink); min-width: 0; transition: background .12s; }
+a.kpi-cell:hover { background: var(--surface-2); text-decoration: none; }
+.kpi-label { font-size: .84rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-value { font-size: 1.75rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.kpi-value.hot { color: var(--red); }
+.kpi-value.text { display: flex; align-items: center; gap: 8px; font-size: 1.05rem; padding-top: 7px; letter-spacing: 0; }
+.kpi > :nth-child(n+7) { padding-top: 11px; padding-bottom: 11px; }
+.kpi > :nth-child(n+7) .kpi-value { font-size: 1.35rem; font-weight: 600; }
+
+td.chat-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+
+/* เริ่มต้นใช้งาน: แสดงเฉพาะข้อที่ยังไม่เสร็จ */
+.setup-bar { margin-bottom: 18px; border-left: 3px solid var(--amber); }
+.setup-head { display: flex; align-items: center; gap: 14px; padding: 12px 18px; }
+.setup-head h2 { font-size: .98rem; }
+.setup-head .count { margin-left: auto; }
+.setup-progress { flex: 0 0 160px; height: 6px; border-radius: 99px; background: var(--grey-tint); overflow: hidden; }
+.setup-progress span { display: block; height: 100%; background: var(--pine); border-radius: inherit; }
+.setup-todo { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.setup-todo li { display: flex; align-items: center; gap: 12px; padding: 10px 18px; }
+.setup-todo li + li { border-top: 1px solid var(--line); }
+.setup-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--amber-tint); color: var(--amber); font-size: .78rem; font-weight: 700; flex-shrink: 0; }
+.setup-t { flex: 1; min-width: 0; }
+
+/* โควตา Gemini: สรุปบรรทัดเดียว กดขยายดูรายรุ่น */
+.quota-fold summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; transition: background .12s; }
+.quota-fold summary::-webkit-details-marker { display: none; }
+.quota-fold summary:hover { background: var(--surface-2); }
+.quota-fold details[open] > summary { border-bottom: 1px solid var(--line); }
+.quota-sum { flex: 1; display: flex; align-items: center; gap: 10px; font-size: .9rem; color: var(--ink-2); min-width: 220px; }
+.quota-sum .qbar { width: 180px; flex: 0 0 180px; }
+.quota-fold .chev { color: var(--muted); transition: transform .15s; display: grid; }
+.quota-fold details[open] .chev { transform: rotate(90deg); }
+
+@media (max-width: 1360px) { .grid-2.dash { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1300px) { .resrows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .resrows { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi > * { border-right: 0; }
+  .kpi-row-label { grid-column: 1 / -1; padding: 8px 16px; border-top: 1px solid var(--line); }
+  .kpi > :nth-child(1) { border-top: 0; }
+  .kpi > :nth-child(n+6) { border-top: 0; }
+  .kpi > :nth-child(6) { border-top: 1px solid var(--line); }
+  .kpi > :nth-child(2), .kpi > :nth-child(4), .kpi > :nth-child(7), .kpi > :nth-child(9) { border-right: 1px solid var(--line); }
+  .kpi-cell { padding: 12px 16px; }
+  .kpi-value { font-size: 1.5rem; }
+  .kpi > :nth-child(n+7) .kpi-value { font-size: 1.25rem; }
+  .setup-progress { flex-basis: 90px; }
+  .quota-sum .qbar { width: 120px; flex-basis: 120px; }
+}
+
+/* =====================================================================
    มือถือ / แท็บเล็ตเล็ก
    - ช่องกรอก 16px (iPhone ไม่ซูมเอง) · ปุ่มและลิงก์ที่นิ้วกดสะดวก (>= 40px)
    - ตารางข้อมูลเปลี่ยนเป็นการ์ดต่อแถว · แถบสรุปตัวเลขเลื่อนข้างได้ · เมนูเป็นลิ้นชัก
@@ -1246,10 +1366,13 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 /* แถบสรุปตัวเลข: แถวเลื่อนข้างได้ แทนการ์ดใหญ่ซ้อนกันหลายแถว (หน้าแรกของจอจะได้เห็นเนื้อหาเลย) */
 @media (max-width: 640px) {
   .strip { display: flex !important; gap: 8px; overflow-x: auto; overflow-y: hidden; margin: 0 -16px 14px; padding: 2px 16px 8px;
+    background: transparent; border: 0; border-radius: 0; box-shadow: none;
     scroll-snap-type: x proximity; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .strip::-webkit-scrollbar { display: none; }
   .strip-cell, .strip-cell:last-child, .strip-cell:nth-child(2n) {
-    flex: 0 0 auto; min-width: 128px; scroll-snap-align: start; grid-template-columns: 1fr; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+    flex: 0 0 auto; min-width: 128px; scroll-snap-align: start; grid-template-columns: 1fr; padding: 10px 14px; margin: 0;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-sm); }
+  .strip-cell.active, a.strip-cell.active { box-shadow: inset 0 -3px 0 var(--pine), var(--shadow-sm); }
   .strip-ic { display: none; }
   .strip-label { white-space: nowrap; font-size: .78rem; align-self: end; }
   .strip-value { font-size: 1.35rem; }
