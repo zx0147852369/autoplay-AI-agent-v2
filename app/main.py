@@ -42,6 +42,7 @@ from .database import (
     TicketEvent,
     TicketLink,
     User,
+    backfill_sent_by,
     get_settings,
     init_db,
     int_setting,
@@ -89,6 +90,15 @@ def ensure_admin() -> None:
 async def lifespan(app: FastAPI):
     init_db()
     ensure_admin()
+    with SessionLocal() as db:
+        acc = db.get(TelegramAccount, 1)
+        chatbus.set_me(acc.me_name if acc else "")
+    fixed = backfill_sent_by()
+    if fixed:
+        log.info("ใส่ชื่อพนักงานที่กดส่งให้ข้อความเก่า %s ข้อความ", fixed)
+    cleaned = fix_json_drafts()
+    if cleaned:
+        log.info("แก้ร่างคำตอบที่เป็น JSON ดิบ %s รายการให้เป็นข้อความปกติ", cleaned)
     log.info("เก็บข้อมูลที่ %s", DATA_DIR)
     if EPHEMERAL_STORAGE:
         log.warning("ข้อมูลไม่ได้อยู่ใน Railway Volume: ตั้งค่าและข้อมูลทั้งหมดจะหายเมื่อ deploy ใหม่")
@@ -224,6 +234,9 @@ def _ago(dt) -> str:
 
 
 templates.env.filters["ago"] = _ago
+
+templates.env.filters["short_name"] = chatbus.short_name
+templates.env.globals["msg_label"] = chatbus.msg_label  # ชื่อที่แสดงบนข้อความ (ฝั่งทีมงาน = พนักงานที่กดส่ง)
 templates.env.filters["fromjson"] = lambda s: json.loads(s) if s else None
 
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+)")
@@ -274,7 +287,9 @@ def build_chat_view(messages: list[Message]) -> list[dict]:
         match = _SENDER_RE.match(m.sender_name or "")
         name, username = (match.group(1), match.group(2)) if match else ((m.sender_name or "").strip(), "")
         name = name or (username and "@" + username) or ("ทีมงาน" if m.is_outgoing else "ลูกค้า")
-        key = (m.is_outgoing, m.sender_name)
+        if m.is_outgoing:
+            name = chatbus.msg_label(m)  # พนักงานที่กดส่งจากเว็บ/LINE > ชื่อใน Telegram > ชื่อบัญชีที่เชื่อมต่อ
+        key = (m.is_outgoing, m.sender_name, getattr(m, "sent_by", ""))
         new_day = prev is None or prev["day"] != day
         first = new_day or prev["key"] != key or (local - prev["local"]).total_seconds() > 300
         if new_day:
@@ -778,7 +793,7 @@ async def api_chat_say(request: Request, chat_id: int, body: SayIn):
         if not db.get(Chat, chat_id):
             return JSONResponse({"ok": False, "error": "ไม่พบแชทนี้"}, status_code=404)
     try:
-        data = await telegram.send_manual(chat_id, text, body.reply_to)
+        data = await telegram.send_manual(chat_id, text, body.reply_to, by=user.username)
     except TelegramLoginError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
     except Exception as e:  # noqa: BLE001
@@ -827,7 +842,7 @@ def _load_pending(reply_id: int) -> Reply | None:
 
 async def deliver_reply(reply_id: int, text: str, by: str, media: list[str] | None = None) -> tuple[str, str]:
     """ส่งคำตอบที่อนุมัติแล้วถึงลูกค้า (ใช้ร่วมกันทั้งหน้าเว็บและ LINE) คืนค่า (status, ข้อความแจ้งผล)"""
-    text = (text or "").strip()
+    text = ai_service.plain_reply(text)  # กันเหตุสุดท้าย: ห้ามส่ง JSON ดิบ/code fence ถึงลูกค้า
     if not text:
         return "failed", "ข้อความว่าง ส่งไม่ได้"
     with SessionLocal() as db:
@@ -841,11 +856,12 @@ async def deliver_reply(reply_id: int, text: str, by: str, media: list[str] | No
         chat_id, reply_to, kind, ticket_id = reply.chat_id, reply.reply_to_tg_id, reply.kind, reply.ticket_id
     try:
         sent_id = await telegram.send_reply(chat_id, text, reply_to)
+        telegram.tag_sent_by(chat_id, [sent_id], by)  # จดว่าใครกดส่ง (แสดงชื่อพนักงานในบทสนทนา)
         status, error = "sent", ""
         files = [str(MEDIA_DIR / p) for p in photos if (MEDIA_DIR / p).is_file()]
         if files:
             try:
-                await telegram.send_files(chat_id, files, reply_to=sent_id)
+                telegram.tag_sent_by(chat_id, await telegram.send_files(chat_id, files, reply_to=sent_id), by)
             except Exception as e:  # noqa: BLE001 - ข้อความส่งแล้ว แจ้งเฉพาะรูปที่ส่งไม่ได้
                 log.exception("send reply photos failed")
                 error = f"ส่งข้อความแล้ว แต่ส่งรูปไม่สำเร็จ: {e}"
@@ -863,6 +879,22 @@ async def deliver_reply(reply_id: int, text: str, by: str, media: list[str] | No
             db.add(TicketEvent(ticket_id=ticket_id, kind="status", author=by, body=f"{label}: {text}"))
         db.commit()
     return status, msg
+
+
+def fix_json_drafts() -> int:
+    """ร่างที่ค้างรออนุมัติเป็น JSON ดิบ (บั๊กเดิมตอนกด "เขียนใหม่") -> ดึงเฉพาะข้อความตอบกลับออกมา · คืนค่าจำนวนที่แก้"""
+    fixed = 0
+    with SessionLocal() as db:
+        for r in db.scalars(select(Reply).where(Reply.status.in_(("pending", "failed")))):
+            for attr in ("final_text", "ai_text"):
+                value = getattr(r, attr) or ""
+                if value.lstrip().startswith(("{", "```")):
+                    cleaned = ai_service.plain_reply(value)
+                    if cleaned and cleaned != value:
+                        setattr(r, attr, cleaned)
+                        fixed += 1
+        db.commit()
+    return fixed
 
 
 def reject_reply(reply_id: int, reason: str, by: str) -> bool:

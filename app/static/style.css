@@ -2008,3 +2008,52 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .rv-newmsg { bottom: 70px; }
 }
 @media (prefers-reduced-motion: reduce) { .rv-live i, .rv-msg.fresh, .rv-item.ping { animation: none; } }
+
+/* ---- รออนุมัติ: ทำให้อ่านง่ายขึ้น (แชทซ้าย=ลูกค้า ขวา=ทีมงาน ชัดเจน, ชุดปุ่มเหลือน้อย) ---- */
+.rv-label .rv-legend { margin-left: auto; display: flex; gap: 12px; font-size: .74rem; font-weight: 650; }
+.rv-legend .l { color: var(--muted); }
+.rv-legend .r { color: var(--pine); }
+
+.rv-convo { gap: 4px; padding: 16px 16px 12px; background: var(--surface-2); }
+.rv-msg {
+  position: relative; max-width: 78%; padding: 8px 14px 6px; margin-top: 8px; border-radius: 18px 18px 18px 5px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.rv-msg:first-child { margin-top: 0; }
+.rv-msg.out { border-radius: 18px 18px 5px 18px; background: var(--pine-tint); border-color: var(--ring); }
+.rv-msg.cont { margin-top: 0; border-top-left-radius: 6px; }
+.rv-msg.out.cont { border-top-left-radius: 18px; border-top-right-radius: 6px; }
+.rv-msg.cont .rv-meta:not(:has(em)) { display: none; }
+.rv-meta { margin-bottom: 1px; }
+.rv-meta b { font-size: .8rem; color: var(--muted); font-weight: 650; }
+.rv-msg.out .rv-meta b { color: var(--pine); }
+.rv-text { font-size: 1.02rem; line-height: 1.55; }
+.rv-msg time { display: block; margin-top: 1px; text-align: right; font-size: .7rem; color: var(--muted); }
+.rv-msg.target { box-shadow: 0 0 0 3px rgba(161, 92, 7, .14); }
+
+.rv-compose textarea { font-size: 1.04rem; }
+.rv-label-row label { display: inline-flex; align-items: center; gap: 7px; }
+.rv-label-row label .ic { color: var(--pine); }
+.rv-note {
+  display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 0; padding: 8px 12px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); font-size: .84rem; line-height: 1.5;
+}
+.rv-note .ic { flex-shrink: 0; margin-top: 3px; color: var(--amber); }
+.rv .rv-send { padding: 12px var(--rv-px); }
+.rv .rv-send .rv-btn.primary { width: 100%; height: 50px; font-size: 1.04rem; }
+
+.rv-tools { display: block; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.rv-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.rv-tl { display: inline-flex; align-items: center; gap: 6px; margin-right: 2px; color: var(--muted); font-size: .8rem; font-weight: 650; }
+.rv .rv-chipbtn.ghost { border-style: dashed; }
+.rv .rv-chipbtn.no { margin-left: auto; color: var(--red); border-color: transparent; background: transparent; }
+.rv .rv-chipbtn.no:hover { background: var(--red-tint); border-color: #e3b1ab; color: var(--red); }
+.rv .rv-chipbtn.on { background: var(--pine-tint); border-color: var(--pine); color: var(--pine); }
+.rv .rv-chipbtn.no.on { background: var(--red-tint); border-color: #e3b1ab; color: var(--red); }
+.rv-inline[hidden] { display: none; }
+.rv-tools .rv-inline { margin-top: 10px; }
+@media (max-width: 900px) {
+  .rv-msg { max-width: 88%; }
+  .rv-label .rv-legend { display: none; }
+  .rv .rv-send { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+}

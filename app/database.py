@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (
     BigInteger,
@@ -106,6 +106,7 @@ class Message(Base):
     is_outgoing: Mapped[bool] = mapped_column(Boolean, default=False)
     text: Mapped[str] = mapped_column(Text, default="")
     media_path: Mapped[str] = mapped_column(String(512), default="")  # ชื่อไฟล์ใน data/media
+    sent_by: Mapped[str] = mapped_column(String(64), default="", server_default="")  # พนักงานที่กดส่งจากเว็บ/LINE (ว่าง = ไม่ทราบ)
     date: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     analyzed: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -372,6 +373,27 @@ def _add_missing_columns() -> None:
                 if column.server_default is not None:
                     ddl += f" DEFAULT '{column.server_default.arg}'"
                 conn.execute(text(ddl))
+
+
+def backfill_sent_by() -> int:
+    """ข้อความทีมงานที่ส่งผ่านเว็บ/LINE ก่อนจะมีการบันทึกชื่อผู้ส่ง -> จับคู่กับร่างที่อนุมัติ
+    (แชทเดียวกัน ข้อความตรงกัน เวลาห่างกันไม่กี่นาที) แล้วใส่ชื่อผู้อนุมัติให้ · คืนค่าจำนวนที่แก้"""
+    fixed = 0
+    with SessionLocal() as db:
+        replies = db.scalars(select(Reply).where(Reply.status == "sent", Reply.decided_by != "", Reply.decided_at.is_not(None)))
+        for r in list(replies):
+            text = (r.final_text or "").strip()
+            if not text:
+                continue
+            m = db.scalar(select(Message).where(
+                Message.chat_id == r.chat_id, Message.is_outgoing.is_(True), Message.sent_by == "", Message.text == text,
+                Message.date >= r.decided_at - timedelta(minutes=2), Message.date <= r.decided_at + timedelta(minutes=15),
+            ).order_by(Message.date).limit(1))
+            if m is not None:
+                m.sent_by = r.decided_by[:64]
+                fixed += 1
+        db.commit()
+    return fixed
 
 
 def merge_usernames(current: str, extra: list[str]) -> str:

@@ -143,14 +143,19 @@
 
       <div class="rv-body rv-cols">
         {% set ctx = context.get(r.id, []) %}
-        <p class="rv-label">บทสนทนาล่าสุด <span class="rv-live" title="ข้อความใหม่ในแชทนี้จะขึ้นที่นี่ทันที"><i></i><span>สด</span></span></p>
+        <p class="rv-label">แชทกับลูกค้า <span class="rv-live" title="ข้อความใหม่ในแชทนี้จะขึ้นที่นี่ทันที"><i></i><span>สด</span></span>
+          <span class="rv-legend"><span class="l">← ลูกค้า</span><span class="r">ทีมงาน →</span></span></p>
         <div class="rv-chat" data-chat="{{ r.chat_id }}">
           <div class="rv-convo" data-last="{{ (ctx | map(attribute='id') | max) if ctx else 0 }}">
             {% for m in ctx %}
-              <div class="rv-msg {{ 'out' if m.is_outgoing }} {{ 'target' if m.tg_message_id == r.reply_to_tg_id }}" data-id="{{ m.id }}" data-tg="{{ m.tg_message_id }}">
-                <div class="rv-meta"><b>{{ 'ทีมงาน' if m.is_outgoing else m.sender_name }}</b><time title="{{ m.date | localtime }}">{{ m.date | localtime_hm }}</time>{% if m.tg_message_id == r.reply_to_tg_id %}<em>ข้อความที่ร่างตอบ</em>{% endif %}</div>
+              {% set prev = loop.previtem if not loop.first else none %}
+              {% set who = msg_label(m) %}
+              {% set cont = prev and msg_label(prev) == who and prev.is_outgoing == m.is_outgoing and ((m.date - prev.date).total_seconds() < 300) %}
+              <div class="rv-msg {{ 'out' if m.is_outgoing }} {{ 'target' if m.tg_message_id == r.reply_to_tg_id }} {{ 'cont' if cont }}" data-id="{{ m.id }}" data-tg="{{ m.tg_message_id }}" data-name="{{ who }}">
+                <div class="rv-meta"><b title="{{ m.sender_name }}{% if m.sent_by %} · ส่งโดย {{ m.sent_by }}{% endif %}">{{ who }}</b>{% if m.tg_message_id == r.reply_to_tg_id %}<em>ข้อความที่ร่างตอบ</em>{% endif %}</div>
                 {% if m.text %}<div class="rv-text">{{ m.text | linkify }}</div>{% endif %}
                 {% if m.media_path %}<a href="/media/{{ m.media_path }}" target="_blank"><img src="/media/{{ m.media_path }}" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>{% endif %}
+                <time title="{{ m.date | localtime }}">{{ m.date | localtime_hm }}</time>
               </div>
             {% else %}<p class="rv-muted">ไม่มีข้อความ</p>{% endfor %}
           </div>
@@ -158,7 +163,7 @@
           <div class="rv-say">
             <div class="rv-replying" hidden><span>ตอบถึง</span><q></q><button type="button" aria-label="ยกเลิกการตอบถึงข้อความนี้">{{ icon('x', 13) }}</button></div>
             <div class="rv-say-row">
-              <textarea rows="1" maxlength="4000" placeholder="พิมพ์ตอบลูกค้าในแชทนี้…" title="Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ · แตะข้อความลูกค้าเพื่อตอบถึงข้อความนั้น" aria-label="พิมพ์ข้อความถึงลูกค้าในแชทนี้"></textarea>
+              <textarea rows="1" maxlength="4000" placeholder="พิมพ์ตอบลูกค้าเองในแชทนี้…" title="Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ · แตะข้อความลูกค้าเพื่อตอบถึงข้อความนั้น" aria-label="พิมพ์ข้อความถึงลูกค้าในแชทนี้"></textarea>
               <button type="button" class="rv-say-btn" aria-label="ส่งข้อความถึงลูกค้า" title="ส่ง (Enter)">{{ icon('send', 18) }}</button>
             </div>
             <p class="rv-say-err" role="alert" hidden></p>
@@ -167,11 +172,11 @@
 
         <form method="post" action="/replies/{{ r.id }}/approve" class="rv-compose" id="approve-{{ r.id }}">
           <div class="rv-label-row">
-            <label class="rv-label" for="txt-{{ r.id }}" style="margin:0">ข้อความที่จะส่ง</label>
-            <span class="rv-aitag">{{ icon('sparkles', 13) }} ร่างโดย AI · แก้ไขได้</span>
+            <label class="rv-label" for="txt-{{ r.id }}" style="margin:0">{{ icon('sparkles', 15) }} AI ร่างคำตอบให้</label>
+            <span class="rv-aitag">แก้ไขได้</span>
           </div>
           <textarea id="txt-{{ r.id }}" name="text" rows="5" required>{{ r.final_text }}</textarea>
-          {% if r.note %}<p class="rv-note"><b>{{ icon('lightbulb', 14) }} หมายเหตุจาก AI</b>{{ r.note }}</p>{% endif %}
+          {% if r.note %}<p class="rv-note">{{ icon('lightbulb', 14) }}<span>{{ r.note }}</span></p>{% endif %}
           {% if pics %}
           <div class="rv-pics">
             <span class="rv-label" style="margin:0">รูปที่จะส่งพร้อมข้อความ ({{ pics | length }}) <span class="rv-muted">เอาติ๊กออกถ้าไม่ต้องการส่งรูปนั้น</span></span>
@@ -184,7 +189,6 @@
           </div>
           {% endif %}
           <div class="rv-send">
-            <span class="rv-hint">จะส่งถึงลูกค้าเมื่อกดอนุมัติเท่านั้น</span>
             <button class="rv-btn primary" data-confirm-title="ส่งข้อความถึงลูกค้า?"
               data-confirm="ข้อความด้านล่างจะถูกส่งในแชท {{ title }} ทันที{{ ' พร้อมรูปที่เลือก' if pics }}" data-confirm-ok="ส่งข้อความ"
               data-confirm-tone="send" data-confirm-preview="#approve-{{ r.id }} textarea">{{ icon('send', 16) }} อนุมัติและส่ง</button>
@@ -192,29 +196,26 @@
         </form>
 
         <div class="rv-tools">
-          <div class="rv-ai">
-            <p class="rv-label">{{ icon('wand', 14) }} ให้ AI แก้ข้อความ</p>
-            <div class="rv-chips">
-              {% for q in ['สั้นลง', 'สุภาพขึ้น', 'ขอสลิปด้วย'] %}
-              <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
-                <input type="hidden" name="text"><input type="hidden" name="instruction" value="{{ q }}">
-                <button class="rv-chipbtn">{{ q }}</button>
-              </form>
-              {% endfor %}
-            </div>
-            <form method="post" action="/replies/{{ r.id }}/regenerate" class="rv-inline" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
-              <input type="hidden" name="text">
-              <input name="instruction" placeholder="สั่ง AI เอง เช่น ให้ขอยูสเซอร์ด้วย" required>
-              <button class="rv-btn soft">เขียนใหม่</button>
+          <div class="rv-chips">
+            <span class="rv-tl">{{ icon('wand', 14) }} ให้ AI แก้</span>
+            {% for q in ['สั้นลง', 'สุภาพขึ้น', 'ขอสลิปด้วย'] %}
+            <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
+              <input type="hidden" name="text"><input type="hidden" name="instruction" value="{{ q }}">
+              <button class="rv-chipbtn">{{ q }}</button>
             </form>
+            {% endfor %}
+            <button type="button" class="rv-chipbtn ghost" data-toggle=".rv-own">สั่งเอง…</button>
+            <button type="button" class="rv-chipbtn no" data-toggle=".rv-rej">ไม่ส่ง</button>
           </div>
-          <div class="rv-no">
-            <p class="rv-label">{{ icon('x', 14) }} ไม่ส่งข้อความนี้</p>
-            <form method="post" action="/replies/{{ r.id }}/reject" class="rv-inline">
-              <input name="reason" placeholder="เหตุผล (ไม่บังคับ)">
-              <button class="rv-btn danger">ไม่ส่ง</button>
-            </form>
-          </div>
+          <form method="post" action="/replies/{{ r.id }}/regenerate" class="rv-inline rv-own" hidden onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
+            <input type="hidden" name="text">
+            <input name="instruction" placeholder="สั่ง AI เอง เช่น ให้ขอยูสเซอร์ด้วย" required>
+            <button class="rv-btn soft">เขียนใหม่</button>
+          </form>
+          <form method="post" action="/replies/{{ r.id }}/reject" class="rv-inline rv-rej" hidden>
+            <input name="reason" placeholder="เหตุผลที่ไม่ส่ง (ไม่บังคับ)">
+            <button class="rv-btn danger">ยืนยันไม่ส่ง</button>
+          </form>
         </div>
       </div>
     </section>
@@ -387,14 +388,29 @@
     const boxes = () => [...rv.querySelectorAll('.rv-chat')];
     const boxFor = chat => boxes().filter(b => b.dataset.chat === String(chat));
 
-    function bubble(m) {
+    const shortName = n => (String(n || '').replace(/\s*\(@[^)]+\)\s*$/, '') || String(n || ''));
+    function bubble(m, prev) {
       const d = document.createElement('div');
-      d.className = 'rv-msg fresh' + (m.out ? ' out' : '');
-      d.dataset.id = m.id; d.dataset.tg = m.tg;
-      d.innerHTML = '<div class="rv-meta"><b>' + esc(m.out ? 'ทีมงาน' : (m.name || '')) + '</b><time title="' + esc(m.at || '') + '">' + esc(m.hm || '') + '</time></div>'
+      const who = m.label || shortName(m.name) || (m.out ? 'ทีมงาน' : 'ลูกค้า');
+      const cont = prev && prev.dataset.name === who && prev.classList.contains('out') === !!m.out;
+      d.className = 'rv-msg fresh' + (m.out ? ' out' : '') + (cont ? ' cont' : '');
+      d.dataset.id = m.id; d.dataset.tg = m.tg; d.dataset.name = who;
+      d.innerHTML = '<div class="rv-meta"><b title="' + esc((m.name || '') + (m.by ? ' · ส่งโดย ' + m.by : '')) + '">' + esc(who) + '</b></div>'
         + (m.text ? '<div class="rv-text">' + linkify(m.text) + '</div>' : '')
-        + (m.media ? '<a href="/media/' + encodeURIComponent(m.media) + '" target="_blank"><img src="/media/' + encodeURIComponent(m.media) + '" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>' : '');
+        + (m.media ? '<a href="/media/' + encodeURIComponent(m.media) + '" target="_blank"><img src="/media/' + encodeURIComponent(m.media) + '" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>' : '')
+        + '<time title="' + esc(m.at || '') + '">' + esc(m.hm || '') + '</time>';
       return d;
+    }
+
+    function relabel(m) {
+      boxFor(m.chat).forEach(box => {
+        const el = box.querySelector('.rv-msg[data-tg="' + m.tg + '"]');
+        if (!el) return;
+        const who = m.label || shortName(m.name) || 'ทีมงาน';
+        el.dataset.name = who;
+        const b = el.querySelector('.rv-meta b');
+        if (b) { b.textContent = who; b.title = (m.name || '') + (m.by ? ' · ส่งโดย ' + m.by : ''); }
+      });
     }
 
     function add(m) {
@@ -403,7 +419,8 @@
         if (m.id && cv.querySelector('[data-id="' + m.id + '"]')) return;
         const near = cv.scrollHeight - cv.scrollTop - cv.clientHeight < 100;
         const empty = cv.querySelector('.rv-muted'); if (empty) empty.remove();
-        cv.appendChild(bubble(m));
+        const lastMsg = [...cv.querySelectorAll('.rv-msg')].pop();
+        cv.appendChild(bubble(m, lastMsg));
         cv.dataset.last = Math.max(+cv.dataset.last || 0, +m.id || 0);
         while (cv.querySelectorAll('.rv-msg').length > 80) cv.querySelector('.rv-msg').remove();
         if (near || m.out) cv.scrollTop = cv.scrollHeight;
@@ -438,13 +455,30 @@
     function connect() {
       try { ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/live'); } catch (e) { setLive(false); return; }
       ws.onopen = () => { tries = 0; setLive(true); catchUp(); };
-      ws.onmessage = ev => { let d; try { d = JSON.parse(ev.data); } catch (e) { return; } if (d.type === 'message' && d.message) add(d.message); };
+      ws.onmessage = ev => {
+        let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+        if (d.type === 'message' && d.message) add(d.message);
+        else if (d.type === 'sender' && d.message) relabel(d.message);   // รู้ชื่อพนักงานที่กดส่งหลังข้อความขึ้นแล้ว
+      };
       ws.onclose = () => { setLive(false); setTimeout(connect, Math.min(10000, 1000 * ++tries)); };
       ws.onerror = () => { try { ws.close(); } catch (e) {} };
     }
     connect();
     setInterval(() => { if (!up && !document.hidden) catchUp(); }, 4000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
+
+    // ปุ่มสลับแถวเครื่องมือ (สั่ง AI เอง / ไม่ส่ง)
+    rv.addEventListener('click', e => {
+      const tg = e.target.closest('[data-toggle]');
+      if (!tg) return;
+      const pane = tg.closest('.rv-tools');
+      const row = pane && pane.querySelector(tg.dataset.toggle);
+      if (!row) return;
+      const was = row.hidden;
+      pane.querySelectorAll('.rv-own, .rv-rej').forEach(r => { r.hidden = true; });
+      pane.querySelectorAll('[data-toggle]').forEach(b => b.classList.remove('on'));
+      if (was) { row.hidden = false; tg.classList.add('on'); const inp = row.querySelector('input:not([type=hidden])'); if (inp) inp.focus(); }
+    });
 
     // ปุ่ม "ข้อความใหม่ ↓"
     rv.addEventListener('click', e => {

@@ -47,6 +47,8 @@ class TelegramService:
         self.ignore_bots = True
         self.on_dev_message = None
         self.on_connected = None  # async callback หลังเชื่อมต่อสำเร็จ
+        # พนักงานที่กดส่ง (ชื่อผู้ใช้เว็บ/LINE) ของข้อความที่เพิ่งส่ง รอให้ข้อความถูกบันทึกจากอีเวนต์ Telegram แล้วค่อยใส่ชื่อ
+        self._sent_by_hints: dict[tuple[int, int], str] = {}
 
     # ------------------------------------------------------------------ state
     @property
@@ -144,6 +146,7 @@ class TelegramService:
         name = " ".join(filter(None, [me.first_name, me.last_name])) or me.username or str(me.id)
         self._set_status("connected", me_id=me.id, me_name=name,
                          session_enc=encrypt(client.session.save()))
+        chatbus.set_me(name)
         self.reload_monitored()
         client.add_event_handler(self._handle_new_message, events.NewMessage())
         # โหลดรายชื่อแชทไว้ในแคช เพื่อให้ส่งข้อความหา chat id ได้หลังรีสตาร์ท
@@ -334,6 +337,7 @@ class TelegramService:
                 sender_id=getattr(msg, "sender_id", None),
                 sender_name=self._sender_name(sender),
                 is_outgoing=bool(msg.out) or staff,  # ข้อความทีมงาน (บัญชีที่เชื่อมต่อ หรือรายชื่อทีมงาน)
+                sent_by=self._sent_by_hints.pop((chat_id, msg.id), ""),
                 text=text,
                 media_path=media_path,
                 date=msg.date.replace(tzinfo=None) if msg.date else utcnow(),
@@ -345,7 +349,30 @@ class TelegramService:
         chatbus.publish({"type": "message", "chat": chat_id, "message": data})
         return data
 
-    async def send_manual(self, chat_id: int, text: str, reply_to: int | None = None) -> dict:
+    def tag_sent_by(self, chat_id: int, tg_ids, by: str) -> None:
+        """บันทึกว่าพนักงานคนไหนกดส่งข้อความ (ชื่อผู้ใช้เว็บ หรือ "LINE:ชื่อ") · ข้อความถูกบันทึกแล้ว = ใส่ชื่อทันที
+        และแจ้งหน้าเว็บที่เปิดอยู่ · ยังไม่ถูกบันทึก = จำไว้ แล้วใส่ตอนอีเวนต์ Telegram ตามมา"""
+        by = (by or "").strip()[:64]
+        if not by:
+            return
+        for tg_id in tg_ids or []:
+            if not tg_id:
+                continue
+            with SessionLocal() as db:
+                row = db.scalar(select(Message).where(Message.chat_id == chat_id, Message.tg_message_id == tg_id))
+                data = None
+                if row is not None:
+                    row.sent_by = by
+                    db.commit()
+                    data = chatbus.to_dict(row)
+            if data:
+                chatbus.publish({"type": "sender", "chat": chat_id, "message": data})
+            else:
+                if len(self._sent_by_hints) > 500:
+                    self._sent_by_hints.clear()
+                self._sent_by_hints[(chat_id, int(tg_id))] = by
+
+    async def send_manual(self, chat_id: int, text: str, reply_to: int | None = None, by: str = "") -> dict:
         """ทีมงานพิมพ์ตอบในหน้าเว็บ -> ส่งเข้าแชทลูกค้าทันที แล้วบันทึก/กระจายให้ทุกหน้าที่เปิดอยู่ · คืนค่า dict ของข้อความ"""
         entity = await self._entity(chat_id)
         try:
@@ -359,7 +386,12 @@ class TelegramService:
             sender = await msg.get_sender()
         except (RPCError, ValueError, AttributeError):
             sender = None
+        if by:
+            self._sent_by_hints[(chat_id, msg.id)] = by.strip()[:64]
         data = self._store(chat_id, msg, sender, "", analyzed=True, staff=True)
+        if data is None and by:  # อีเวนต์ NewMessage บันทึกไปก่อน -> ใส่ชื่อผู้ส่งให้แถวที่มีอยู่
+            self._sent_by_hints.pop((chat_id, msg.id), None)
+            self.tag_sent_by(chat_id, [msg.id], by)
         if data is None:  # อีเวนต์ NewMessage บันทึกไปก่อนแล้ว -> อ่านกลับมา
             with SessionLocal() as db:
                 row = db.scalar(select(Message).where(Message.chat_id == chat_id, Message.tg_message_id == msg.id))

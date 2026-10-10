@@ -47,7 +47,8 @@ def configure() -> None:
         settings = get_settings(db)
     telegram.set_dev(settings.get("dev_group_id"),
                      settings.get("dev_usernames", "") + "," + settings.get("bank_usernames", ""))
-    telegram.set_staff(settings.get("staff_usernames", ""))
+    # ทีมงานในกลุ่มลูกค้า = รายชื่อทีมงานที่ตั้งไว้ + โปรแกรมเมอร์ + ทีมธนาคาร (ข้อความของพวกเขาอยู่ฝั่งทีมงาน ไม่ต้องให้ AI ตอบ)
+    telegram.set_staff(",".join(settings.get(k, "") for k in ("staff_usernames", "dev_usernames", "bank_usernames")))
     fixed = telegram.mark_staff_history()
     if fixed:
         log.info("ปรับข้อความเก่าของทีมงาน %s ข้อความให้อยู่ฝั่งทีมงาน", fixed)

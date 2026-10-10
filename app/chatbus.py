@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import re
 from datetime import timezone
 
 from .config import DISPLAY_TZ
@@ -61,6 +62,36 @@ def publish(event: dict) -> int:
     return sent
 
 
+_HANDLE_RE = re.compile(r"\s*\(@[^)]+\)\s*$")
+_me_name = ""  # ชื่อบัญชี Telegram ที่เชื่อมต่อ (ใช้เป็นชื่อสำรองของข้อความทีมงานที่ไม่รู้ว่าใครส่ง)
+
+
+def set_me(name: str) -> None:
+    global _me_name
+    _me_name = (name or "").strip()
+
+
+def short_name(name) -> str:
+    """"Way (@autosupportway)" -> "Way" (ถ้าตัดแล้วว่างใช้ชื่อเดิม)"""
+    name = (name or "").strip()
+    return _HANDLE_RE.sub("", name) or name
+
+
+def sent_by_label(by) -> str:
+    """พนักงานที่กดส่ง: "admin" -> "admin" · "LINE:สมชาย" -> "สมชาย (LINE)"."""
+    by = (by or "").strip()
+    if by[:5].upper() == "LINE:":
+        return f"{by[5:].strip()} (LINE)"
+    return by
+
+
+def msg_label(m) -> str:
+    """ชื่อที่แสดงบนข้อความ: ฝั่งทีมงาน = พนักงานที่กดส่งจากเว็บ/LINE > ชื่อผู้ส่งใน Telegram > ชื่อบัญชีที่เชื่อมต่อ"""
+    if m.is_outgoing:
+        return sent_by_label(getattr(m, "sent_by", "")) or short_name(m.sender_name) or _me_name or "ทีมงาน"
+    return short_name(m.sender_name) or "ลูกค้า"
+
+
 def to_dict(m) -> dict:
     """แถว Message -> dict สำหรับหน้าเว็บ (เวลาแสดงตามเวลาไทย)"""
     local = m.date.replace(tzinfo=timezone.utc).astimezone(DISPLAY_TZ) if m.date else None
@@ -72,6 +103,8 @@ def to_dict(m) -> dict:
         "out": bool(m.is_outgoing),
         "text": m.text or "",
         "media": m.media_path or "",
+        "by": getattr(m, "sent_by", "") or "",
+        "label": msg_label(m),
         "hm": local.strftime("%H:%M") if local else "",
         "at": local.strftime("%d/%m/%Y %H:%M") if local else "",
     }
