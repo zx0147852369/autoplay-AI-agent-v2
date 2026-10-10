@@ -1,5 +1,6 @@
 """เรียก AI (Google Gemini หรือ Anthropic Claude) เพื่อวิเคราะห์ข้อความลูกค้า ร่างคำตอบ และสรุปปัญหาเป็น ticket"""
 
+import asyncio
 import base64
 import json
 import re
@@ -312,15 +313,23 @@ def _open_tickets_text(tickets: list[Ticket]) -> str:
 
 
 async def _call(settings: dict[str, str], parts: list[tuple], schema: dict | None = None,
-                system: str | None = None, names: tuple | list = ()) -> str:
-    """names = ชื่อคนที่ปรากฏในข้อความ (ผู้ส่ง ลูกค้า ชื่อแชท) ใช้ปกปิดก่อนส่งให้ AI ภายนอกเท่านั้น"""
+                system: str | None = None, names: tuple | list = (), timeout: float | None = None) -> str:
+    """names = ชื่อคนที่ปรากฏในข้อความ (ผู้ส่ง ลูกค้า ชื่อแชท) ใช้ปกปิดก่อนส่งให้ AI ภายนอกเท่านั้น
+    timeout = วินาทีที่รอได้ต่อการเรียกหนึ่งครั้ง (Gemini: ครบเวลาแล้วสลับไปรุ่นสำรองทันที · อื่นๆ: ตัดทั้งคำขอ)"""
     model = settings.get("ai_model") or DEFAULT_SETTINGS["ai_model"]
     system = system or _system_text(settings)
+    if is_gemini(model) and not custom_ai.is_custom(model):
+        return await _call_gemini(model, system, parts, schema, timeout=timeout)
     if custom_ai.is_custom(model):
-        return await _call_custom(model, settings, system, parts, schema, names)
-    if is_gemini(model):
-        return await _call_gemini(model, system, parts, schema)
-    return await _call_claude(model, settings, system, parts, schema)
+        coro = _call_custom(model, settings, system, parts, schema, names)
+    else:
+        coro = _call_claude(model, settings, system, parts, schema)
+    if not timeout:
+        return await coro
+    try:
+        return await asyncio.wait_for(coro, timeout)
+    except asyncio.TimeoutError as e:
+        raise AIError(f"AI ตอบช้าเกิน {timeout:.0f} วินาที ลองอีกครั้ง", retryable=True) from e
 
 
 async def _call_custom(model: str, settings: dict[str, str], system: str, parts: list[tuple],
@@ -363,7 +372,8 @@ def _strip_additional_properties(schema):
     return schema
 
 
-async def _call_gemini(model: str, system: str, parts: list[tuple], schema: dict | None) -> str:
+async def _call_gemini(model: str, system: str, parts: list[tuple], schema: dict | None,
+                       timeout: float | None = None) -> str:
     """เรียกรุ่นที่เลือกด้วยคีย์หลัก ถ้าโควตาเต็ม (429) -> สลับไปคีย์สำรองรุ่นเดิม
     ถ้าทุกคีย์ใช้รุ่นนี้ไม่ได้ (โควตาหมด / ล่ม 503 / ไม่มีรุ่นนี้) -> สลับไปรุ่นฟรีอื่นอัตโนมัติ"""
     global last_model_used, last_key_slot
@@ -388,7 +398,12 @@ async def _call_gemini(model: str, system: str, parts: list[tuple], schema: dict
                 continue
             tried = True
             try:
-                text = await _call_gemini_once(name, system, parts, schema, key=key, slot=slot)
+                once = _call_gemini_once(name, system, parts, schema, key=key, slot=slot)
+                try:
+                    text = await (asyncio.wait_for(once, timeout) if timeout else once)
+                except asyncio.TimeoutError as e:  # รุ่นนี้ตอบช้า (มักเกิดช่วงโหลดสูง) -> ข้ามไปรุ่นถัดไปทันที ไม่รอจนครบ
+                    quota.record(name, False, "timeout", slot=slot)
+                    raise AIError(f"{name} ตอบช้าเกิน {timeout:.0f} วินาที", retryable=True) from e
             except AIError as e:
                 if e.key_blocked:
                     quota.block_key(key, "เครดิตหมด (402) พักคีย์ 1 ชม.")
@@ -598,7 +613,25 @@ async def analyze_chat(
         *_image_parts(new_messages),
         ("text", "วิเคราะห์ข้อความ [ใหม่] ตามคำแนะนำ แล้วตอบเป็น JSON ตาม schema"),
     ]
-    return _parse_analysis(await _call(settings, parts, ANALYSIS_SCHEMA, names=_known_names(chat_title, history)))
+    model = settings.get("ai_model") or DEFAULT_SETTINGS["ai_model"]
+    # Gemini รุ่นหลักช่วงโหลดสูงอาจค้างเกิน 30 วินาที -> รอรุ่นละ 30 วินาทีแล้วสลับไปรุ่นสำรองที่เร็วกว่า (ไม่ตัดงานของ Claude/AI ภายนอก)
+    gemini_wait = 30 if is_gemini(model) and not custom_ai.is_custom(model) else None
+    return _parse_analysis(await _call(settings, parts, ANALYSIS_SCHEMA, names=_known_names(chat_title, history),
+                                       timeout=gemini_wait))
+
+
+FAST_MODEL = "gemini-3.5-flash-lite"   # รุ่นเร็ว โควตาเยอะ ใช้กับงานสั้นๆ เช่น เขียนข้อความใหม่
+REWRITE_TIMEOUT = 12                   # วินาทีต่อรุ่น แล้วสลับไปรุ่นสำรอง
+REWRITE_DEADLINE = 40                  # วินาทีรวมทั้งงาน
+
+
+def rewrite_model(settings: dict[str, str]) -> str:
+    """งานเขียนใหม่เป็นงานสั้น: ถ้าโมเดลหลักเป็น Gemini ใช้รุ่น Flash-Lite ที่ตอบเร็วกว่ามาก (รุ่นหลักยังเป็นสำรอง)
+    โมเดลหลักเป็น Claude / AI ภายนอก = ใช้ตามที่แอดมินเลือกไว้"""
+    main = settings.get("ai_model") or DEFAULT_SETTINGS["ai_model"]
+    if is_gemini(main) and not custom_ai.is_custom(main) and FAST_MODEL in GEMINI_MODELS:
+        return FAST_MODEL
+    return main
 
 
 async def rewrite_reply(
@@ -614,7 +647,14 @@ async def rewrite_reply(
         + "\n\nคำสั่งจากแอดมิน: " + instruction
         + "\n\nเขียนข้อความตอบกลับลูกค้าใหม่ตามคำสั่งของแอดมิน ตอบเฉพาะข้อความที่พร้อมส่งเท่านั้น"
     )
-    raw = await _call(settings, [("text", prompt)], system=_rewrite_system_text(settings), names=_known_names(chat_title, history))
+    fast = dict(settings, ai_model=rewrite_model(settings))
+    try:
+        raw = await asyncio.wait_for(
+            _call(fast, [("text", prompt)], system=_rewrite_system_text(settings), names=_known_names(chat_title, history),
+                  timeout=REWRITE_TIMEOUT),
+            REWRITE_DEADLINE)
+    except asyncio.TimeoutError as e:
+        raise AIError("AI ตอบช้าเกินไป ลองอีกครั้ง", retryable=True) from e
     text = plain_reply(raw)
     if not text:
         raise AIError("AI ตอบกลับไม่ใช่ข้อความที่ส่งได้ ลองสั่งใหม่อีกครั้ง")

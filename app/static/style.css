@@ -1938,8 +1938,10 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .rv-cols > .rv-label { grid-column: 1; grid-row: 1; }
   .rv-cols > .rv-chat { grid-column: 1; grid-row: 2 / span 2; height: 100%; min-height: 0; }
   .rv-cols .rv-chat .rv-convo { flex: 1 1 auto; max-height: none; min-height: 0; }
-  .rv-cols > .rv-compose { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; }
-  .rv-cols > .rv-tools { grid-column: 2; grid-row: 3; grid-template-columns: 1fr; margin-top: 18px; }
+  .rv-cols > .rv-side { grid-column: 2; grid-row: 1 / span 3; min-width: 0; min-height: 0; overflow-y: auto; }
+  .rv-cols > .rv-side .rv-compose { margin-top: 0; }
+  .rv-cols > .rv-side { overflow-x: hidden; }
+  .rv-cols > .rv-side .rv-send { margin-inline: 0; padding-inline: 0; }
   .rv-cols .rv-compose textarea { min-height: 170px; }
 }
 @media (min-width: 901px) and (max-width: 1180px) {
@@ -2057,3 +2059,22 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .rv-label .rv-legend { display: none; }
   .rv .rv-send { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 }
+
+/* สถานะตอน AI กำลังเขียนใหม่ (ไม่โหลดหน้าใหม่) */
+.rv-ai-status { display: flex; align-items: center; gap: 9px; margin: 8px 0 0; font-size: .86rem; font-weight: 650; color: var(--pine); }
+.rv-ai-status[hidden] { display: none; }
+.rv-ai-status.err { color: var(--red); }
+.rv-spin { width: 15px; height: 15px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--ring); border-top-color: var(--pine); animation: rv-turn .8s linear infinite; }
+@keyframes rv-turn { to { transform: rotate(360deg); } }
+.rv-compose.busy textarea { background: var(--surface-2); color: var(--muted); }
+.rv-tools button:disabled { opacity: .5; cursor: progress; }
+@media (prefers-reduced-motion: reduce) { .rv-spin { animation-duration: 2s; } }
+
+/* ร่างคำตอบ + เครื่องมือเขียนใหม่ อยู่คอลัมน์เดียวกัน ต่อกันทันที (ช่องสั่ง AI เองแสดงตลอด) */
+.rv-side { display: flex; flex-direction: column; min-width: 0; }
+.rv-tools .rv-tl { margin: 0 0 8px; font-size: .84rem; }
+.rv-tools .rv-chips { margin-top: 12px; }
+.rv-tools .rv-chips .rv-tl { margin: 0 2px 0 0; font-weight: 600; }
+.rv-tools .rv-inline.rv-own { margin-top: 0; }
+.rv-tools .rv-inline.rv-own input { height: 44px; font-size: .95rem; }
+.rv .rv-tools .rv-inline.rv-own .rv-btn { height: 44px; padding: 0 18px; }

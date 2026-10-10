@@ -170,12 +170,14 @@
           </div>
         </div>
 
+        <div class="rv-side">
         <form method="post" action="/replies/{{ r.id }}/approve" class="rv-compose" id="approve-{{ r.id }}">
           <div class="rv-label-row">
             <label class="rv-label" for="txt-{{ r.id }}" style="margin:0">{{ icon('sparkles', 15) }} AI ร่างคำตอบให้</label>
             <span class="rv-aitag">แก้ไขได้</span>
           </div>
           <textarea id="txt-{{ r.id }}" name="text" rows="5" required>{{ r.final_text }}</textarea>
+          <p class="rv-ai-status" role="status" aria-live="polite" hidden></p>
           {% if r.note %}<p class="rv-note">{{ icon('lightbulb', 14) }}<span>{{ r.note }}</span></p>{% endif %}
           {% if pics %}
           <div class="rv-pics">
@@ -196,26 +198,27 @@
         </form>
 
         <div class="rv-tools">
+          <p class="rv-tl">{{ icon('wand', 15) }} ให้ AI เขียนข้อความใหม่</p>
+          <form method="post" action="/replies/{{ r.id }}/regenerate" class="rv-inline rv-own" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
+            <input type="hidden" name="text">
+            <input name="instruction" placeholder="พิมพ์สั่ง AI เอง เช่น ให้ขอยูสเซอร์ด้วย · เป็นกันเองขึ้น · ขอเวลาตรวจสอบ" required autocomplete="off" aria-label="คำสั่งให้ AI เขียนข้อความใหม่">
+            <button class="rv-btn soft">{{ icon('refresh', 15) }} เขียนใหม่</button>
+          </form>
           <div class="rv-chips">
-            <span class="rv-tl">{{ icon('wand', 14) }} ให้ AI แก้</span>
+            <span class="rv-tl">หรือเลือก</span>
             {% for q in ['สั้นลง', 'สุภาพขึ้น', 'ขอสลิปด้วย'] %}
             <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
               <input type="hidden" name="text"><input type="hidden" name="instruction" value="{{ q }}">
               <button class="rv-chipbtn">{{ q }}</button>
             </form>
             {% endfor %}
-            <button type="button" class="rv-chipbtn ghost" data-toggle=".rv-own">สั่งเอง…</button>
             <button type="button" class="rv-chipbtn no" data-toggle=".rv-rej">ไม่ส่ง</button>
           </div>
-          <form method="post" action="/replies/{{ r.id }}/regenerate" class="rv-inline rv-own" hidden onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
-            <input type="hidden" name="text">
-            <input name="instruction" placeholder="สั่ง AI เอง เช่น ให้ขอยูสเซอร์ด้วย" required>
-            <button class="rv-btn soft">เขียนใหม่</button>
-          </form>
           <form method="post" action="/replies/{{ r.id }}/reject" class="rv-inline rv-rej" hidden>
             <input name="reason" placeholder="เหตุผลที่ไม่ส่ง (ไม่บังคับ)">
             <button class="rv-btn danger">ยืนยันไม่ส่ง</button>
           </form>
+        </div>
         </div>
       </div>
     </section>
@@ -375,6 +378,51 @@
     }
   })();
 
+  // ให้ AI เขียนใหม่: ไม่โหลดหน้าใหม่ · แสดงสถานะ "กำลังเขียน" แล้วใส่ข้อความที่ได้ในช่องเดิม (ทำงานต่อในแชทอื่นได้ระหว่างรอ)
+  (() => {
+    const rv = document.getElementById('rv');
+    if (!rv) return;
+    rv.addEventListener('submit', async e => {
+      const form = e.target;
+      const m = form.getAttribute && (form.getAttribute('action') || '').match(/\/replies\/(\d+)\/regenerate$/);
+      if (!m) return;
+      e.preventDefault();
+      const id = m[1];
+      const ta = document.querySelector('#approve-' + id + ' textarea');
+      const input = form.querySelector('[name=instruction]');
+      const instruction = input ? input.value.trim() : '';
+      if (!ta || !instruction) return;
+      const box = ta.closest('.rv-compose'), tools = form.closest('.rv-tools');
+      if (box.classList.contains('busy')) return;
+      const status = box.querySelector('.rv-ai-status');
+      const buttons = tools ? [...tools.querySelectorAll('button')] : [];
+      const say = (html, cls) => { status.className = 'rv-ai-status ' + (cls || ''); status.innerHTML = html; status.hidden = false; };
+      box.classList.add('busy'); ta.readOnly = true; buttons.forEach(b => { b.disabled = true; });
+      const t0 = Date.now();
+      const tick = () => say('<i class="rv-spin"></i><span>AI กำลังเขียนใหม่… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
+      tick();
+      const timer = setInterval(tick, 1000);
+      try {
+        const r = await fetch('/api/replies/' + id + '/rewrite', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instruction, text: ta.value }),
+        });
+        let d = {};
+        try { d = await r.json(); } catch (x) {}
+        if (!r.ok || !d.ok) throw new Error(d.error || ('เขียนใหม่ไม่สำเร็จ (' + r.status + ')'));
+        ta.value = d.text; ta.defaultValue = d.text;
+        if (input) input.value = '';
+
+        say('<span>✓ AI เขียนใหม่แล้ว (' + (d.seconds || 0) + ' วินาที) · ตรวจก่อนกดอนุมัติ</span>', 'ok');
+        setTimeout(() => { if (status.classList.contains('ok')) status.hidden = true; }, 6000);
+      } catch (err) {
+        say('<span>' + (err.message || 'เขียนใหม่ไม่สำเร็จ') + ' · ร่างเดิมยังอยู่ ลองกดอีกครั้งได้</span>', 'err');
+      } finally {
+        clearInterval(timer); box.classList.remove('busy'); ta.readOnly = false; buttons.forEach(b => { b.disabled = false; });
+      }
+    });
+  })();
+
   // แชทสด: ข้อความใหม่เข้ามาที่บทสนทนาทันที (WebSocket) + พิมพ์ตอบลูกค้าได้ในช่องใต้บทสนทนา
   (() => {
     const rv = document.getElementById('rv');
@@ -475,7 +523,7 @@
       const row = pane && pane.querySelector(tg.dataset.toggle);
       if (!row) return;
       const was = row.hidden;
-      pane.querySelectorAll('.rv-own, .rv-rej').forEach(r => { r.hidden = true; });
+      pane.querySelectorAll('.rv-rej').forEach(r => { r.hidden = true; });
       pane.querySelectorAll('[data-toggle]').forEach(b => b.classList.remove('on'));
       if (was) { row.hidden = false; tg.classList.add('on'); const inp = row.querySelector('input:not([type=hidden])'); if (inp) inp.focus(); }
     });

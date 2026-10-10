@@ -754,10 +754,10 @@ async def ws_live(ws: WebSocket):
     try:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     finally:
+        chatbus.unsubscribe(queue)  # ถอนก่อนเสมอ (ไม่ต้องรอ await) กันผู้ติดตามค้างเมื่อถูกยกเลิกกลางทาง
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        chatbus.unsubscribe(queue)
         try:
             await ws.close()
         except Exception:  # noqa: BLE001 - ปิดไปแล้ว
@@ -1146,32 +1146,28 @@ async def line_test(request: Request):
     return back("/line")
 
 
-@app.post("/replies/{reply_id}/regenerate")
-async def replies_regenerate(request: Request, reply_id: int, instruction: str = Form(...),
-                             text: str = Form("")):
-    current_user(request, "agent")
+async def _rewrite_draft(reply_id: int, instruction: str, text: str = "") -> str | None:
+    """ให้ AI เขียนร่างใหม่ตามคำสั่งแล้วบันทึกลงร่าง · คืนข้อความใหม่ · None = ร่างนี้ถูกดำเนินการไปแล้ว · AIError = AI ทำไม่ได้"""
     reply = _load_pending(reply_id)
     if not reply:
-        return back("/replies")
+        return None
     notes_text = ""
     with SessionLocal() as db:
         settings = get_settings(db)
         chat = db.get(Chat, reply.chat_id)
         history = list(db.scalars(
-            select(Message).where(Message.chat_id == reply.chat_id).order_by(Message.date.desc(), Message.tg_message_id.desc()).limit(20)
+            select(Message).where(Message.chat_id == reply.chat_id).order_by(Message.date.desc(), Message.tg_message_id.desc()).limit(12)
         ))[::-1]
         if settings.get("learn_use_notes") == "1":
             try:
                 notes_text, _ = learning.notes_for_prompt(db, reply.chat_id, instruction)
             except Exception:  # noqa: BLE001 - โหลดโน้ตไม่ได้ ก็เขียนใหม่ต่อได้
                 log.exception("load AI notes failed")
-    try:
-        new_text = await ai_service.rewrite_reply(
-            settings, chat.title if chat else "", history, text or reply.final_text, instruction, notes=notes_text
-        )
-    except ai_service.AIError as e:
-        flash(request, str(e), "error")
-        return back("/replies")
+    started = time.perf_counter()
+    new_text = await ai_service.rewrite_reply(
+        settings, chat.title if chat else "", history, text or reply.final_text, instruction, notes=notes_text
+    )
+    log.info("AI เขียนร่าง #%s ใหม่ใน %.1f วินาที (รุ่น %s)", reply_id, time.perf_counter() - started, ai_service.rewrite_model(settings))
     with SessionLocal() as db:
         row = db.get(Reply, reply_id)
         row.final_text = new_text
@@ -1181,8 +1177,44 @@ async def replies_regenerate(request: Request, reply_id: int, instruction: str =
             history_log = []
         row.edit_log = json.dumps((history_log + [instruction.strip()[:200]])[-10:], ensure_ascii=False)
         db.commit()
+    return new_text
+
+
+@app.post("/replies/{reply_id}/regenerate")
+async def replies_regenerate(request: Request, reply_id: int, instruction: str = Form(...),
+                             text: str = Form("")):
+    current_user(request, "agent")
+    try:
+        new_text = await _rewrite_draft(reply_id, instruction, text)
+    except ai_service.AIError as e:
+        flash(request, str(e), "error")
+        return back("/replies")
+    if new_text is None:
+        return back("/replies")
     flash(request, "AI เขียนคำตอบใหม่แล้ว ตรวจสอบก่อนกดอนุมัติ")
     return back("/replies")
+
+
+class RewriteIn(BaseModel):
+    instruction: str
+    text: str = ""
+
+
+@app.post("/api/replies/{reply_id}/rewrite")
+async def api_reply_rewrite(request: Request, reply_id: int, body: RewriteIn):
+    """ให้ AI เขียนร่างใหม่โดยไม่ต้องโหลดหน้าใหม่ (หน้ารออนุมัติแสดงสถานะ "กำลังเขียน" แล้วใส่ข้อความที่ได้ในช่องเดิม)"""
+    current_user(request, "agent")
+    instruction = body.instruction.strip()
+    if not instruction:
+        return JSONResponse({"ok": False, "error": "ยังไม่ได้ใส่คำสั่ง"}, status_code=400)
+    started = time.perf_counter()
+    try:
+        new_text = await _rewrite_draft(reply_id, instruction[:500], body.text)
+    except ai_service.AIError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+    if new_text is None:
+        return JSONResponse({"ok": False, "error": "ข้อความนี้ถูกดำเนินการไปแล้ว"}, status_code=409)
+    return JSONResponse({"ok": True, "text": new_text, "seconds": round(time.perf_counter() - started, 1)})
 
 
 # ---------------------------------------------------------------- สมอง AI (โน้ตที่ AI เรียนรู้จากการทำงานจริง)
