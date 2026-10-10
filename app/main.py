@@ -1339,6 +1339,10 @@ async def linebot_page(request: Request):
             select(func.count(Message.id)).join(Chat, Chat.id == Message.chat_id)
             .where(Chat.channel == "line", Message.is_outgoing.is_(False), Message.date >= local_day_start_utc())) or 0
         n_auto = db.scalar(select(func.count(Reply.id)).where(Reply.decided_by == "AI อัตโนมัติ", Reply.status == "sent")) or 0
+        # ร่างตอบลูกค้า LINE ที่ยังรอทีมงานอนุมัติ (บอทยังไม่ส่ง) · บอกให้เห็นว่าทำไมลูกค้ายังไม่ได้คำตอบ
+        n_pending = db.scalar(
+            select(func.count(Reply.id)).join(Chat, Chat.id == Reply.chat_id)
+            .where(Chat.channel == "line", Reply.status == "pending", Reply.kind == "ai")) or 0
         n_content = db.scalar(select(func.count(LineContent.id))) or 0
         n_used = db.scalar(select(func.coalesce(func.sum(LineContent.used_count), 0))) or 0
         n_questions = db.scalar(select(func.count(LineQuestion.id)).where(LineQuestion.status == "open")) or 0
@@ -1347,7 +1351,7 @@ async def linebot_page(request: Request):
                   webhook=str(request.base_url).rstrip("/") + "/linebot/webhook", public_url=line_service.public_url(),
                   n_chats=n_chats, n_today=n_today, n_auto=n_auto, same_oa=bool(
                       linebot.token() and linebot.token() == line_service.token()),
-                  n_content=n_content, n_used=n_used, n_questions=n_questions)
+                  n_content=n_content, n_used=n_used, n_questions=n_questions, n_pending=n_pending)
 
 
 @app.post("/linebot")

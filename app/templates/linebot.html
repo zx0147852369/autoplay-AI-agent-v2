@@ -30,6 +30,12 @@
       <span><strong>{{ n_auto }}</strong> ครั้งที่บอทตอบอัตโนมัติ</span>
     </div>
 
+    {% if n_pending %}
+      <div class="note warn" style="margin:0 0 14px">
+        <strong>มี {{ n_pending }} ร่างคำตอบของลูกค้า LINE รอทีมงานอนุมัติอยู่</strong> — บอทยังไม่ส่งถึงลูกค้าจนกว่าจะอนุมัติ ·
+        <a href="/replies">ไปหน้ารออนุมัติ</a>{% if settings.linebot_mode != 'auto' %} · หรือเลือกโหมด "ตอบลูกค้าทันที" ด้านล่างแล้วกดบันทึก เพื่อให้บอทตอบเองจากเนื้อหา{% endif %}
+      </div>
+    {% endif %}
     <label class="check-row"><input type="checkbox" name="linebot_enabled" {{ 'checked' if settings.linebot_enabled == '1' }}>
       <span>เปิดรับข้อความจากลูกค้าทาง LINE<span class="hint">ปิดไว้ = ระบบรับ webhook แต่ไม่บันทึก ไม่วิเคราะห์ ไม่ตอบ</span></span></label>
 

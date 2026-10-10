@@ -788,7 +788,7 @@ a.strip-cell:hover .cicon { transform: translateY(-2px) scale(1.08); }
 .guide-answer { white-space: pre-wrap; color: var(--ink-2); font-size: 0.86rem; line-height: 1.55;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 3px; }
 .kw-cell { min-width: 200px; max-width: 280px; white-space: normal; }
-.kw { display: inline-block; white-space: nowrap; font-size: 0.74rem; padding: 0 7px; border-radius: 99px; background: var(--grey-tint); color: var(--ink-2); margin: 3px 4px 0 0; }
+.kw { display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: 0.74rem; line-height: 1.5; padding: 1px 8px; border-radius: 10px; background: var(--grey-tint); color: var(--ink-2); margin: 3px 4px 0 0; }
 .q-row td { vertical-align: middle; }
 .guide-form textarea[name=answer] { min-height: 260px; font-size: 0.92rem; line-height: 1.6; }
 .guide-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
