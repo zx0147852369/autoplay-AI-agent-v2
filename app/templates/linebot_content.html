@@ -12,7 +12,7 @@
 </div>
 
 <div class="strip compact" style="--cols:3">
-  <div class="strip-cell"><span class="strip-ic">{{ cicon('book-open-lightbulb', 22) }}</span><span class="strip-label">เรื่องในเนื้อหาของบอท</span><span class="strip-value">{{ total }}</span></div>
+  <div class="strip-cell"><span class="strip-ic">{{ cicon('line-content', 22) }}</span><span class="strip-label">เรื่องในเนื้อหาของบอท</span><span class="strip-value">{{ total }}</span></div>
   <div class="strip-cell"><span class="strip-ic {{ 'alive' if questions }}">{{ cicon('question-circle', 22) }}</span><span class="strip-label">คำถามที่บอทตอบไม่ได้</span><span class="strip-value {{ 'hot' if questions }}">{{ questions | length }}</span></div>
   <div class="strip-cell"><span class="strip-ic">{{ cicon('send', 22) }}</span><span class="strip-label">ใช้ตอบลูกค้า LINE ไปแล้ว</span><span class="strip-value">{{ used }} ครั้ง</span></div>
 </div>
@@ -128,7 +128,7 @@
 <dialog class="mdialog" id="guideDialog" aria-labelledby="gdTitle">
   <form method="post" action="/linebot/content/new" enctype="multipart/form-data" id="guideForm">
     <header class="md-head">
-      <span class="md-ic">{{ cicon('book-open-lightbulb', 24) }}</span>
+      <span class="md-ic">{{ cicon('line-content', 24) }}</span>
       <div>
         <h3 id="gdTitle">เพิ่มเนื้อหา</h3>
         <p class="muted small" style="margin:0">บอท LINE จะใช้คำตอบและรูปนี้ตอบลูกค้าที่ถามเรื่องเดียวกัน</p>

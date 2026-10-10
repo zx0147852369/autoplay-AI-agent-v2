@@ -2196,11 +2196,8 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   :root.nav-collapsed .nav-group-line { padding-top: 10px; }
   :root.nav-collapsed .nav-group-line .nav-label { display: none; }
 
-  :root.nav-collapsed .quota-mini { margin: 0 0 10px; padding: 8px 4px 9px; text-align: center; }
-  :root.nav-collapsed .quota-mini-head { display: block; margin-bottom: 5px; }
-  :root.nav-collapsed .quota-mini-head > span:first-child, :root.nav-collapsed .q-word, :root.nav-collapsed .quota-mini-foot { display: none; }
-  :root.nav-collapsed .quota-mini-head b { font-size: .95rem; font-weight: 600; }
-  :root.nav-collapsed .quota-mini .qbar { margin: 0 7px; }
+  /* แถบไอคอน: ไม่แสดงการ์ดโควตา AI (ตัวเลขลอยๆ ไม่มีบริบท) · ตอนขยายเมนูยังแสดงตามเดิม */
+  :root.nav-collapsed .quota-mini { display: none; }
 
   :root.nav-collapsed .sidebar-foot { flex-direction: column; align-items: center; gap: 4px; }
   :root.nav-collapsed .sidebar-foot .user-chip { flex: none; padding: 3px; }
@@ -2214,7 +2211,6 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   :root.nav-collapsed .nav-label { margin: 8px auto 6px; }
   :root.nav-collapsed .sidebar-foot { gap: 2px; padding-top: 8px; }
   :root.nav-collapsed .sidebar-foot .icon-btn { width: 32px; height: 32px; }
-  :root.nav-collapsed .quota-mini { margin-bottom: 6px; padding: 6px 4px 7px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .sidebar, .shell, .icon-btn.sb-toggle, .sb-toggle .ic, .nav-item, .nav-item > span, .sb-tip { transition: none !important; }
