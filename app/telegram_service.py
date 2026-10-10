@@ -16,6 +16,7 @@ from telethon.errors import (
 )
 from telethon.sessions import StringSession
 
+from . import chatbus
 from .config import MEDIA_DIR
 from .database import Chat, Message, SessionLocal, TelegramAccount, utcnow
 from .security import decrypt, encrypt
@@ -303,12 +304,15 @@ class TelegramService:
             name += f" (@{sender.username})"
         return name
 
-    def _store(self, chat_id: int, msg, sender, media_path: str, analyzed: bool, staff: bool = False) -> None:
+    def _store(self, chat_id: int, msg, sender, media_path: str, analyzed: bool, staff: bool = False) -> dict | None:
+        """บันทึกข้อความลงฐานข้อมูลแล้วกระจายให้หน้าเว็บที่เปิดอยู่ · คืนค่า dict ของข้อความ (None = มีอยู่แล้ว ไม่บันทึกซ้ำ)"""
         text = msg.message or ""
         if not text and getattr(msg, "sticker", None):
             text = STICKER_TEXT
         with SessionLocal() as db:
-            db.add(Message(
+            if db.scalar(select(Message.id).where(Message.chat_id == chat_id, Message.tg_message_id == msg.id)):
+                return None  # ถูกบันทึกไปแล้ว (เช่น ส่งจากหน้าเว็บ แล้วอีเวนต์ NewMessage ตามมา)
+            row = Message(
                 chat_id=chat_id,
                 tg_message_id=msg.id,
                 sender_id=getattr(msg, "sender_id", None),
@@ -318,8 +322,34 @@ class TelegramService:
                 media_path=media_path,
                 date=msg.date.replace(tzinfo=None) if msg.date else utcnow(),
                 analyzed=analyzed,
-            ))
+            )
+            db.add(row)
             db.commit()
+            data = chatbus.to_dict(row)
+        chatbus.publish({"type": "message", "chat": chat_id, "message": data})
+        return data
+
+    async def send_manual(self, chat_id: int, text: str, reply_to: int | None = None) -> dict:
+        """ทีมงานพิมพ์ตอบในหน้าเว็บ -> ส่งเข้าแชทลูกค้าทันที แล้วบันทึก/กระจายให้ทุกหน้าที่เปิดอยู่ · คืนค่า dict ของข้อความ"""
+        entity = await self._entity(chat_id)
+        try:
+            msg = await self.client.send_message(entity, text, reply_to=reply_to or None, link_preview=False)
+        except RPCError as e:
+            # ข้อความที่จะตอบกลับถูกลบไปแล้ว -> ส่งเป็นข้อความปกติแทน
+            if not reply_to or "REPLY" not in str(e).upper():
+                raise
+            msg = await self.client.send_message(entity, text, link_preview=False)
+        try:
+            sender = await msg.get_sender()
+        except (RPCError, ValueError, AttributeError):
+            sender = None
+        data = self._store(chat_id, msg, sender, "", analyzed=True, staff=True)
+        if data is None:  # อีเวนต์ NewMessage บันทึกไปก่อนแล้ว -> อ่านกลับมา
+            with SessionLocal() as db:
+                row = db.scalar(select(Message).where(Message.chat_id == chat_id, Message.tg_message_id == msg.id))
+                data = chatbus.to_dict(row) if row else {
+                    "id": 0, "tg": msg.id, "chat": chat_id, "name": "", "out": True, "text": text, "media": "", "hm": "", "at": ""}
+        return data
 
     async def _handle_dev_message(self, event: events.NewMessage.Event) -> None:
         msg = event.message

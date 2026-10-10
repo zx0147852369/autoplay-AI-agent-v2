@@ -11,15 +11,18 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from urllib.parse import urlparse
+
+from fastapi import FastAPI, File, Form, Request, UploadFile, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, custom_ai, dev_bridge, learning, line_service, privacy, quota, sysinfo
+from . import ai_service, analyzer, chatbus, custom_ai, dev_bridge, learning, line_service, privacy, quota, sysinfo
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
@@ -308,11 +311,15 @@ class Forbidden(Exception):
 
 @app.exception_handler(NeedLogin)
 async def _need_login(request: Request, exc: NeedLogin):
+    if request.url.path.startswith("/api/"):  # เรียกจากสคริปต์ในหน้าเว็บ: ตอบ JSON ไม่เด้งไปหน้า login (HTML)
+        return JSONResponse({"ok": False, "error": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่"}, status_code=401)
     return RedirectResponse("/login", status_code=303)
 
 
 @app.exception_handler(Forbidden)
 async def _forbidden(request: Request, exc: Forbidden):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"ok": False, "error": "คุณไม่มีสิทธิ์ทำรายการนี้"}, status_code=403)
     flash(request, "คุณไม่มีสิทธิ์เข้าถึงหน้านี้", "error")
     # ทุกบทบาทเข้าหน้า Tickets ได้ แต่กันวนซ้ำไว้เผื่อหน้า Tickets เองไม่มีสิทธิ์
     target = "/account" if request.url.path.startswith("/tickets") else "/tickets"
@@ -694,6 +701,91 @@ async def chat_detail(request: Request, chat_id: int):
                   dev_group=chat_id == telegram.dev_group_id,
                   waiting=sum(1 for i in view if not i["m"].is_outgoing and not i["m"].analyzed),
                   people=len(customers))
+
+
+# ---------------------------------------------------------------- แชทสด (WebSocket) + พิมพ์ตอบจากหน้าเว็บ
+@app.websocket("/ws/live")
+async def ws_live(ws: WebSocket):
+    """ข้อความแชทใหม่ถูกส่งมาที่หน้าเว็บทันที (ต้องล็อกอินเป็นแอดมิน/ทีมงาน และเรียกจากหน้าเว็บของระบบเองเท่านั้น)"""
+    origin = ws.headers.get("origin", "")
+    if origin and urlparse(origin).netloc != ws.headers.get("host", ""):
+        await ws.close(code=1008)  # กัน cross-site websocket hijacking
+        return
+    uid = ws.session.get("user_id")
+    role = None
+    if uid:
+        with SessionLocal() as db:
+            user = db.get(User, uid)
+            role = user.role if user else None
+    if role not in ("admin", "agent"):
+        await ws.close(code=1008)
+        return
+    await ws.accept()
+    queue = chatbus.subscribe()
+
+    async def pump() -> None:
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=25)
+            except asyncio.TimeoutError:
+                event = {"type": "ping"}  # กันพร็อกซีตัดการเชื่อมต่อที่เงียบเกินไป
+            await ws.send_json(event)
+
+    async def drain() -> None:
+        while True:
+            await ws.receive_text()  # ไม่รับคำสั่งจากหน้าเว็บ แค่รอให้รู้ว่าถูกปิด
+
+    tasks = [asyncio.create_task(pump()), asyncio.create_task(drain())]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        chatbus.unsubscribe(queue)
+        try:
+            await ws.close()
+        except Exception:  # noqa: BLE001 - ปิดไปแล้ว
+            pass
+
+
+@app.get("/api/chats/{chat_id}/messages")
+async def api_chat_messages(request: Request, chat_id: int, after: int = 0, limit: int = 100):
+    """ข้อความของแชทที่ใหม่กว่า id ที่ระบุ (ใช้ดึงส่วนที่ขาดตอนเชื่อมต่อใหม่ / สำรองเมื่อ WebSocket ใช้ไม่ได้)"""
+    current_user(request, "agent")
+    with SessionLocal() as db:
+        rows = list(db.scalars(
+            select(Message).where(Message.chat_id == chat_id, Message.id > max(after, 0))
+            .order_by(Message.id).limit(min(max(limit, 1), 200))))
+    return JSONResponse({"messages": [chatbus.to_dict(m) for m in rows]})
+
+
+class SayIn(BaseModel):
+    text: str
+    reply_to: int | None = None
+
+
+@app.post("/api/chats/{chat_id}/say")
+async def api_chat_say(request: Request, chat_id: int, body: SayIn):
+    """ทีมงานพิมพ์ตอบลูกค้าจากหน้า รออนุมัติ: ส่งเข้าแชท Telegram ทันที (ไม่ผ่านขั้นอนุมัติ เพราะคนพิมพ์เอง)"""
+    user = current_user(request, "agent")
+    text = body.text.strip()
+    if not text:
+        return JSONResponse({"ok": False, "error": "ข้อความว่าง"}, status_code=400)
+    if len(text) > 4000:
+        return JSONResponse({"ok": False, "error": "ข้อความยาวเกิน 4,000 ตัวอักษร"}, status_code=400)
+    with SessionLocal() as db:
+        if not db.get(Chat, chat_id):
+            return JSONResponse({"ok": False, "error": "ไม่พบแชทนี้"}, status_code=404)
+    try:
+        data = await telegram.send_manual(chat_id, text, body.reply_to)
+    except TelegramLoginError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
+    except Exception as e:  # noqa: BLE001
+        log.exception("manual message to chat %s failed", chat_id)
+        return JSONResponse({"ok": False, "error": f"ส่งไม่สำเร็จ: {e}"}, status_code=502)
+    log.info("%s พิมพ์ตอบในแชท %s จากหน้าเว็บ", user.username, chat_id)
+    return JSONResponse({"ok": True, "message": data})
 
 
 # ---------------------------------------------------------------- replies (approval queue)

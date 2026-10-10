@@ -1936,7 +1936,8 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 @container rvd (min-width: 940px) {
   .rv-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 28px; overflow: hidden; }
   .rv-cols > .rv-label { grid-column: 1; grid-row: 1; }
-  .rv-cols > .rv-convo { grid-column: 1; grid-row: 2 / span 2; max-height: none; height: 100%; }
+  .rv-cols > .rv-chat { grid-column: 1; grid-row: 2 / span 2; height: 100%; min-height: 0; }
+  .rv-cols .rv-chat .rv-convo { flex: 1 1 auto; max-height: none; min-height: 0; }
   .rv-cols > .rv-compose { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; }
   .rv-cols > .rv-tools { grid-column: 2; grid-row: 3; grid-template-columns: 1fr; margin-top: 18px; }
   .rv-cols .rv-compose textarea { min-height: 170px; }
@@ -1948,3 +1949,62 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .rv-body { --rv-px: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { .rv-item, .rv .rv-btn { transition: none; } }
+
+/* ---- แชทสด + ช่องพิมพ์ตอบในบทสนทนา ---- */
+.rv-chat { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.rv-live {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 0 9px; border-radius: 99px;
+  background: var(--pine-tint); color: var(--pine); font-size: .7rem; font-weight: 700; line-height: 1.7; letter-spacing: .02em;
+}
+.rv-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--pine); animation: rv-pulse 1.8s ease-out infinite; }
+.rv-live.off { background: var(--amber-tint); color: var(--amber); }
+.rv-live.off i { background: var(--amber); animation: none; }
+@keyframes rv-pulse { 0% { box-shadow: 0 0 0 0 rgba(11, 125, 82, .5); } 70%, 100% { box-shadow: 0 0 0 7px rgba(11, 125, 82, 0); } }
+@keyframes rv-pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.rv-msg.fresh { animation: rv-pop .22s ease-out; }
+.rv-msg:not(.out) { cursor: pointer; }
+.rv-msg.picked { border-color: var(--pine); box-shadow: 0 0 0 3px var(--ring); }
+.rv-item.ping { animation: rv-ping 1.6s ease-out; }
+@keyframes rv-ping { 0% { background: var(--pine-tint); } 100% { background: transparent; } }
+.rv-item.on.ping { animation-name: rv-ping-on; }
+@keyframes rv-ping-on { 0% { background: var(--pine-tint); } 100% { background: var(--surface); } }
+
+.rv-newmsg {
+  position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 4;
+  padding: 6px 14px; border: 0; border-radius: 99px; background: var(--ink); color: var(--surface);
+  font: inherit; font-size: .82rem; font-weight: 650; box-shadow: var(--shadow-md); cursor: pointer;
+}
+.rv-newmsg[hidden] { display: none; }
+.rv-say { margin-top: 10px; flex-shrink: 0; }
+.rv-replying {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 5px 6px 5px 12px; border-radius: 10px;
+  background: var(--pine-tint); color: var(--pine); font-size: .8rem; font-weight: 600;
+}
+.rv-replying[hidden] { display: none; }
+.rv-replying q { flex: 1; min-width: 0; quotes: none; color: var(--ink-2); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv .rv-replying button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--pine); box-shadow: none; cursor: pointer; }
+.rv-say-row {
+  display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 14px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--surface);
+  transition: border-color .15s, box-shadow .15s;
+}
+.rv-say-row:focus-within { border-color: var(--pine); box-shadow: var(--focus); }
+.rv .rv-say-row textarea {
+  flex: 1; min-width: 0; min-height: 34px; max-height: 140px; padding: 7px 0; border: 0; border-radius: 0; background: transparent;
+  box-shadow: none; font-size: .96rem; line-height: 1.5; resize: none; overflow-y: auto;
+}
+.rv .rv-say-row textarea:focus { box-shadow: none; border: 0; }
+.rv .rv-say-btn {
+  flex-shrink: 0; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 12px;
+  background: var(--pine); color: #fff; box-shadow: none; cursor: pointer; transition: background .15s, transform .08s;
+}
+.rv .rv-say-btn:hover { background: var(--pine-2); }
+.rv .rv-say-btn:active { transform: translateY(1px); }
+.rv .rv-say-btn:disabled { opacity: .5; cursor: progress; }
+[data-theme="dark"] .rv .rv-say-btn { background: #178a5d; }
+.rv-say-err { margin: 6px 4px 0; color: var(--red); font-size: .82rem; font-weight: 600; }
+.rv-say-err[hidden] { display: none; }
+@media (max-width: 900px) {
+  .rv .rv-say-row textarea { font-size: 16px; }
+  .rv-newmsg { bottom: 70px; }
+}
+@media (prefers-reduced-motion: reduce) { .rv-live i, .rv-msg.fresh, .rv-item.ping { animation: none; } }

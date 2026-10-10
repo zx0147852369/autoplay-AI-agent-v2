@@ -44,7 +44,7 @@
           {% set ctx = context.get(r.id, []) %}
           {% set tgt = (ctx | selectattr('tg_message_id', 'equalto', r.reply_to_tg_id) | list | last) or (ctx | rejectattr('is_outgoing') | list | last) %}
           {% set snippet = r.final_text if r.kind in ('resolved', 'dev_update') else ((tgt.text or '[รูปภาพ]') if tgt else r.final_text) %}
-          <li><a class="rv-item" href="#r{{ r.id }}" data-id="r{{ r.id }}">
+          <li><a class="rv-item" href="#r{{ r.id }}" data-id="r{{ r.id }}" data-chat="{{ r.chat_id }}">
             <span class="rv-av av-{{ r.chat_id % 6 }}">{{ title[:1] | upper }}</span>
             <span class="rv-it-main">
               <span class="rv-it-top"><strong>{{ title }}</strong><time title="{{ r.created_at | localtime }}">{{ r.created_at | ago }}</time></span>
@@ -142,15 +142,27 @@
       </header>
 
       <div class="rv-body rv-cols">
-        <p class="rv-label">บทสนทนาล่าสุด</p>
-        <div class="rv-convo">
-          {% for m in context.get(r.id, []) %}
-            <div class="rv-msg {{ 'out' if m.is_outgoing }} {{ 'target' if m.tg_message_id == r.reply_to_tg_id }}">
-              <div class="rv-meta"><b>{{ 'ทีมงาน' if m.is_outgoing else m.sender_name }}</b><time title="{{ m.date | localtime }}">{{ m.date | localtime_hm }}</time>{% if m.tg_message_id == r.reply_to_tg_id %}<em>ข้อความที่ร่างตอบ</em>{% endif %}</div>
-              {% if m.text %}<div class="rv-text">{{ m.text | linkify }}</div>{% endif %}
-              {% if m.media_path %}<a href="/media/{{ m.media_path }}" target="_blank"><img src="/media/{{ m.media_path }}" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>{% endif %}
+        {% set ctx = context.get(r.id, []) %}
+        <p class="rv-label">บทสนทนาล่าสุด <span class="rv-live" title="ข้อความใหม่ในแชทนี้จะขึ้นที่นี่ทันที"><i></i><span>สด</span></span></p>
+        <div class="rv-chat" data-chat="{{ r.chat_id }}">
+          <div class="rv-convo" data-last="{{ (ctx | map(attribute='id') | max) if ctx else 0 }}">
+            {% for m in ctx %}
+              <div class="rv-msg {{ 'out' if m.is_outgoing }} {{ 'target' if m.tg_message_id == r.reply_to_tg_id }}" data-id="{{ m.id }}" data-tg="{{ m.tg_message_id }}">
+                <div class="rv-meta"><b>{{ 'ทีมงาน' if m.is_outgoing else m.sender_name }}</b><time title="{{ m.date | localtime }}">{{ m.date | localtime_hm }}</time>{% if m.tg_message_id == r.reply_to_tg_id %}<em>ข้อความที่ร่างตอบ</em>{% endif %}</div>
+                {% if m.text %}<div class="rv-text">{{ m.text | linkify }}</div>{% endif %}
+                {% if m.media_path %}<a href="/media/{{ m.media_path }}" target="_blank"><img src="/media/{{ m.media_path }}" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>{% endif %}
+              </div>
+            {% else %}<p class="rv-muted">ไม่มีข้อความ</p>{% endfor %}
+          </div>
+          <button type="button" class="rv-newmsg" hidden>ข้อความใหม่ ↓</button>
+          <div class="rv-say">
+            <div class="rv-replying" hidden><span>ตอบถึง</span><q></q><button type="button" aria-label="ยกเลิกการตอบถึงข้อความนี้">{{ icon('x', 13) }}</button></div>
+            <div class="rv-say-row">
+              <textarea rows="1" maxlength="4000" placeholder="พิมพ์ตอบลูกค้าในแชทนี้…" title="Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ · แตะข้อความลูกค้าเพื่อตอบถึงข้อความนั้น" aria-label="พิมพ์ข้อความถึงลูกค้าในแชทนี้"></textarea>
+              <button type="button" class="rv-say-btn" aria-label="ส่งข้อความถึงลูกค้า" title="ส่ง (Enter)">{{ icon('send', 18) }}</button>
             </div>
-          {% else %}<p class="rv-muted">ไม่มีข้อความ</p>{% endfor %}
+            <p class="rv-say-err" role="alert" hidden></p>
+          </div>
         </div>
 
         <form method="post" action="/replies/{{ r.id }}/approve" class="rv-compose" id="approve-{{ r.id }}">
@@ -362,10 +374,148 @@
     }
   })();
 
-  // รีเฟรชเมื่อมีร่างใหม่ (ถ้าไม่ได้กำลังพิมพ์อยู่)
+  // แชทสด: ข้อความใหม่เข้ามาที่บทสนทนาทันที (WebSocket) + พิมพ์ตอบลูกค้าได้ในช่องใต้บทสนทนา
+  (() => {
+    const rv = document.getElementById('rv');
+    if (!rv || !rv.querySelector('.rv-chat')) return;
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const linkify = raw => String(raw).split(/(https?:\/\/[^\s<>"']+)/).map((p, i) => {
+      if (!(i % 2)) return esc(p);
+      const u = p.replace(/[.,;)]+$/, '');
+      return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u) + '</a>' + esc(p.slice(u.length));
+    }).join('');
+    const boxes = () => [...rv.querySelectorAll('.rv-chat')];
+    const boxFor = chat => boxes().filter(b => b.dataset.chat === String(chat));
+
+    function bubble(m) {
+      const d = document.createElement('div');
+      d.className = 'rv-msg fresh' + (m.out ? ' out' : '');
+      d.dataset.id = m.id; d.dataset.tg = m.tg;
+      d.innerHTML = '<div class="rv-meta"><b>' + esc(m.out ? 'ทีมงาน' : (m.name || '')) + '</b><time title="' + esc(m.at || '') + '">' + esc(m.hm || '') + '</time></div>'
+        + (m.text ? '<div class="rv-text">' + linkify(m.text) + '</div>' : '')
+        + (m.media ? '<a href="/media/' + encodeURIComponent(m.media) + '" target="_blank"><img src="/media/' + encodeURIComponent(m.media) + '" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>' : '');
+      return d;
+    }
+
+    function add(m) {
+      boxFor(m.chat).forEach(box => {
+        const cv = box.querySelector('.rv-convo');
+        if (m.id && cv.querySelector('[data-id="' + m.id + '"]')) return;
+        const near = cv.scrollHeight - cv.scrollTop - cv.clientHeight < 100;
+        const empty = cv.querySelector('.rv-muted'); if (empty) empty.remove();
+        cv.appendChild(bubble(m));
+        cv.dataset.last = Math.max(+cv.dataset.last || 0, +m.id || 0);
+        while (cv.querySelectorAll('.rv-msg').length > 80) cv.querySelector('.rv-msg').remove();
+        if (near || m.out) cv.scrollTop = cv.scrollHeight;
+        else { const nb = box.querySelector('.rv-newmsg'); if (nb) nb.hidden = false; }
+      });
+      if (!m.out) {
+        const item = rv.querySelector('.rv-item[data-chat="' + m.chat + '"]');
+        if (item) {
+          const sn = item.querySelector('.rv-it-snip'), tm = item.querySelector('time');
+          if (sn) sn.textContent = m.text || '[รูปภาพ]';
+          if (tm) { tm.textContent = 'เมื่อสักครู่'; tm.title = m.at || ''; }
+          item.classList.add('ping'); setTimeout(() => item.classList.remove('ping'), 1600);
+        }
+      }
+    }
+
+    async function catchUp() {
+      for (const box of boxes()) {
+        const cv = box.querySelector('.rv-convo');
+        try {
+          const r = await fetch('/api/chats/' + box.dataset.chat + '/messages?after=' + (+cv.dataset.last || 0), { credentials: 'same-origin' });
+          if (!r.ok) continue;
+          const d = await r.json();
+          (d.messages || []).forEach(add);
+        } catch (e) { /* เครือข่ายหลุดชั่วคราว ลองใหม่รอบถัดไป */ }
+      }
+    }
+
+    // เชื่อมต่อสด + เชื่อมใหม่อัตโนมัติ · ถ้า WebSocket ใช้ไม่ได้จะดึงทุก 4 วินาทีแทน
+    let ws = null, up = false, tries = 0;
+    const setLive = on => { up = on; rv.querySelectorAll('.rv-live').forEach(e => { e.classList.toggle('off', !on); e.lastElementChild.textContent = on ? 'สด' : 'กำลังเชื่อมต่อใหม่'; }); };
+    function connect() {
+      try { ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/live'); } catch (e) { setLive(false); return; }
+      ws.onopen = () => { tries = 0; setLive(true); catchUp(); };
+      ws.onmessage = ev => { let d; try { d = JSON.parse(ev.data); } catch (e) { return; } if (d.type === 'message' && d.message) add(d.message); };
+      ws.onclose = () => { setLive(false); setTimeout(connect, Math.min(10000, 1000 * ++tries)); };
+      ws.onerror = () => { try { ws.close(); } catch (e) {} };
+    }
+    connect();
+    setInterval(() => { if (!up && !document.hidden) catchUp(); }, 4000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
+
+    // ปุ่ม "ข้อความใหม่ ↓"
+    rv.addEventListener('click', e => {
+      const nb = e.target.closest('.rv-newmsg');
+      if (nb) { const cv = nb.parentElement.querySelector('.rv-convo'); cv.scrollTop = cv.scrollHeight; nb.hidden = true; return; }
+      // แตะข้อความลูกค้า = ตอบถึงข้อความนั้น (เหมือน Reply ใน Telegram)
+      const msg = e.target.closest('.rv-msg');
+      if (msg && !e.target.closest('a') && !msg.classList.contains('out') && !(window.getSelection && String(getSelection()))) {
+        const box = msg.closest('.rv-chat'), bar = box.querySelector('.rv-replying');
+        const was = msg.classList.contains('picked');
+        box.querySelectorAll('.rv-msg.picked').forEach(x => x.classList.remove('picked'));
+        if (was) { bar.hidden = true; delete box.dataset.reply; return; }
+        msg.classList.add('picked');
+        box.dataset.reply = msg.dataset.tg;
+        bar.querySelector('q').textContent = (msg.querySelector('.rv-text') ? msg.querySelector('.rv-text').textContent : '[รูปภาพ]').slice(0, 70);
+        bar.hidden = false;
+        box.querySelector('.rv-say textarea').focus();
+        return;
+      }
+      const x = e.target.closest('.rv-replying button');
+      if (x) { const box = x.closest('.rv-chat'); box.querySelectorAll('.rv-msg.picked').forEach(m => m.classList.remove('picked')); box.querySelector('.rv-replying').hidden = true; delete box.dataset.reply; return; }
+      const sb = e.target.closest('.rv-say-btn');
+      if (sb) say(sb.closest('.rv-chat'));
+    });
+    rv.addEventListener('scroll', e => {
+      const cv = e.target;
+      if (cv.classList && cv.classList.contains('rv-convo') && cv.scrollHeight - cv.scrollTop - cv.clientHeight < 40) {
+        const nb = cv.parentElement.querySelector('.rv-newmsg'); if (nb) nb.hidden = true;
+      }
+    }, true);
+    rv.addEventListener('keydown', e => {
+      const ta = e.target;
+      if (!(ta.matches && ta.matches('.rv-say textarea'))) return;
+      if (window.matchMedia && matchMedia('(pointer: coarse)').matches) return;   // มือถือ/แท็บเล็ต: Enter = ขึ้นบรรทัดใหม่ ส่งด้วยปุ่มลูกศร
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); say(ta.closest('.rv-chat')); }
+    });
+    rv.addEventListener('input', e => {
+      const ta = e.target;
+      if (ta.matches && ta.matches('.rv-say textarea')) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; }
+    });
+
+    async function say(box) {
+      const ta = box.querySelector('.rv-say textarea'), btn = box.querySelector('.rv-say-btn'), err = box.querySelector('.rv-say-err');
+      const text = ta.value.trim();
+      if (!text || ta.disabled) return;
+      err.hidden = true; ta.disabled = true; btn.disabled = true;
+      try {
+        const r = await fetch('/api/chats/' + box.dataset.chat + '/say', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, reply_to: box.dataset.reply ? +box.dataset.reply : null }),
+        });
+        let d = {};
+        try { d = await r.json(); } catch (e) {}
+        if (!r.ok || !d.ok) throw new Error(d.error || ('ส่งไม่สำเร็จ (' + r.status + ')'));
+        ta.value = ''; ta.style.height = 'auto';
+        box.querySelectorAll('.rv-msg.picked').forEach(m => m.classList.remove('picked'));
+        box.querySelector('.rv-replying').hidden = true; delete box.dataset.reply;
+        add(d.message);
+      } catch (e) {
+        err.textContent = e.message || 'ส่งไม่สำเร็จ'; err.hidden = false;
+      } finally {
+        ta.disabled = false; btn.disabled = false; ta.focus();
+      }
+    }
+  })();
+
+  // รีเฟรชเมื่อมีร่างใหม่ (ถ้าไม่ได้กำลังพิมพ์/แก้ข้อความค้างอยู่)
   let known = null;
   setInterval(async () => {
     if (document.activeElement && ['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName)) return;
+    if ([...document.querySelectorAll('.rv-say textarea, .rv-compose textarea')].some(t => t.value !== t.defaultValue)) return;
     const r = await fetch('/api/badge'); if (!r.ok) return;
     const d = await r.json();
     if (known === null) known = d.pending;
