@@ -85,6 +85,22 @@ class TelegramService:
             db.commit()
         return deleted
 
+    def mark_staff_history(self) -> int:
+        """ข้อความเก่าของทีมงานที่เพิ่งเพิ่มในรายชื่อ (ชื่อผู้ส่งเก็บเป็น "ชื่อ (@username)") -> นับเป็นข้อความทีมงาน
+        ขึ้นฝั่งทีมงานในบทสนทนา และไม่ต้องให้ AI วิเคราะห์ · คืนค่าจำนวนข้อความที่แก้"""
+        if not self.staff_users:
+            return 0
+        changed = 0
+        with SessionLocal() as db:
+            for username in self.staff_users:
+                pattern = "%(@" + username.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + ")"
+                changed += db.query(Message).filter(
+                    Message.sender_name.ilike(pattern, escape="\\"),
+                    (Message.is_outgoing.is_(False)) | (Message.analyzed.is_(False)),
+                ).update({Message.is_outgoing: True, Message.analyzed: True}, synchronize_session=False)
+            db.commit()
+        return changed
+
     def is_staff(self, msg, sender) -> bool:
         username = (getattr(sender, "username", None) or "").lower()
         return bool(msg.out) or (bool(username) and username in self.staff_users)

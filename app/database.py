@@ -374,6 +374,17 @@ def _add_missing_columns() -> None:
                 conn.execute(text(ddl))
 
 
+def merge_usernames(current: str, extra: list[str]) -> str:
+    """รวมรายชื่อ username (คั่นด้วยจุลภาค/บรรทัดใหม่) ไม่ซ้ำ (ไม่สนตัวพิมพ์ ไม่สน @) โดยคงของเดิมไว้ก่อน"""
+    items = [x.strip() for x in (current or "").replace("\n", ",").split(",") if x.strip()]
+    seen = {x.lstrip("@").lower() for x in items}
+    for name in extra:
+        if name.lstrip("@").lower() not in seen:
+            items.append(name)
+            seen.add(name.lstrip("@").lower())
+    return ", ".join(items)
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns()
@@ -387,6 +398,11 @@ def init_db() -> None:
             if row is not None and row.value == "auto":
                 row.value = "no"
             db.add(Setting(key="custom_ai_privacy_v1", value="1"))
+        # ครั้งเดียว: เพิ่มแอดมินกลุ่มลูกค้าเข้ารายชื่อทีมงาน (รวมกับที่ตั้งไว้เดิม ไม่ทับ · ลบออกที่หน้าตั้งค่าได้ ไม่ถูกเติมซ้ำ)
+        if db.get(Setting, "staff_usernames_v1") is None:
+            row = db.get(Setting, "staff_usernames")
+            row.value = merge_usernames(row.value if row is not None else "", ["Prime2499", "autosupportway"])
+            db.add(Setting(key="staff_usernames_v1", value="1"))
         if db.get(TelegramAccount, 1) is None:
             db.add(TelegramAccount(id=1))
         db.commit()

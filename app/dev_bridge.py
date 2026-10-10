@@ -48,6 +48,9 @@ def configure() -> None:
     telegram.set_dev(settings.get("dev_group_id"),
                      settings.get("dev_usernames", "") + "," + settings.get("bank_usernames", ""))
     telegram.set_staff(settings.get("staff_usernames", ""))
+    fixed = telegram.mark_staff_history()
+    if fixed:
+        log.info("ปรับข้อความเก่าของทีมงาน %s ข้อความให้อยู่ฝั่งทีมงาน", fixed)
     telegram.set_ignore(settings.get("ignore_usernames", ""), settings.get("ignore_bots") == "1")
     removed = telegram.purge_ignored()
     if removed:
