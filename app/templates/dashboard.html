@@ -14,17 +14,17 @@
 <section class="panel kpi-panel" aria-label="สรุปงาน">
   <div class="kpi">
     <div class="kpi-row-label">ตอนนี้</div>
-    <a class="kpi-cell" href="/replies"><span class="kpi-label">รออนุมัติ</span><span class="kpi-value {{ 'hot' if pending }}">{{ pending }}</span></a>
-    <a class="kpi-cell" href="/tickets"><span class="kpi-label">Ticket ค้าง</span><span class="kpi-value">{{ open_by_cat.values() | sum }}</span></a>
-    <a class="kpi-cell" href="/chats"><span class="kpi-label">แชทที่ติดตาม</span><span class="kpi-value">{{ monitored }}</span></a>
-    <a class="kpi-cell" href="/telegram"><span class="kpi-label">Telegram</span>
+    <a class="kpi-cell" href="/replies"><span class="kpi-ic {{ 'alive' if pending }}">{{ cicon('mail-clock', 24) }}</span><span class="kpi-label">รออนุมัติ</span><span class="kpi-value {{ 'hot' if pending }}">{{ pending }}</span></a>
+    <a class="kpi-cell" href="/tickets"><span class="kpi-ic">{{ cicon('clipboard-task', 24) }}</span><span class="kpi-label">Ticket ค้าง</span><span class="kpi-value">{{ open_by_cat.values() | sum }}</span></a>
+    <a class="kpi-cell" href="/chats"><span class="kpi-ic">{{ cicon('chat-multiple', 24) }}</span><span class="kpi-label">แชทที่ติดตาม</span><span class="kpi-value">{{ monitored }}</span></a>
+    <a class="kpi-cell" href="/telegram"><span class="kpi-ic {{ '' if connected else 'dim' }}">{{ cicon('telegram', 24) }}</span><span class="kpi-label">Telegram</span>
       <span class="kpi-value text"><span class="dot {{ 'live' if connected else 'off' }}"></span>{{ 'ออนไลน์' if connected else 'ไม่ได้เชื่อมต่อ' }}</span></a>
 
     <div class="kpi-row-label">วันนี้</div>
-    <div class="kpi-cell"><span class="kpi-label">ข้อความลูกค้าเข้า</span><span class="kpi-value">{{ today_counts.messages }}</span></div>
-    <div class="kpi-cell"><span class="kpi-label">Ticket เปิดใหม่</span><span class="kpi-value">{{ today_counts.tickets }}</span></div>
-    <div class="kpi-cell"><span class="kpi-label">แก้ไขเสร็จ</span><span class="kpi-value">{{ today_counts.resolved }}</span></div>
-    <div class="kpi-cell"><span class="kpi-label">คำตอบที่ส่ง</span><span class="kpi-value">{{ today_counts.sent }}</span></div>
+    <div class="kpi-cell"><span class="kpi-ic">{{ cicon('chat', 24) }}</span><span class="kpi-label">ข้อความลูกค้าเข้า</span><span class="kpi-value">{{ today_counts.messages }}</span></div>
+    <div class="kpi-cell"><span class="kpi-ic">{{ cicon('add-circle', 24) }}</span><span class="kpi-label">Ticket เปิดใหม่</span><span class="kpi-value">{{ today_counts.tickets }}</span></div>
+    <div class="kpi-cell"><span class="kpi-ic">{{ cicon('checkmark-circle', 24) }}</span><span class="kpi-label">แก้ไขเสร็จ</span><span class="kpi-value">{{ today_counts.resolved }}</span></div>
+    <div class="kpi-cell"><span class="kpi-ic">{{ cicon('send', 24) }}</span><span class="kpi-label">คำตอบที่ส่ง</span><span class="kpi-value">{{ today_counts.sent }}</span></div>
   </div>
 </section>
 
@@ -40,7 +40,7 @@
 {% if done < setup | length %}
 <section class="panel setup-bar">
   <div class="setup-head">
-    <h2>เริ่มต้นใช้งาน</h2>
+    <h2>{{ cicon('checkmark-circle', 20) }} เริ่มต้นใช้งาน</h2>
     <span class="setup-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ setup | length }}" aria-valuenow="{{ done }}"><span style="width: {{ (done / (setup | length) * 100) | round }}%"></span></span>
     <span class="count">เสร็จแล้ว {{ done }}/{{ setup | length }}</span>
   </div>
@@ -56,7 +56,7 @@
 <div class="grid-2 dash">
   <section class="panel">
     <div class="panel-head">
-      <h2>{{ icon('inbox', 16) }} รออนุมัติล่าสุด</h2>
+      <h2>{{ cicon('mail-clock', 20) }} รออนุมัติล่าสุด</h2>
       <a href="/replies" class="small">ดูทั้งหมด</a>
     </div>
     <div class="table-wrap">
@@ -79,7 +79,7 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>{{ icon('ticket', 16) }} Ticket ล่าสุด</h2>
+      <h2>{{ cicon('clipboard-task', 20) }} Ticket ล่าสุด</h2>
       <a href="/tickets?status=all" class="small">ดูทั้งหมด</a>
     </div>
     <div class="table-wrap">
@@ -105,7 +105,7 @@
 {# ---------- สถานะระบบ / ปัญหาค้าง ---------- #}
 <div class="grid-2 dash">
   <section class="panel">
-    <div class="panel-head"><h2>{{ icon('activity', 16) }} สถานะระบบ</h2></div>
+    <div class="panel-head"><h2>{{ cicon('data-trending', 20) }} สถานะระบบ</h2></div>
     <table class="grid-table">
       <thead><tr><th>รายการ</th><th class="shrink">สถานะ</th><th>รายละเอียด</th></tr></thead>
       <tbody>
@@ -121,7 +121,7 @@
   </section>
 
   <section class="panel">
-    <div class="panel-head"><h2>{{ icon('alert', 16) }} ปัญหาค้างตามประเภท</h2></div>
+    <div class="panel-head"><h2>{{ cicon('warning', 20) }} ปัญหาค้างตามประเภท</h2></div>
     {% set top = (open_by_cat.values() | max) if open_by_cat else 1 %}
     <table class="grid-table">
       <thead><tr><th>ประเภท</th><th class="shrink center">จำนวน</th><th>สัดส่วน</th></tr></thead>
@@ -151,7 +151,7 @@
 <section class="panel quota-fold" id="quota">
   <details {{ 'open' if ns.warn }}>
     <summary class="panel-head">
-      <h2>{{ icon('gauge', 16) }} โควตา Gemini วันนี้{% if qi.key_count > 1 %} <span class="tag st-resolved">{{ qi.key_count }} คีย์ · สลับอัตโนมัติ</span>{% endif %}</h2>
+      <h2>{{ cicon('gauge', 20) }} โควตา Gemini วันนี้{% if qi.key_count > 1 %} <span class="tag st-resolved">{{ qi.key_count }} คีย์ · สลับอัตโนมัติ</span>{% endif %}</h2>
       <span class="quota-sum">
         ใช้ <b>{{ qi.total_used }}</b>{% if qi.total_limit %} / {{ qi.total_limit }}{% endif %} ครั้ง{% if qi.total_limit %} · เหลือ <b>{{ qi.total_left }}</b>
         <span class="qbar"><span style="width: {{ tpct }}%"></span></span>{% endif %}

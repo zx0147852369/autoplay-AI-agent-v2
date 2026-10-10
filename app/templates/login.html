@@ -2,52 +2,72 @@
 {% from "_icons.html" import icon %}
 {% block title %}เข้าสู่ระบบ{% endblock %}
 {% block auth %}
-<div class="login">
+<div class="lg">
 
-  <main class="login-main">
-    <div class="login-card">
-      <img class="login-logo logo-light" src="/static/brand/logo.png" alt="autopay" width="200" height="41"><img class="login-logo logo-dark" src="/static/brand/logo-dark.png" alt="autopay" width="200" height="41">
-      <h1>เข้าสู่ระบบหลังบ้าน</h1>
-      <p class="login-sub">ใช้ชื่อผู้ใช้และรหัสผ่านที่ผู้ดูแลระบบสร้างให้</p>
+  <div class="lg-side">
+    <header class="lg-top">
+      <span class="lg-logo" role="img" aria-label="autopay"><img class="logo-light" src="/static/brand/logo.png" alt="" width="640" height="133"><img class="logo-dark" src="/static/brand/logo-dark.png" alt="" width="640" height="133"></span>
+    </header>
 
-      {% if need_setup %}
-        <div class="login-alert">{{ icon('alert', 16) }}<span>ยังไม่ได้ตั้งค่า <code>ADMIN_PASSWORD</code> บนเซิร์ฟเวอร์ ตั้งค่าใน Variables แล้วรีสตาร์ทระบบ</span></div>
-      {% endif %}
-      {% for message in login_errors %}
-        <div class="login-alert" role="alert">{{ icon('alert', 16) }}<span>{{ message }}</span></div>
-      {% endfor %}
+    <main class="lg-main">
+      <div class="lg-stage">
+        <img class="lg-mascot" src="/static/brand/mark-360.png" alt="" width="168" height="168" aria-hidden="true">
 
-      <form method="post" action="/login" class="login-form" id="loginForm">
-        <label class="login-field">
-          <span>ชื่อผู้ใช้</span>
-          <span class="input-wrap">{{ icon('user', 17) }}<input name="username" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false"></span>
-        </label>
-        <label class="login-field">
-          <span>รหัสผ่าน</span>
-          <span class="input-wrap">{{ icon('lock', 17) }}<input name="password" id="password" type="password" required autocomplete="current-password">
-            <button type="button" class="reveal" id="reveal" aria-label="แสดงรหัสผ่าน" title="แสดงรหัสผ่าน">
-              <span class="when-hidden">{{ icon('eye', 17) }}</span><span class="when-shown">{{ icon('eye-off', 17) }}</span>
-            </button>
-          </span>
-        </label>
-        <p class="caps-hint" id="capsHint" hidden>{{ icon('alert', 13) }} Caps Lock เปิดอยู่</p>
-        <button class="login-submit" id="submitBtn">เข้าสู่ระบบ</button>
-      </form>
+        <section class="lg-card" aria-labelledby="lgTitle">
+          <p class="lg-hello" id="hello" hidden></p>
+          <h1 id="lgTitle">ยินดีต้อนรับกลับ</h1>
+          <p class="lg-sub">เข้าสู่ระบบเพื่อดูแลลูกค้าของวันนี้</p>
 
-      <p class="login-help">ลืมรหัสผ่าน? ติดต่อผู้ดูแลระบบให้ตั้งรหัสใหม่</p>
-    </div>
-  </main>
+          {% if need_setup %}
+            <div class="lg-alert">{{ icon('alert', 16) }}<span>ยังไม่ได้ตั้งค่า <code>ADMIN_PASSWORD</code> บนเซิร์ฟเวอร์ ตั้งค่าใน Variables แล้วรีสตาร์ทระบบ</span></div>
+          {% endif %}
+          {% for message in login_errors %}
+            <div class="lg-alert" role="alert">{{ icon('alert', 16) }}<span>{{ message }}</span></div>
+          {% endfor %}
 
-  <aside class="login-aside" aria-hidden="true">
-    <div class="la-inner">
-      <span class="la-eyebrow">Support Desk</span>
-      <h2>ระบบหลังบ้านทีมดูแลลูกค้า</h2>
-      <p class="la-lead">อ่านแชทลูกค้า ร่างคำตอบด้วย AI และส่งต่อปัญหาให้โปรแกรมเมอร์ ได้ในที่เดียว</p>
-      <ul class="la-points">
-        <li>{{ icon('check-circle', 18) }}<span><strong>อนุมัติก่อนส่งทุกครั้ง</strong>ร่างคำตอบจะถึงลูกค้าเมื่อทีมงานกดอนุมัติเท่านั้น</span></li>
-        <li>{{ icon('check-circle', 18) }}<span><strong>ติดตาม Ticket ปัญหา</strong>สรุปพร้อมรูปภาพและลิงก์เว็บไซต์ของลูกค้า</span></li>
-        <li>{{ icon('check-circle', 18) }}<span><strong>แจ้งเตือนผ่าน LINE</strong>อนุมัติหรือไม่ส่งได้จากมือถือ</span></li>
-      </ul>
+          <form method="post" action="/login" class="lg-form" id="loginForm">
+            <label class="lg-field">
+              <span>ชื่อผู้ใช้</span>
+              <input name="username" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false">
+            </label>
+            <label class="lg-field">
+              <span>รหัสผ่าน</span>
+              <span class="lg-box">
+                <input name="password" id="password" type="password" required autocomplete="current-password">
+                <button type="button" class="lg-reveal" id="reveal" aria-controls="password" aria-pressed="false">แสดง</button>
+              </span>
+            </label>
+            <p class="lg-caps" id="capsHint" hidden>{{ icon('alert', 13) }} Caps Lock เปิดอยู่</p>
+            <button class="lg-submit" id="submitBtn"><span>เข้าสู่ระบบ</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </form>
+        </section>
+
+        <p class="lg-help">ลืมรหัสผ่าน? ติดต่อผู้ดูแลระบบให้ตั้งรหัสใหม่</p>
+      </div>
+    </main>
+
+    <footer class="lg-foot">ระบบหลังบ้าน autopay · สำหรับทีมงานที่ได้รับอนุญาตเท่านั้น</footer>
+  </div>
+
+  {# แผงด้านขวา (เฉพาะจอกว้าง): ภาพประกอบวิธีทำงานของระบบ ตัวอย่างข้อความเป็นข้อมูลสมมติ #}
+  <aside class="lg-show" aria-hidden="true">
+    <i class="coin c1">฿</i><i class="coin c2">฿</i><i class="coin c3">฿</i><i class="coin c4">฿</i><i class="coin c5">฿</i>
+    <div class="lg-show-in">
+      <h2>ลูกค้าทักมา<br>ทีมตอบทันทุกเรื่อง</h2>
+      <p class="lg-show-sub">AI ร่างคำตอบให้ ทีมงานตรวจแล้วค่อยกดส่ง ส่วนปัญหาที่ต้องแก้ก็ส่งต่อถึงโปรแกรมเมอร์ได้ในที่เดียว</p>
+
+      <div class="lg-demo">
+        <div class="demo-chip line"><span class="dot"></span>แจ้งเตือนเข้า LINE ทันที</div>
+        <div class="demo-card">
+          <div class="demo-head"><span class="demo-av">ส</span><strong>ลูกค้า A (Support)</strong><span class="demo-pill">รออนุมัติ</span></div>
+          <div class="demo-msg in"><span class="demo-who">สมชาย · 14:02</span>ฝากเงินเมื่อวานแล้ว ยอดยังไม่เข้าเลยครับ ส่งสลิปให้แล้ว</div>
+          <div class="demo-msg ai"><span class="demo-who">ร่างคำตอบจาก AI</span>ขอบคุณที่แจ้งค่ะ ทีมงานกำลังตรวจสอบรายการฝากให้นะคะ รบกวนแจ้งยูสเซอร์ด้วยค่ะ</div>
+          <div class="demo-actions"><span class="demo-btn go">ส่งข้อความ</span><span class="demo-btn">ไม่ส่ง</span></div>
+        </div>
+        <div class="demo-chip ticket">Ticket #128 · ฝากเงินไม่เข้า <i>ด่วน</i></div>
+      </div>
+
+      <img class="lg-show-mascot" src="/static/brand/mark-360.png" alt="" width="236" height="236">
     </div>
   </aside>
 </div>
@@ -57,14 +77,24 @@
   reveal.addEventListener('click', () => {
     const show = pw.type === 'password';
     pw.type = show ? 'text' : 'password';
-    reveal.classList.toggle('on', show);
-    reveal.setAttribute('aria-label', show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+    reveal.textContent = show ? 'ซ่อน' : 'แสดง';
+    reveal.setAttribute('aria-pressed', show ? 'true' : 'false');
     pw.focus();
   });
   const caps = document.getElementById('capsHint');
   pw.addEventListener('keyup', e => { caps.hidden = !(e.getModifierState && e.getModifierState('CapsLock')); });
   document.getElementById('loginForm').addEventListener('submit', () => {
-    const b = document.getElementById('submitBtn'); b.disabled = true; b.textContent = 'กำลังเข้าสู่ระบบ…';
+    const b = document.getElementById('submitBtn'); b.disabled = true; b.querySelector('span').textContent = 'กำลังเข้าสู่ระบบ…';
   });
+  // ทักทายตามช่วงเวลาและวันที่ (เวลาไทย) · ถ้าเบราว์เซอร์ไม่รองรับก็ไม่แสดง
+  try {
+    const now = new Date(), tz = 'Asia/Bangkok';
+    const h = +new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: tz }).format(now);
+    const part = h >= 5 && h < 12 ? 'เช้า' : h >= 12 && h < 16 ? 'บ่าย' : h >= 16 && h < 19 ? 'เย็น' : 'ค่ำ';
+    const day = new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }).format(now);
+    const hello = document.getElementById('hello');
+    hello.textContent = 'สวัสดีตอน' + part + ' · ' + day;
+    hello.hidden = false;
+  } catch (e) {}
 </script>
 {% endblock %}

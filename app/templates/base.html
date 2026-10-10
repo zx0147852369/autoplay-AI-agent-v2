@@ -27,14 +27,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=75">
+  <link rel="stylesheet" href="/static/style.css?v=80">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
 {% if user %}
 {% macro nav_item(href, ic, label, badge='') -%}
   {% set active = (path == '/' and href == '/') or (href != '/' and path.startswith(href)) %}
-  <a href="{{ href }}" class="nav-item {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ icon(ic, 18) }}<span>{{ label }}</span>
+  <a href="{{ href }}" class="nav-item {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ cicon(ic, 20) }}<span>{{ label }}</span>
     {%- if badge %}<span class="nav-badge {{ 'hot' if badge == 'badge-pending' }}" id="{{ badge }}"></span>{% endif %}</a>
 {%- endmacro %}
 <a class="skip-link" href="#main">ข้ามไปยังเนื้อหา</a>
@@ -45,23 +45,23 @@
   </a>
   <nav class="nav">
     {% if user.role in ('admin', 'agent') %}
-      {{ nav_item('/', 'layout-dashboard', 'ภาพรวม') }}
-      {{ nav_item('/replies', 'inbox', 'รออนุมัติ', 'badge-pending') }}
+      {{ nav_item('/', 'home', 'ภาพรวม') }}
+      {{ nav_item('/replies', 'mail-clock', 'รออนุมัติ', 'badge-pending') }}
     {% endif %}
-    {{ nav_item('/tickets', 'ticket', 'Tickets', 'badge-tickets') }}
+    {{ nav_item('/tickets', 'clipboard-task', 'Tickets', 'badge-tickets') }}
     {% if user.role in ('admin', 'agent') %}
-      {{ nav_item('/chats', 'messages', 'แชทลูกค้า') }}
-      {{ nav_item('/guides', 'book-open', 'คู่มือตอบคำถาม') }}
+      {{ nav_item('/chats', 'chat-multiple', 'แชทลูกค้า') }}
+      {{ nav_item('/guides', 'book-open-lightbulb', 'คู่มือตอบคำถาม') }}
     {% endif %}
     {% if user.role == 'admin' %}
       <div class="nav-label">ระบบ</div>
-      {{ nav_item('/telegram', 'send', 'บัญชี Telegram') }}
+      {{ nav_item('/telegram', 'telegram', 'บัญชี Telegram') }}
       {{ nav_item('/settings', 'settings', 'ตั้งค่า') }}
       {{ nav_item('/system', 'gauge', 'ทรัพยากรเครื่อง') }}
-      {{ nav_item('/logs', 'file-text', 'Log ระบบ') }}
+      {{ nav_item('/logs', 'logs', 'Log ระบบ') }}
       {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
-      {{ nav_item('/brain', 'lightbulb', 'สมอง AI') }}
-      {{ nav_item('/ai', 'plug', 'เชื่อมต่อ AI') }}
+      {{ nav_item('/brain', 'data-trending', 'สมอง AI') }}
+      {{ nav_item('/ai', 'apps-list', 'เชื่อมต่อ AI') }}
     {% endif %}
   </nav>
   {% if quota_info and quota_info.is_gemini and quota_info.current %}

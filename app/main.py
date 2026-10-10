@@ -150,6 +150,23 @@ class CachedStatic(StaticFiles):
 
 
 app.mount("/static", CachedStatic(directory=APP_DIR / "static"), name="static")
+
+
+# เบราว์เซอร์ขอไอคอนที่ราก (/favicon.ico) เองเมื่อเปิดหน้าที่ไม่ใช่ HTML, บุ๊กมาร์ก หรือประวัติ -> ตอบด้วยโลโก้ ไม่ใช่ 404
+def _brand_file(name: str, media_type: str):
+    path = APP_DIR / "static" / "brand" / name
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "public, max-age=604800"})
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return _brand_file("favicon.ico", "image/x-icon")
+
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+async def apple_touch_icon():
+    return _brand_file("mark-180.png", "image/png")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
 
