@@ -9,8 +9,10 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
     event,
+    func,
     inspect,
     select,
     text,
@@ -109,6 +111,19 @@ class Message(Base):
     sent_by: Mapped[str] = mapped_column(String(64), default="", server_default="")  # พนักงานที่กดส่งจากเว็บ/LINE (ว่าง = ไม่ทราบ)
     date: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     analyzed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ChatRead(Base):
+    """ตำแหน่งที่พนักงานแต่ละคนอ่านแชทถึง (Message.id ล่าสุดที่อ่านแล้ว) ใช้นับข้อความลูกค้าที่ยังไม่ได้อ่านรายคน"""
+
+    __tablename__ = "chat_reads"
+    __table_args__ = (UniqueConstraint("user_id", "chat_id", name="uq_chat_reads_user_chat"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    last_id: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Ticket(Base):
@@ -425,6 +440,13 @@ def init_db() -> None:
             row = db.get(Setting, "staff_usernames")
             row.value = merge_usernames(row.value if row is not None else "", ["Prime2499", "autosupportway"])
             db.add(Setting(key="staff_usernames_v1", value="1"))
+        # ครั้งเดียว: ข้อความเก่าทั้งหมดนับเป็น "อ่านแล้ว" ของผู้ใช้ที่มีอยู่ (นับเฉพาะข้อความใหม่หลังจากนี้)
+        if db.get(Setting, "chat_reads_v1") is None:
+            db.flush()
+            latest = db.execute(select(Message.chat_id, func.max(Message.id)).group_by(Message.chat_id)).all()
+            for uid in list(db.scalars(select(User.id))):
+                db.add_all([ChatRead(user_id=uid, chat_id=c, last_id=m or 0) for c, m in latest])
+            db.add(Setting(key="chat_reads_v1", value="1"))
         if db.get(TelegramAccount, 1) is None:
             db.add(TelegramAccount(id=1))
         db.commit()

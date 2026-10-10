@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, chatbus, custom_ai, dev_bridge, learning, line_service, privacy, quota, sysinfo
+from . import ai_service, analyzer, chatbus, custom_ai, dev_bridge, learning, line_service, privacy, quota, sysinfo, unread
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
@@ -539,11 +539,12 @@ async def api_sysinfo(request: Request):
 
 @app.get("/api/badge")
 async def badge(request: Request):
-    current_user(request)
+    user = current_user(request)
     with SessionLocal() as db:
         pending = db.scalar(select(func.count(Reply.id)).where(Reply.status == "pending")) + dev_bridge.pending_count(db)
         open_tickets = db.scalar(select(func.count(Ticket.id)).where(Ticket.status.in_(analyzer.OPEN_STATUSES)))
-    return JSONResponse({"pending": pending, "open_tickets": open_tickets})
+        unread_total = unread.total(db, user.id) if user.role in ("admin", "agent") else 0
+    return JSONResponse({"pending": pending, "open_tickets": open_tickets, "unread": unread_total})
 
 
 # ---------------------------------------------------------------- telegram account
@@ -629,6 +630,7 @@ async def chats_page(request: Request):
         unanalyzed = dict(db.execute(
             select(Message.chat_id, func.count(Message.id))
             .where(Message.analyzed.is_(False), Message.is_outgoing.is_(False)).group_by(Message.chat_id)).all())
+        unread_by_chat = unread.counts(db, user.id)
     summary = {
         "total": len(chats),
         "monitored": sum(1 for c in chats if c.monitored),
@@ -637,6 +639,7 @@ async def chats_page(request: Request):
     }
     return render(request, "chats.html", user, chats=chats, counts=counts, today_counts=today_counts,
                   last_at=last_at, open_tickets=open_tickets, pending=pending, summary=summary, unanalyzed=unanalyzed,
+                  unread_by_chat=unread_by_chat,
                   dev_group_id=telegram.dev_group_id,
                   connected=telegram.connected, ai_errors=analyzer.last_error)
 
@@ -710,6 +713,8 @@ async def chat_detail(request: Request, chat_id: int):
         ))[::-1]
     if not chat:
         return back("/chats")
+    with SessionLocal() as db:
+        unread.mark_read(db, user.id, chat_id)  # เปิดแชทนี้ดู = อ่านแล้ว
     view = build_chat_view(messages)
     customers = {i["key"] for i in view if not i["m"].is_outgoing}
     return render(request, "chat_detail.html", user, chat=chat, messages=messages, view=view,
@@ -800,7 +805,23 @@ async def api_chat_say(request: Request, chat_id: int, body: SayIn):
         log.exception("manual message to chat %s failed", chat_id)
         return JSONResponse({"ok": False, "error": f"ส่งไม่สำเร็จ: {e}"}, status_code=502)
     log.info("%s พิมพ์ตอบในแชท %s จากหน้าเว็บ", user.username, chat_id)
+    with SessionLocal() as db:
+        unread.mark_read(db, user.id, chat_id)  # ตอบแล้ว = อ่านแล้ว
     return JSONResponse({"ok": True, "message": data})
+
+
+class ReadIn(BaseModel):
+    upto: int | None = None
+
+
+@app.post("/api/chats/{chat_id}/read")
+async def api_chat_read(request: Request, chat_id: int, body: ReadIn):
+    """ทำเครื่องหมายว่าอ่านแชทนี้แล้ว (ถึงข้อความ upto หรือล่าสุด) · นับแยกรายคน"""
+    user = current_user(request, "agent")
+    with SessionLocal() as db:
+        last = unread.mark_read(db, user.id, chat_id, body.upto)
+        total = unread.total(db, user.id)
+    return JSONResponse({"ok": True, "last": last, "unread": total})
 
 
 # ---------------------------------------------------------------- replies (approval queue)
@@ -818,6 +839,7 @@ async def replies_page(request: Request, status: str = "pending", box: str = "")
         for t in db.scalars(select(Ticket).where(Ticket.dev_status == "pending").order_by(Ticket.created_at)):
             dev_queue.append({"ticket": t, "photos": [a.media_path for a in t.attachments][:dev_bridge.MAX_PHOTOS],
                               "text": dev_bridge.format_ticket(t, chat_titles.get(t.chat_id, str(t.chat_id)))})
+        unread_by_chat = unread.counts(db, user.id, {r.chat_id for r in replies}) if status == "pending" else {}
         context = {}
         for r in replies:
             if r.status == "pending":
@@ -830,7 +852,7 @@ async def replies_page(request: Request, status: str = "pending", box: str = "")
     if box not in ("customer", "dev"):
         box = "dev" if dev_queue and not (status == "pending" and replies) else "customer"
     return render(request, "replies.html", user, replies=replies, status=status, chat_titles=chat_titles,
-                  context=context, status_counts=status_counts, dev_queue=dev_queue, box=box,
+                  context=context, status_counts=status_counts, dev_queue=dev_queue, box=box, unread_by_chat=unread_by_chat,
                   dev_group_title=chat_titles.get(telegram.dev_group_id, "กลุ่มโปรแกรมเมอร์"))
 
 
@@ -915,6 +937,10 @@ async def replies_approve(request: Request, reply_id: int, text: str = Form(...)
         flash(request, "ข้อความนี้ถูกดำเนินการไปแล้ว", "error")
         return back("/replies")
     status, msg = await deliver_reply(reply_id, text, user.username, media=media)
+    with SessionLocal() as db:
+        row = db.get(Reply, reply_id)
+        if row:
+            unread.mark_read(db, user.id, row.chat_id)
     flash(request, msg, "ok" if status == "sent" else "error")
     return back("/replies")
 
@@ -923,6 +949,10 @@ async def replies_approve(request: Request, reply_id: int, text: str = Form(...)
 async def replies_reject(request: Request, reply_id: int, reason: str = Form("")):
     user = current_user(request, "agent")
     if reject_reply(reply_id, reason, user.username):
+        with SessionLocal() as db:
+            row = db.get(Reply, reply_id)
+            if row:
+                unread.mark_read(db, user.id, row.chat_id)
         flash(request, "ปฏิเสธการส่งข้อความแล้ว (ไม่ได้ส่งถึงลูกค้า)")
     return back("/replies")
 

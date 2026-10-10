@@ -2078,3 +2078,23 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .rv-tools .rv-inline.rv-own { margin-top: 0; }
 .rv-tools .rv-inline.rv-own input { height: 44px; font-size: .95rem; }
 .rv .rv-tools .rv-inline.rv-own .rv-btn { height: 44px; padding: 0 18px; }
+
+/* ---- ข้อความลูกค้าที่ยังไม่ได้อ่าน + เอารูปโปรไฟล์ (วงกลมตัวอักษร) ออก ---- */
+.rv-it-row { display: flex; align-items: flex-start; gap: 8px; }
+.rv-it-row .rv-it-snip { flex: 1; min-width: 0; }
+.rv-un {
+  flex-shrink: 0; display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px; margin-top: 1px;
+  border-radius: 99px; background: var(--pine); color: #fff; font-size: .76rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.rv-un[hidden] { display: none; }
+.rv-item.unread .rv-it-top strong { font-weight: 800; }
+.rv-item.unread .rv-it-snip { color: var(--ink); font-weight: 600; }
+.rv-item.unread .rv-it-top time { color: var(--pine); font-weight: 700; }
+.rv-tid { font-family: var(--mono); font-size: .86em; font-weight: 600; color: var(--blue); }
+.nav-badge.unread { background: var(--pine); color: #fff; }
+.unread-pill {
+  display: inline-flex; align-items: center; margin-left: 8px; padding: 0 9px; border-radius: 99px; vertical-align: 1px;
+  background: var(--pine); color: #fff; font-size: .74rem; font-weight: 700; line-height: 1.7;
+}
+.title-link.is-unread { font-weight: 800; }
+[data-theme="dark"] .rv-un, [data-theme="dark"] .nav-badge.unread, [data-theme="dark"] .unread-pill { background: #178a5d; }

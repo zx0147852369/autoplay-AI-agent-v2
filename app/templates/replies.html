@@ -30,9 +30,8 @@
         {% for item in dev_queue %}
           {% set t = item.ticket %}
           <li><a class="rv-item" href="#t{{ t.id }}" data-id="t{{ t.id }}">
-            <span class="rv-av dev">#{{ t.id }}</span>
             <span class="rv-it-main">
-              <span class="rv-it-top"><strong>{{ t.title }}</strong><time title="{{ t.created_at | localtime }}">{{ t.created_at | ago }}</time></span>
+              <span class="rv-it-top"><strong><span class="rv-tid">#{{ t.id }}</span> {{ t.title }}</strong><time title="{{ t.created_at | localtime }}">{{ t.created_at | ago }}</time></span>
               <span class="rv-it-snip">{{ chat_titles.get(t.chat_id, t.chat_id) }} · {{ CATEGORIES.get(t.category, t.category) }}</span>
               <span class="rv-it-tags"><i class="rv-chip sev-{{ t.severity }}">{{ SEVERITY_LABELS[t.severity] }}</i>{% if item.photos %}<i class="rv-chip">รูป {{ item.photos | length }}</i>{% endif %}</span>
             </span>
@@ -44,11 +43,11 @@
           {% set ctx = context.get(r.id, []) %}
           {% set tgt = (ctx | selectattr('tg_message_id', 'equalto', r.reply_to_tg_id) | list | last) or (ctx | rejectattr('is_outgoing') | list | last) %}
           {% set snippet = r.final_text if r.kind in ('resolved', 'dev_update') else ((tgt.text or '[รูปภาพ]') if tgt else r.final_text) %}
-          <li><a class="rv-item" href="#r{{ r.id }}" data-id="r{{ r.id }}" data-chat="{{ r.chat_id }}">
-            <span class="rv-av av-{{ r.chat_id % 6 }}">{{ title[:1] | upper }}</span>
+          {% set un = unread_by_chat.get(r.chat_id, 0) %}
+          <li><a class="rv-item {{ 'unread' if un }}" href="#r{{ r.id }}" data-id="r{{ r.id }}" data-chat="{{ r.chat_id }}" data-unread="{{ un }}">
             <span class="rv-it-main">
               <span class="rv-it-top"><strong>{{ title }}</strong><time title="{{ r.created_at | localtime }}">{{ r.created_at | ago }}</time></span>
-              <span class="rv-it-snip">{{ snippet }}</span>
+              <span class="rv-it-row"><span class="rv-it-snip">{{ snippet }}</span><b class="rv-un" title="ข้อความลูกค้าที่ยังไม่ได้อ่าน" {{ 'hidden' if not un }}>{{ un or '' }}</b></span>
               {% if r.ticket_id or r.kind in ('resolved', 'dev_update') %}
               <span class="rv-it-tags">
                 {% if r.ticket_id %}<i class="rv-chip">ticket #{{ r.ticket_id }}</i>{% endif %}
@@ -72,9 +71,8 @@
     <section class="rv-pane" id="pane-t{{ t.id }}" data-id="t{{ t.id }}">
       <header class="rv-ph">
         <button type="button" class="rv-back" aria-label="กลับไปรายการ">{{ icon('arrow-left', 20) }}</button>
-        <span class="rv-av dev big">#{{ t.id }}</span>
         <div class="rv-ph-text">
-          <h2>{{ t.title }}</h2>
+          <h2><span class="rv-tid">#{{ t.id }}</span> {{ t.title }}</h2>
           <p><i class="rv-chip sev-{{ t.severity }}">{{ SEVERITY_LABELS[t.severity] }}</i> {{ CATEGORIES.get(t.category, t.category) }} · {{ t.created_at | localtime }}</p>
         </div>
         <a class="rv-link" href="/tickets/{{ t.id }}">{{ icon('external', 14) }} ดู ticket</a>
@@ -129,7 +127,6 @@
     <section class="rv-pane" id="pane-r{{ r.id }}" data-id="r{{ r.id }}">
       <header class="rv-ph">
         <button type="button" class="rv-back" aria-label="กลับไปรายการ">{{ icon('arrow-left', 20) }}</button>
-        <span class="rv-av big av-{{ r.chat_id % 6 }}">{{ title[:1] | upper }}</span>
         <div class="rv-ph-text">
           <h2>{{ title }}</h2>
           <p>ร่างเมื่อ {{ r.created_at | localtime }}
@@ -301,6 +298,24 @@
     const KEY = 'rv:' + rv.dataset.box;
     let cur = '';
 
+    // ข้อความลูกค้าที่ยังไม่ได้อ่าน (นับรายคน): เปิดแชทดู = อ่านแล้ว · ข้อความใหม่ที่เข้ามาระหว่างที่ไม่ได้ดูอยู่ = ขึ้นป้ายเพิ่ม
+    function markRead(id) {
+      const item = items.find(a => a.dataset.id === id);
+      if (!item || !item.dataset.chat || document.hidden) return;
+      const had = item.classList.contains('unread') || (+item.dataset.unread || 0) > 0;
+      item.classList.remove('unread'); item.dataset.unread = '0';
+      const un = item.querySelector('.rv-un'); if (un) { un.hidden = true; un.textContent = ''; }
+      const pane = panes.find(p => p.dataset.id === id);
+      const last = pane && pane.querySelector('.rv-convo') ? (+pane.querySelector('.rv-convo').dataset.last || null) : null;
+      if (!had && !(window.__rvDirty && window.__rvDirty[id])) return;
+      if (window.__rvDirty) window.__rvDirty[id] = false;
+      fetch('/api/chats/' + item.dataset.chat + '/read', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upto: last }),
+      }).then(() => { if (typeof refreshBadges === 'function') refreshBadges(); }).catch(() => {});
+    }
+    window.__rvMarkRead = markRead;
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && cur) markRead(cur); });
+
     function show(id, opts) {
       opts = opts || {};
       cur = id;
@@ -321,6 +336,7 @@
         if (cv) cv.scrollTop = cv.scrollHeight;
         const body = pane.querySelector('.rv-body'); if (body) body.scrollTop = 0;
       }
+      markRead(id);
     }
     function close() {
       rv.classList.remove('open');
@@ -481,6 +497,16 @@
           if (sn) sn.textContent = m.text || '[รูปภาพ]';
           if (tm) { tm.textContent = 'เมื่อสักครู่'; tm.title = m.at || ''; }
           item.classList.add('ping'); setTimeout(() => item.classList.remove('ping'), 1600);
+          // กำลังเปิดแชทนี้อยู่และมองเห็นหน้า = อ่านแล้ว · ไม่ใช่ = เพิ่มป้ายยังไม่ได้อ่าน
+          const phone = window.matchMedia && matchMedia('(max-width: 900px)').matches;
+          const watching = item.classList.contains('on') && !document.hidden && (!phone || rv.classList.contains('open')) && boxFor(m.chat).some(b => b.closest('.rv-pane.on'));
+          if (watching) { window.__rvDirty = window.__rvDirty || {}; window.__rvDirty[item.dataset.id] = true; window.__rvMarkRead && window.__rvMarkRead(item.dataset.id); }
+          else {
+            const n = (+item.dataset.unread || 0) + 1;
+            item.dataset.unread = String(n); item.classList.add('unread');
+            const un = item.querySelector('.rv-un'); if (un) { un.textContent = String(n); un.hidden = false; }
+            if (typeof refreshBadges === 'function') refreshBadges();
+          }
         }
       }
     }

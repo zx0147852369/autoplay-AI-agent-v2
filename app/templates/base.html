@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=87">
+  <link rel="stylesheet" href="/static/style.css?v=88">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
@@ -35,7 +35,7 @@
 {% macro nav_item(href, ic, label, badge='') -%}
   {% set active = (path == '/' and href == '/') or (href != '/' and path.startswith(href)) %}
   <a href="{{ href }}" class="nav-item {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ cicon(ic, 20) }}<span>{{ label }}</span>
-    {%- if badge %}<span class="nav-badge {{ 'hot' if badge == 'badge-pending' }}" id="{{ badge }}"></span>{% endif %}</a>
+    {%- if badge %}<span class="nav-badge {{ 'hot' if badge == 'badge-pending' }} {{ 'unread' if badge == 'badge-unread' }}" id="{{ badge }}"{% if badge == 'badge-unread' %} title="ข้อความลูกค้าที่ยังไม่ได้อ่าน"{% endif %}></span>{% endif %}</a>
 {%- endmacro %}
 <a class="skip-link" href="#main">ข้ามไปยังเนื้อหา</a>
 <aside class="sidebar" id="sidebar">
@@ -50,7 +50,7 @@
     {% endif %}
     {{ nav_item('/tickets', 'clipboard-task', 'Tickets', 'badge-tickets') }}
     {% if user.role in ('admin', 'agent') %}
-      {{ nav_item('/chats', 'chat-multiple', 'แชทลูกค้า') }}
+      {{ nav_item('/chats', 'chat-multiple', 'แชทลูกค้า', 'badge-unread') }}
       {{ nav_item('/guides', 'book-open-lightbulb', 'คู่มือตอบคำถาม') }}
     {% endif %}
     {% if user.role == 'admin' %}
@@ -383,6 +383,8 @@
       const t = document.getElementById('badge-tickets');
       if (p) p.textContent = d.pending || '';
       if (t) t.textContent = d.open_tickets || '';
+      const un = document.getElementById('badge-unread');
+      if (un) un.textContent = d.unread ? (d.unread > 99 ? '99+' : d.unread) : '';
       const tp = document.getElementById('tab-pending'), tt = document.getElementById('tab-tickets');
       if (tp) tp.textContent = d.pending || '';
       if (tt) tt.textContent = d.open_tickets || '';
