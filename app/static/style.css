@@ -2098,3 +2098,28 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 }
 .title-link.is-unread { font-weight: 800; }
 [data-theme="dark"] .rv-un, [data-theme="dark"] .nav-badge.unread, [data-theme="dark"] .unread-pill { background: #178a5d; }
+
+/* ---- แชทใหญ่ขึ้น (จอกว้าง): ตัวหนังสือใหญ่ ฟองกว้าง คอลัมน์แชทกว้างกว่าฝั่งร่างคำตอบ ซ่อนรายการได้ ---- */
+@media (min-width: 901px) {
+  .rv-text { font-size: 1.1rem; line-height: 1.6; }
+  .rv-meta b { font-size: .88rem; }
+  .rv-msg time { font-size: .76rem; }
+  .rv-msg { max-width: 86%; padding: 10px 16px 8px; }
+  .rv-img { max-width: 340px; max-height: 280px; }
+  .rv-convo { padding: 18px 18px 14px; max-height: min(56vh, 620px); }
+  .rv-say-row textarea, .rv .rv-say-row textarea { font-size: 1.04rem; }
+}
+@container rvd (min-width: 940px) {
+  .rv-cols { grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr); column-gap: 24px; }
+  .rv-cols > .rv-chat .rv-convo { max-height: none; }
+}
+.rv.collapsed { grid-template-columns: minmax(0, 1fr); }
+.rv.collapsed .rv-queue { display: none; }
+.rv .rv-collapse {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--line-2);
+  border-radius: 10px; background: var(--surface); color: var(--ink-2); font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; box-shadow: none;
+}
+.rv .rv-collapse:hover { background: var(--surface-2); }
+.rv .rv-collapse .ic { transition: transform .15s; }
+.rv.collapsed .rv-collapse .ic { transform: rotate(180deg); }
+@media (max-width: 900px) { .rv .rv-collapse { display: none; } }
