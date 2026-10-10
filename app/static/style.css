@@ -2220,3 +2220,18 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .sidebar, .shell, .icon-btn.sb-toggle, .sb-toggle .ic, .nav-item, .nav-item > span, .sb-tip { transition: none !important; }
   .brand-rail { animation: none !important; }
 }
+
+/* ---- เนื้อหาบอท LINE (แยกจากคู่มือของ Telegram) ---- */
+.check-row.sub-opt { margin-left: 30px; }
+.content-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.ask-row { display: flex; gap: 8px; align-items: stretch; }
+.ask-row input { flex: 1; min-width: 0; width: auto; }
+.ask-row button { flex-shrink: 0; }
+.ask-result { margin-top: 14px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.ask-result.ok { border-color: #bfe5cf; background: var(--pine-tint); }
+.ask-result.miss { border-color: #f0d9a8; background: var(--amber-tint); }
+[data-theme="dark"] .ask-result.ok { border-color: #1f5a41; background: rgba(23, 138, 93, .14); }
+[data-theme="dark"] .ask-result.miss { border-color: #6b5320; background: rgba(217, 164, 0, .12); }
+.ask-meta { font-size: .88rem; color: var(--ink-2); line-height: 1.9; }
+.ask-answer { margin-top: 8px; padding: 12px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
+@media (max-width: 700px) { .ask-row { flex-direction: column; } .check-row.sub-opt { margin-left: 8px; } }

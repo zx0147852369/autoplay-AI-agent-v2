@@ -178,16 +178,39 @@ GUIDE_RULES = """
 """
 
 
+LINE_RULES = """
+
+# ช่องทางนี้คือ LINE Chat Bot (ลูกค้าทักผ่าน LINE OA ของบริษัท ไม่ใช่ Telegram)
+- ตอบลูกค้าจาก "คู่มือการใช้งาน" ที่ให้มาเป็นหลัก ห้ามแต่งข้อมูลที่ไม่มีในคู่มือ เช่น ราคา โปรโมชัน เงื่อนไข ลิงก์ ตัวเลข ชื่อเมนู
+- ลูกค้าถามหรือขอข้อมูลเรื่องใดก็ตาม ต้องใส่ question เสมอ (สรุปคำถามสั้นๆ) แม้คู่มือไม่มีคำตอบ
+  · มีในคู่มือ: answered_from_guide=true และ guide_id = เลขคู่มือที่ใช้ แล้วตอบตามคู่มือ
+  · ไม่มีในคู่มือ: answered_from_guide=false, guide_id=0 และตอบว่าขอให้ทีมงานตรวจสอบแล้วจะรีบแจ้งกลับ ห้ามเดา
+- ข้อความทักทาย ขอบคุณ หรือรับทราบ: ตอบสั้นๆ ตามสไตล์ที่กำหนด และเว้น question ว่าง
+- รูปแบบข้อความ: LINE ไม่แสดง markdown ห้ามใช้ ** ## ` หรือตาราง ใช้ข้อความธรรมดา ขึ้นบรรทัดใหม่แบ่งข้อ
+  ให้อ่านง่ายบนมือถือ กระชับ ไม่ยาวเกินจำเป็น"""
+
+
+def _grams(text: str, n: int = 3) -> set[str]:
+    """ชุดตัวอักษร n ตัวติดกัน ใช้เทียบความใกล้เคียงของข้อความไทย (ภาษาไทยไม่มีเว้นวรรคระหว่างคำ)"""
+    s = re.sub(r"[\s.,;:!?\"'()\[\]{}<>/\\|*#_\-]+", "", (text or "").lower())
+    if len(s) < n:
+        return {s} if s else set()
+    return {s[i:i + n] for i in range(len(s) - n + 1)}
+
+
 def _guides_text(guides: list, query: str, budget: int = 24000) -> str:
     """คู่มือที่ส่งให้ AI: ถ้ายาวเกินงบ เลือกเรื่องที่ตรงกับข้อความลูกค้ามากที่สุดก่อน"""
     if not guides:
         return "คู่มือการใช้งาน: ยังไม่มี (ถ้าลูกค้าถามวิธีใช้งาน ให้ตอบว่าขอตรวจสอบข้อมูลก่อน)"
     query = (query or "").lower()
+    qgrams = _grams(query)
 
     def score(g) -> int:
         words = [w.strip().lower() for w in (g.keywords or "").replace("\n", ",").split(",") if w.strip()]
         words += [w.lower() for w in re.split(r"[\s/·,()]+", g.title or "") if len(w) >= 2]
-        return sum(len(w) for w in words if w in query)
+        hit = sum(len(w) for w in words if w in query)
+        near = len(qgrams & _grams(f"{g.title} {g.keywords} {(g.answer or '')[:300]}")) if qgrams else 0
+        return hit * 3 + near
 
     blocks, used = [], 0
     for g in sorted(guides, key=lambda g: (-score(g), g.id)):
@@ -597,6 +620,7 @@ async def analyze_chat(
     chat_website: str = "",
     guides: list | None = None,
     notes: str = "",
+    channel: str = "telegram",
 ) -> Analysis:
     transcript = format_transcript(chat_title, history, {m.id for m in new_messages})
     query = " ".join(m.text or "" for m in new_messages if not m.is_outgoing)
@@ -616,8 +640,9 @@ async def analyze_chat(
     model = settings.get("ai_model") or DEFAULT_SETTINGS["ai_model"]
     # Gemini รุ่นหลักช่วงโหลดสูงอาจค้างเกิน 30 วินาที -> รอรุ่นละ 30 วินาทีแล้วสลับไปรุ่นสำรองที่เร็วกว่า (ไม่ตัดงานของ Claude/AI ภายนอก)
     gemini_wait = 30 if is_gemini(model) and not custom_ai.is_custom(model) else None
-    return _parse_analysis(await _call(settings, parts, ANALYSIS_SCHEMA, names=_known_names(chat_title, history),
-                                       timeout=gemini_wait))
+    system = _system_text(settings) + LINE_RULES if channel == "line" else None
+    return _parse_analysis(await _call(settings, parts, ANALYSIS_SCHEMA, system=system,
+                                       names=_known_names(chat_title, history), timeout=gemini_wait))
 
 
 FAST_MODEL = "gemini-3.5-flash-lite"   # รุ่นเร็ว โควตาเยอะ ใช้กับงานสั้นๆ เช่น เขียนข้อความใหม่

@@ -33,6 +33,8 @@ from .database import (
     GuideQuestion,
     guide_images,
     LearnRun,
+    LineContent,
+    LineQuestion,
     Message,
     Reply,
     SessionLocal,
@@ -1287,6 +1289,19 @@ async def linebot_webhook(request: Request):
     return JSONResponse({"ok": True})
 
 
+SMALL_TALK_MAX = 160  # ตอบทักทาย/ขอบคุณสั้นๆ ได้เอง (ไม่มีคำถาม ไม่มี ticket) ยาวกว่านี้ให้คนตรวจ
+
+
+def _bot_answer_is_safe(reply: Reply) -> bool:
+    """โหมดตอบอัตโนมัติ: ส่งเองเฉพาะ (1) ตอบจากเนื้อหาของบอท หรือ (2) ทักทาย/ขอบคุณสั้นๆ ที่ AI ไม่ได้ถือเป็นคำถาม
+    เรื่องที่ไม่มีในเนื้อหา / แจ้งปัญหา (มี ticket) / ข้อความยาว ต้องผ่านการอนุมัติ"""
+    note = reply.note or ""
+    if analyzer.LINE_NOTE in note:
+        return True
+    return (reply.ticket_id is None and analyzer.QUESTION_NOTE not in note
+            and len((reply.final_text or "").strip()) <= SMALL_TALK_MAX)
+
+
 async def _auto_send_bot(reply_id: int) -> None:
     """โหมดตอบอัตโนมัติ: ร่างตอบลูกค้าที่ทักมาทาง LINE Chat Bot ถูกส่งทันที (ไม่ผ่านการอนุมัติ)"""
     with SessionLocal() as db:
@@ -1298,6 +1313,9 @@ async def _auto_send_bot(reply_id: int) -> None:
         if settings.get("linebot_enabled") != "1" or settings.get("linebot_mode") != "auto":
             return
         text = reply.final_text
+        if settings.get("linebot_auto_only_found") != "0" and not _bot_answer_is_safe(reply):
+            log.info("LINE Chat Bot: ร่าง #%s ไม่ได้ตอบจากเนื้อหาของบอท ส่งเข้าหน้ารออนุมัติแทน", reply_id)
+            return
     status, msg = await deliver_reply(reply_id, text, "AI อัตโนมัติ")
     log.info("LINE Chat Bot ตอบอัตโนมัติ (ร่าง #%s): %s · %s", reply_id, status, msg)
 
@@ -1321,11 +1339,15 @@ async def linebot_page(request: Request):
             select(func.count(Message.id)).join(Chat, Chat.id == Message.chat_id)
             .where(Chat.channel == "line", Message.is_outgoing.is_(False), Message.date >= local_day_start_utc())) or 0
         n_auto = db.scalar(select(func.count(Reply.id)).where(Reply.decided_by == "AI อัตโนมัติ", Reply.status == "sent")) or 0
+        n_content = db.scalar(select(func.count(LineContent.id))) or 0
+        n_used = db.scalar(select(func.coalesce(func.sum(LineContent.used_count), 0))) or 0
+        n_questions = db.scalar(select(func.count(LineQuestion.id)).where(LineQuestion.status == "open")) or 0
     return render(request, "linebot.html", user, settings=settings, bot_has_token=bool(linebot.token()),
                   bot_has_secret=bool(linebot.secret()), bot_ready=linebot.configured(),
                   webhook=str(request.base_url).rstrip("/") + "/linebot/webhook", public_url=line_service.public_url(),
                   n_chats=n_chats, n_today=n_today, n_auto=n_auto, same_oa=bool(
-                      linebot.token() and linebot.token() == line_service.token()))
+                      linebot.token() and linebot.token() == line_service.token()),
+                  n_content=n_content, n_used=n_used, n_questions=n_questions)
 
 
 @app.post("/linebot")
@@ -1336,6 +1358,7 @@ async def linebot_save(request: Request):
         "linebot_enabled": "1" if form.get("linebot_enabled") else "0",
         "linebot_mode": "auto" if form.get("linebot_mode") == "auto" else "approve",
         "linebot_greeting": str(form.get("linebot_greeting", "")).strip()[:500],
+        "linebot_auto_only_found": "1" if form.get("linebot_auto_only_found") else "0",
     }
     with SessionLocal() as db:
         for key, value in values.items():
@@ -1360,6 +1383,155 @@ async def linebot_check(request: Request):
     linebot.set_bot_name(info.get("displayName", ""))
     flash(request, f"เชื่อมต่อ OA \"{info.get('displayName', '')}\" {info.get('basicId', '')} ได้แล้ว")
     return back("/linebot")
+
+
+# ---------------------------------------------------------------- เนื้อหาบอท LINE (แยกจากคู่มือตอบคำถามของ Telegram โดยสิ้นเชิง)
+def _line_content_page(request: Request, user: User, q: str = "", **extra):
+    with SessionLocal() as db:
+        query = select(LineContent).order_by(LineContent.updated_at.desc())
+        if q.strip():
+            like = f"%{q.strip()}%"
+            query = query.where(LineContent.title.ilike(like) | LineContent.keywords.ilike(like)
+                                | LineContent.answer.ilike(like))
+        items = list(db.scalars(query))
+        questions = list(db.scalars(select(LineQuestion).where(LineQuestion.status == "open")
+                                    .order_by(LineQuestion.created_at.desc()).limit(50)))
+        total = db.scalar(select(func.count(LineContent.id))) or 0
+        used = db.scalar(select(func.coalesce(func.sum(LineContent.used_count), 0))) or 0
+        chat_titles = {c.id: c.title for c in db.scalars(select(Chat).where(Chat.channel == "line"))}
+        data = {g.id: {"title": g.title, "keywords": g.keywords, "answer": g.answer, "images": guide_images(g)}
+                for g in db.scalars(select(LineContent))}
+    return render(request, "linebot_content.html", user, items=items, questions=questions, q=q, total=total, used=used,
+                  chat_titles=chat_titles, content_data=data, max_images=GUIDE_MAX_IMAGES, **extra)
+
+
+@app.get("/linebot/content")
+async def linebot_content_page(request: Request, q: str = ""):
+    return _line_content_page(request, current_user(request, "admin"), q, test=None, test_q="")
+
+
+@app.get("/linebot/content/new")
+async def linebot_content_new(request: Request, question_id: int = 0):
+    current_user(request, "admin")
+    return back("/linebot/content?new=1" + (f"&question_id={question_id}" if question_id else ""))
+
+
+@app.post("/linebot/content/new")
+async def linebot_content_create(request: Request, title: str = Form(""), keywords: str = Form(""),
+                                 answer: str = Form(""), question_id: int = Form(0),
+                                 images: list[UploadFile] = File([])):
+    user = current_user(request, "admin")
+    try:
+        title, keywords, answer = _clean_guide(title, keywords, answer)
+    except ValueError as e:
+        flash(request, str(e), "error")
+        return back("/linebot/content?new=1" + (f"&question_id={question_id}" if question_id else ""))
+    saved, errors = await _save_guide_images(images, GUIDE_MAX_IMAGES)
+    with SessionLocal() as db:
+        item = LineContent(title=title, keywords=keywords, answer=answer, updated_by=user.username,
+                           images=json.dumps(saved) if saved else "")
+        db.add(item)
+        db.flush()
+        if question_id and (question := db.get(LineQuestion, question_id)):
+            question.status, question.content_id = "added", item.id
+        db.commit()
+    for err in errors:
+        flash(request, err, "error")
+    flash(request, f"เพิ่มเนื้อหา \"{title}\" แล้ว" + (f" พร้อมรูป {len(saved)} รูป" if saved else "")
+          + " บอท LINE จะใช้ตอบลูกค้าตั้งแต่ข้อความถัดไป")
+    return back("/linebot/content")
+
+
+@app.post("/linebot/content/ask")
+async def linebot_content_ask(request: Request):
+    """ลองถามบอท: ให้ AI ตอบจากเนื้อหาของบอทจริง (ใช้โควตา AI 1 ครั้ง) แต่ไม่ส่งถึงลูกค้า ไม่บันทึกแชท ไม่นับว่าเนื้อหาถูกใช้"""
+    user = current_user(request, "admin")
+    form = await request.form()
+    q = str(form.get("test_q", "")).strip()[:500]
+    if not q:
+        flash(request, "พิมพ์คำถามที่อยากลองถามบอทก่อน", "error")
+        return back("/linebot/content")
+    with SessionLocal() as db:
+        settings = get_settings(db)
+        contents = list(db.scalars(select(LineContent).order_by(LineContent.id)))
+    msg = Message(id=-1, chat_id=0, tg_message_id=1, sender_name="ลูกค้า (ทดลอง)", text=q, date=utcnow(), is_outgoing=False)
+    started = time.perf_counter()
+    try:
+        result = await ai_service.analyze_chat(settings, "ทดลองถามบอท LINE", [msg], [msg], [], guides=contents, channel="line")
+    except ai_service.AIError as e:
+        flash(request, f"ลองถามบอทไม่สำเร็จ: {e}", "error")
+        return back("/linebot/content")
+    hit = next((g for g in contents if g.id == result.guide_id), None) if result.answered_from_guide else None
+    answer = result.reply_text.strip() if result.needs_reply else ""
+    if hit and not answer:
+        answer = hit.answer
+    if not hit and result.question.strip() and not answer:
+        answer = analyzer.GUIDE_HOLD
+    test = {
+        "found": bool(hit), "content_id": hit.id if hit else 0, "content_title": hit.title if hit else "",
+        "pics": len(guide_images(hit)) if hit else 0, "answer": answer, "question": result.question.strip(),
+        "is_issue": result.is_issue, "seconds": round(time.perf_counter() - started, 1), "n_content": len(contents),
+    }
+    return _line_content_page(request, user, test=test, test_q=q)
+
+
+@app.post("/linebot/content/questions/{question_id}/dismiss")
+async def linebot_question_dismiss(request: Request, question_id: int):
+    current_user(request, "admin")
+    with SessionLocal() as db:
+        if question := db.get(LineQuestion, question_id):
+            question.status = "dismissed"
+            db.commit()
+    return back("/linebot/content")
+
+
+@app.get("/linebot/content/{content_id}")
+async def linebot_content_edit(request: Request, content_id: int):
+    current_user(request, "admin")
+    return back(f"/linebot/content?edit={content_id}")
+
+
+@app.post("/linebot/content/{content_id}")
+async def linebot_content_update(request: Request, content_id: int, title: str = Form(""), keywords: str = Form(""),
+                                 answer: str = Form(""), remove_images: list[str] = Form([]),
+                                 images: list[UploadFile] = File([])):
+    user = current_user(request, "admin")
+    try:
+        title, keywords, answer = _clean_guide(title, keywords, answer)
+    except ValueError as e:
+        flash(request, str(e), "error")
+        return back(f"/linebot/content?edit={content_id}")
+    with SessionLocal() as db:
+        item = db.get(LineContent, content_id)
+        if not item:
+            return back("/linebot/content")
+        current = guide_images(item)
+        removed = [p for p in current if p in remove_images]
+        kept = [p for p in current if p not in removed]
+        saved, errors = await _save_guide_images(images, GUIDE_MAX_IMAGES - len(kept))
+        item.title, item.keywords, item.answer = title, keywords, answer
+        item.images = json.dumps(kept + saved) if kept or saved else ""
+        item.updated_by, item.updated_at = user.username, utcnow()
+        db.commit()
+        _drop_guide_files(db, removed)
+    for err in errors:
+        flash(request, err, "error")
+    flash(request, "บันทึกเนื้อหาแล้ว")
+    return back("/linebot/content")
+
+
+@app.post("/linebot/content/{content_id}/delete")
+async def linebot_content_delete(request: Request, content_id: int):
+    current_user(request, "admin")
+    with SessionLocal() as db:
+        if item := db.get(LineContent, content_id):
+            files = guide_images(item)
+            title = item.title
+            db.delete(item)
+            db.commit()
+            _drop_guide_files(db, files)
+            flash(request, f"ลบเนื้อหา \"{title}\" แล้ว")
+    return back("/linebot/content")
 
 # ---------------------------------------------------------------- สมอง AI (โน้ตที่ AI เรียนรู้จากการทำงานจริง)
 BRAIN_FILTERS = {"all": "ทั้งหมด", "global": "ทั่วไป", "chat": "เฉพาะแชท", "auto": "AI จดเอง", "manual": "แอดมินเขียน",

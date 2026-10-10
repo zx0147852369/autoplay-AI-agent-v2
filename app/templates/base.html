@@ -29,13 +29,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=92">
+  <link rel="stylesheet" href="/static/style.css?v=93">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
 {% if user %}
-{% macro nav_item(href, ic, label, badge='') -%}
-  {% set active = (path == '/' and href == '/') or (href != '/' and (path == href or path.startswith(href ~ '/'))) %}
+{% macro nav_item(href, ic, label, badge='', exact=False) -%}
+  {% set active = (path == '/' and href == '/') or (href != '/' and (path == href or (not exact and path.startswith(href ~ '/')))) %}
   <a href="{{ href }}" class="nav-item {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ cicon(ic, 20) }}<span>{{ label }}</span>
     {%- if badge %}<span class="nav-badge {{ 'hot' if badge == 'badge-pending' }} {{ 'unread' if badge == 'badge-unread' }}" id="{{ badge }}"{% if badge == 'badge-unread' %} title="ข้อความลูกค้าที่ยังไม่ได้อ่าน"{% endif %}></span>{% endif %}</a>
 {%- endmacro %}
@@ -68,7 +68,8 @@
       {# LINE Chat Bot แยกเป็นกลุ่มของตัวเองท้ายแถบ ไม่ปนกับระบบ Telegram #}
       <div class="nav-group nav-group-line">
         <div class="nav-label">LINE · แยกจาก Telegram</div>
-        {{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot') }}
+        {{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot', exact=True) }}
+        {{ nav_item('/linebot/content', 'book-open-lightbulb', 'เนื้อหาบอท LINE') }}
       </div>
     {% endif %}
   </nav>

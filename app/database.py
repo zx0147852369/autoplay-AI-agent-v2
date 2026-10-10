@@ -248,6 +248,36 @@ class GuideQuestion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class LineContent(Base):
+    """เนื้อหาที่ LINE Chat Bot ใช้ตอบลูกค้า · แยกจากคู่มือของ Telegram (ตาราง guides) โดยสิ้นเชิง ไม่ใช้ร่วมกัน"""
+
+    __tablename__ = "line_contents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(255))  # หัวข้อ / คำถาม
+    keywords: Mapped[str] = mapped_column(Text, default="")  # คำที่ลูกค้ามักใช้ถาม คั่นด้วยจุลภาค
+    answer: Mapped[str] = mapped_column(Text, default="")  # คำตอบ / ขั้นตอน / ลิงก์
+    images: Mapped[str] = mapped_column(Text, default="", server_default="")  # JSON รายชื่อไฟล์รูปประกอบใน MEDIA_DIR
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LineQuestion(Base):
+    """คำถามจากลูกค้าใน LINE ที่ยังไม่มีในเนื้อหาของบอท (ให้แอดมินเพิ่มเนื้อหาภายหลัง)"""
+
+    __tablename__ = "line_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    question: Mapped[str] = mapped_column(Text)
+    asked_by: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # open / added / dismissed
+    content_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Reply(Base):
     """ข้อความตอบกลับที่ AI ร่างไว้ รอแอดมินอนุมัติก่อนส่ง"""
 
@@ -347,6 +377,7 @@ DEFAULT_SETTINGS = {
     "linebot_enabled": "1",       # รับข้อความจากลูกค้าทาง LINE (ปิดไว้ = ไม่บันทึก ไม่วิเคราะห์)
     "linebot_mode": "approve",    # approve = AI ร่างแล้วทีมงานอนุมัติก่อนส่ง · auto = AI ตอบลูกค้าใน LINE เองทันที
     "linebot_greeting": "",       # ข้อความต้อนรับตอนลูกค้าเพิ่มเพื่อน (ว่าง = ไม่ส่ง)
+    "linebot_auto_only_found": "1",  # โหมดตอบอัตโนมัติ: ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้ เรื่องอื่นเข้าหน้ารออนุมัติ
     "ignore_usernames": "nsbmw_prod_bot",  # บัญชีที่ไม่รับข้อความเลย คั่นด้วยจุลภาค
     "ignore_bots": "1",  # ไม่รับข้อความจากบอท Telegram ทุกตัว
     "dev_forward": "1",

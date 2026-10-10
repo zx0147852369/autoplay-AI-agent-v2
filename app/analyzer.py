@@ -13,8 +13,8 @@ from sqlalchemy import func, select
 from . import ai_service, dev_bridge, learning, line_service
 from .telegram_service import STICKER_TEXT
 from .database import (
-    Chat, Guide, GuideQuestion, Message, Reply, SessionLocal, Ticket, TicketAttachment, TicketEvent, get_settings,
-    guide_images, int_setting, utcnow,
+    Chat, Guide, GuideQuestion, LineContent, LineQuestion, Message, Reply, SessionLocal, Ticket, TicketAttachment,
+    TicketEvent, get_settings, guide_images, int_setting, utcnow,
 )
 from urllib.parse import urlparse
 
@@ -47,6 +47,11 @@ _last_attempt: dict[int, float] = {}
 _locks: dict[int, asyncio.Lock] = {}
 last_error: dict[int, str] = {}  # chat_id -> ข้อผิดพลาดล่าสุด (แสดงบนหน้าเว็บ)
 on_draft = None  # async callback(reply_id) หลังสร้างร่างตอบลูกค้า (ใช้กับโหมดตอบอัตโนมัติของ LINE Chat Bot)
+
+# ข้อความที่ระบบใส่ในโน้ตของร่างคำตอบ (โหมดตอบอัตโนมัติของ LINE ใช้แยกว่าตอบจากเนื้อหาของบอทหรือไม่)
+GUIDE_NOTE = "ตอบจากคู่มือ #"          # แชท Telegram: คู่มือตอบคำถาม
+LINE_NOTE = "ตอบจากเนื้อหาบอท #"       # แชท LINE: เนื้อหาบอท LINE (แยกจากคู่มือของ Telegram)
+QUESTION_NOTE = "คำถามการใช้งาน:"
 
 
 def schedule(chat_id: int) -> None:
@@ -128,7 +133,10 @@ async def analyze(chat_id: int) -> str:
                 select(Ticket).where(Ticket.chat_id == chat_id, Ticket.status.in_(OPEN_STATUSES))
             ))
             asked_info = team_asked_info(db, chat_id, new_messages)
-            guides = list(db.scalars(select(Guide).order_by(Guide.id)))
+            channel = chat.channel if chat and chat.channel else "telegram"
+            # แยกระบบ: แชท LINE ใช้เฉพาะเนื้อหาบอท LINE · แชท Telegram ใช้เฉพาะคู่มือตอบคำถาม (ไม่ปนกัน)
+            source = LineContent if channel == "line" else Guide
+            guides = list(db.scalars(select(source).order_by(source.id)))
 
         if str(chat_id) == settings.get("dev_group_id"):
             _mark_analyzed(new_messages)  # กลุ่มโปรแกรมเมอร์ไม่ใช่แชทลูกค้า
@@ -155,7 +163,7 @@ async def analyze(chat_id: int) -> str:
             result = await ai_service.analyze_chat(
                 settings, chat.title if chat else str(chat_id), history, new_messages, open_tickets,
                 rejected=[r for r, _ in rejected], chat_website=chat.website_url if chat else "", guides=guides,
-                notes=notes_text,
+                notes=notes_text, channel=channel,
             )
         except ai_service.AIError as e:
             last_error[chat_id] = str(e)
@@ -184,7 +192,7 @@ async def analyze(chat_id: int) -> str:
                 result.needs_reply, result.reply_text = True, ACK_INFO
                 result.note_for_admin = (result.note_for_admin + " · ลูกค้าส่งข้อมูลที่ขอไปแล้ว ระบบร่างคำตอบรับ").strip(" ·")
         if result.question.strip():
-            _handle_question(chat_id, result, guides, customer_new)
+            _handle_question(chat_id, result, guides, customer_new, channel)
         similar = next((text for text, _ in rejected if is_similar(result.reply_text, text)), None)
         if result.needs_reply and similar:
             log.info("ไม่สร้างร่างซ้ำกับที่แอดมินปฏิเสธไปแล้วในแชท %s", chat_id)
@@ -213,14 +221,18 @@ async def analyze(chat_id: int) -> str:
 GUIDE_HOLD = "ขอบคุณที่สอบถามค่ะ ขอตรวจสอบข้อมูลสักครู่นะคะ แล้วจะรีบแจ้งกลับค่ะ"
 
 
-def _handle_question(chat_id: int, result: ai_service.Analysis, guides: list[Guide], customer_msgs: list[Message]) -> None:
-    """ลูกค้าถามวิธีใช้งานหลังบ้าน -> ตอบจากคู่มือ / ถ้าไม่มีในคู่มือ บันทึกคำถามให้แอดมินเพิ่มคู่มือ"""
+def _handle_question(chat_id: int, result: ai_service.Analysis, guides: list, customer_msgs: list[Message],
+                     channel: str = "telegram") -> None:
+    """ลูกค้าถามวิธีใช้งาน -> ตอบจากคู่มือ (Telegram) / เนื้อหาบอท (LINE) · ถ้าไม่มี บันทึกคำถามให้แอดมินเพิ่มเนื้อหา"""
     question = result.question.strip()
+    is_line = channel == "line"
+    content_model, question_model = (LineContent, LineQuestion) if is_line else (Guide, GuideQuestion)
     guide = next((g for g in guides if g.id == result.guide_id), None) if result.answered_from_guide else None
     with SessionLocal() as db:
         if guide:
-            db.get(Guide, guide.id).used_count += 1
-            note = f"ตอบจากคู่มือ #{guide.id}: {guide.title}"
+            if row := db.get(content_model, guide.id):
+                row.used_count += 1
+            note = f"{LINE_NOTE if is_line else GUIDE_NOTE}{guide.id}: {guide.title}"
             result.media = guide_images(guide)
             if result.media:
                 note += f" (แนบรูป {len(result.media)} รูป)"
@@ -228,16 +240,18 @@ def _handle_question(chat_id: int, result: ai_service.Analysis, guides: list[Gui
                 result.needs_reply, result.reply_text = True, guide.answer
         else:
             since = utcnow() - timedelta(hours=24)
-            recent = db.scalars(select(GuideQuestion.question).where(
-                GuideQuestion.chat_id == chat_id, GuideQuestion.status == "open", GuideQuestion.created_at >= since))
+            recent = db.scalars(select(question_model.question).where(
+                question_model.chat_id == chat_id, question_model.status == "open", question_model.created_at >= since))
             if not any(is_similar(question, q) for q in recent):
-                db.add(GuideQuestion(chat_id=chat_id, question=question,
-                                     asked_by=customer_msgs[-1].sender_name if customer_msgs else ""))
-            note = "คำถามนี้ยังไม่มีในคู่มือ ตรวจคำตอบก่อนส่ง · เพิ่มคู่มือได้ที่หน้า \"คู่มือตอบคำถาม\""
+                db.add(question_model(chat_id=chat_id, question=question,
+                                      asked_by=customer_msgs[-1].sender_name if customer_msgs else ""))
+            note = ("คำถามนี้ยังไม่มีในเนื้อหาของบอท ตรวจคำตอบก่อนส่ง · เพิ่มเนื้อหาได้ที่หน้า \"เนื้อหาบอท LINE\""
+                    if is_line else
+                    "คำถามนี้ยังไม่มีในคู่มือ ตรวจคำตอบก่อนส่ง · เพิ่มคู่มือได้ที่หน้า \"คู่มือตอบคำถาม\"")
             if not (result.needs_reply and result.reply_text.strip()):
                 result.needs_reply, result.reply_text = True, GUIDE_HOLD
         db.commit()
-    result.note_for_admin = (f"คำถามการใช้งาน: {question} · {note} · " + result.note_for_admin).strip(" ·")
+    result.note_for_admin = (f"{QUESTION_NOTE} {question} · {note} · " + result.note_for_admin).strip(" ·")
 
 
 def team_asked_info(db, chat_id: int, new_messages: list[Message]) -> bool:
