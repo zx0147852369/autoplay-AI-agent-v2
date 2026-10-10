@@ -2,137 +2,167 @@
 {% from "_icons.html" import icon, cicon %}
 {% block title %}รออนุมัติ{% endblock %}
 {% block content %}
+{% set tabs = [('pending', 'รออนุมัติ'), ('sent', 'ส่งแล้ว'), ('rejected', 'ปฏิเสธ'), ('failed', 'ส่งไม่สำเร็จ'), ('all', 'ทั้งหมด')] %}
 <div class="page-head">
-  <div>
-    <h1>ข้อความตอบกลับ</h1>
-    <p class="sub">ร่างคำตอบจะถูกส่งถึงลูกค้าเมื่อกด "อนุมัติและส่ง" เท่านั้น แก้ข้อความก่อนส่งได้</p>
-  </div>
+  <h1>{{ 'รออนุมัติ' if status == 'pending' else 'ข้อความตอบกลับ' }}</h1>
 </div>
 
-{% set tabs = [('pending', 'รออนุมัติ', 'mail-clock', ''), ('sent', 'ส่งแล้ว', 'send', ''),
-               ('rejected', 'ปฏิเสธ', 'dismiss-circle', ''), ('failed', 'ส่งไม่สำเร็จ', 'warning', ''),
-               ('all', 'ทั้งหมด', 'mail-multiple', '')] %}
-<nav class="strip compact" style="--cols:5">
-  {% for key, label, ic, tone in tabs %}
-    <a class="strip-cell {{ 'active' if status == key }}" href="/replies?status={{ key }}">
-      <span class="strip-ic {{ 'alive' if key == 'pending' and status_counts.get(key) }}">{{ cicon(ic, 22) }}</span>
-      <span class="strip-label">{{ label }}</span>
-      <span class="strip-value {{ 'hot' if key == 'pending' and status_counts.get(key) }}">{{ status_counts.get(key, 0) }}</span>
-    </a>
+<nav class="rv-tabs" aria-label="กรองตามสถานะ">
+  {% for key, label in tabs %}
+    {% set n = status_counts.get(key, 0) %}
+    <a class="rv-tab {{ 'on' if status == key }}" href="/replies?status={{ key }}" {{ 'aria-current=page' if status == key }}>{{ label }}<b class="{{ 'hot' if key == 'pending' and n }}">{{ n }}</b></a>
   {% endfor %}
 </nav>
 
 {% if status == 'pending' %}
+{% set items = dev_queue if box == 'dev' else replies %}
 <button type="button" class="newbar" id="newBar" hidden onclick="location.reload()">มีรายการรออนุมัติใหม่ <b id="newCount"></b> · แตะเพื่อรีเฟรช</button>
-<nav class="boxtabs">
-  <a class="boxtab {{ 'active' if box == 'customer' }}" href="/replies?box=customer">
-    <span class="boxtab-ic">{{ cicon('chat', 24) }}</span>
-    <span class="boxtab-text"><strong>ตอบลูกค้า</strong><small>ข้อความที่จะส่งในแชทของลูกค้า</small></span>
-    <span class="boxtab-count {{ 'hot' if replies }}">{{ replies | length }}</span>
-  </a>
-  <a class="boxtab dev {{ 'active' if box == 'dev' }}" href="/replies?box=dev">
-    <span class="boxtab-ic">{{ cicon('wrench', 24) }}</span>
-    <span class="boxtab-text"><strong>ส่งเข้ากลุ่มโปรแกรมเมอร์</strong><small>Ticket ที่จะโพสต์ใน {{ dev_group_title }}</small></span>
-    <span class="boxtab-count {{ 'hot' if dev_queue }}">{{ dev_queue | length }}</span>
-  </a>
-</nav>
 
-{% if box == 'dev' %}
-  {% for item in dev_queue %}
-  {% set t = item.ticket %}
-  {% set sc = t.site_check | fromjson %}
-  <article class="card dticket">
-    <header class="dt-head">
-      <span class="dt-id">#{{ t.id }}</span>
-      <div class="dt-title">
-        <strong>{{ t.title }}</strong>
-        <span>{{ CATEGORIES.get(t.category, t.category) }} · {{ t.created_at | localtime }}</span>
-      </div>
-      <span class="tag sev-{{ t.severity }}">{{ SEVERITY_LABELS[t.severity] }}</span>
-      <a class="btn sm" href="/tickets/{{ t.id }}">{{ icon('external', 13) }} ดู ticket</a>
-    </header>
-    <div class="dt-body">
-      <div class="dt-info">
-        <dl class="facts small">
-          <dt>ลูกค้า</dt><dd>{{ t.customer_name or '-' }}</dd>
-          <dt>แชท</dt><dd>{{ chat_titles.get(t.chat_id, t.chat_id) }}</dd>
-          <dt>เว็บไซต์</dt><dd>
+<div class="rv {{ 'empty' if not items }}" id="rv" data-box="{{ box }}">
+  {# ---------------- คิวทางซ้าย ---------------- #}
+  <aside class="rv-queue" aria-label="รายการรออนุมัติ">
+    <div class="rv-seg">
+      <a class="{{ 'on' if box == 'customer' }}" href="/replies?box=customer">{{ cicon('chat', 20) }}<span>ตอบลูกค้า</span><b class="{{ 'hot' if replies }}">{{ replies | length }}</b></a>
+      <a class="{{ 'on' if box == 'dev' }}" href="/replies?box=dev">{{ cicon('wrench', 20) }}<span title="ticket ที่จะส่งเข้ากลุ่มโปรแกรมเมอร์">ส่งเข้ากลุ่ม</span><b class="{{ 'hot' if dev_queue }}">{{ dev_queue | length }}</b></a>
+    </div>
+    <ul class="rv-list">
+      {% if box == 'dev' %}
+        {% for item in dev_queue %}
+          {% set t = item.ticket %}
+          <li><a class="rv-item" href="#t{{ t.id }}" data-id="t{{ t.id }}">
+            <span class="rv-av dev">#{{ t.id }}</span>
+            <span class="rv-it-main">
+              <span class="rv-it-top"><strong>{{ t.title }}</strong><time title="{{ t.created_at | localtime }}">{{ t.created_at | ago }}</time></span>
+              <span class="rv-it-snip">{{ chat_titles.get(t.chat_id, t.chat_id) }} · {{ CATEGORIES.get(t.category, t.category) }}</span>
+              <span class="rv-it-tags"><i class="rv-chip sev-{{ t.severity }}">{{ SEVERITY_LABELS[t.severity] }}</i>{% if item.photos %}<i class="rv-chip">รูป {{ item.photos | length }}</i>{% endif %}</span>
+            </span>
+          </a></li>
+        {% endfor %}
+      {% else %}
+        {% for r in replies %}
+          {% set title = chat_titles.get(r.chat_id, r.chat_id) | string %}
+          {% set ctx = context.get(r.id, []) %}
+          {% set tgt = (ctx | selectattr('tg_message_id', 'equalto', r.reply_to_tg_id) | list | last) or (ctx | rejectattr('is_outgoing') | list | last) %}
+          {% set snippet = r.final_text if r.kind in ('resolved', 'dev_update') else ((tgt.text or '[รูปภาพ]') if tgt else r.final_text) %}
+          <li><a class="rv-item" href="#r{{ r.id }}" data-id="r{{ r.id }}">
+            <span class="rv-av av-{{ r.chat_id % 6 }}">{{ title[:1] | upper }}</span>
+            <span class="rv-it-main">
+              <span class="rv-it-top"><strong>{{ title }}</strong><time title="{{ r.created_at | localtime }}">{{ r.created_at | ago }}</time></span>
+              <span class="rv-it-snip">{{ snippet }}</span>
+              {% if r.ticket_id or r.kind in ('resolved', 'dev_update') %}
+              <span class="rv-it-tags">
+                {% if r.ticket_id %}<i class="rv-chip">ticket #{{ r.ticket_id }}</i>{% endif %}
+                {% if r.kind == 'resolved' %}<i class="rv-chip ok">แจ้งแก้ไขเสร็จ</i>{% endif %}
+                {% if r.kind == 'dev_update' %}<i class="rv-chip info">จากโปรแกรมเมอร์</i>{% endif %}
+              </span>
+              {% endif %}
+            </span>
+          </a></li>
+        {% endfor %}
+      {% endif %}
+    </ul>
+  </aside>
+
+  {# ---------------- รายละเอียดทางขวา ---------------- #}
+  <div class="rv-detail">
+  {% if box == 'dev' %}
+    {% for item in dev_queue %}
+    {% set t = item.ticket %}
+    {% set sc = t.site_check | fromjson %}
+    <section class="rv-pane" id="pane-t{{ t.id }}" data-id="t{{ t.id }}">
+      <header class="rv-ph">
+        <button type="button" class="rv-back" aria-label="กลับไปรายการ">{{ icon('arrow-left', 20) }}</button>
+        <span class="rv-av dev big">#{{ t.id }}</span>
+        <div class="rv-ph-text">
+          <h2>{{ t.title }}</h2>
+          <p><i class="rv-chip sev-{{ t.severity }}">{{ SEVERITY_LABELS[t.severity] }}</i> {{ CATEGORIES.get(t.category, t.category) }} · {{ t.created_at | localtime }}</p>
+        </div>
+        <a class="rv-link" href="/tickets/{{ t.id }}">{{ icon('external', 14) }} ดู ticket</a>
+      </header>
+      <div class="rv-body">
+        <dl class="rv-facts">
+          <div><dt>ลูกค้า</dt><dd>{{ t.customer_name or '-' }}</dd></div>
+          <div><dt>แชท</dt><dd>{{ chat_titles.get(t.chat_id, t.chat_id) }}</dd></div>
+          <div><dt>เว็บไซต์</dt><dd>
             {% if t.website_url %}
               {% set state = '' if not sc else ('down' if not sc.ok else ('moved' if sc.other_host else 'up')) %}
               <span class="mono">{{ t.website_url }}</span>
               {% if state %}<span class="site-pill {{ state }}"><span class="dot {{ {'up': 'live', 'moved': 'wait', 'down': 'off'}[state] }}"></span>{{ {'up': 'เข้าได้', 'moved': 'ถูกพาไปโดเมนอื่น', 'down': 'เข้าไม่ได้'}[state] }}</span>{% endif %}
-            {% else %}<span class="muted">ยังไม่มีลิงก์</span>{% endif %}</dd>
+            {% else %}<span class="rv-muted">ยังไม่มีลิงก์</span>{% endif %}</dd></div>
         </dl>
-        <p class="section-title">สรุปปัญหา</p>
-        <p class="dt-summary">{{ t.summary or '-' }}</p>
-        {% if item.photos %}
-          <p class="section-title">รูปที่จะแนบ ({{ item.photos | length }})</p>
-          <div class="tl-pics">{% for p in item.photos %}<a href="/media/{{ p }}" target="_blank"><img src="/media/{{ p }}" alt="รูปจากลูกค้า"></a>{% endfor %}</div>
+        {% if t.summary %}
+        <p class="rv-label">สรุปปัญหา</p>
+        <p class="rv-summary">{{ t.summary }}</p>
         {% endif %}
-      </div>
-      <div class="dt-msg">
-        <div class="dt-msg-head">
-          <span class="section-title" style="margin:0">ข้อความที่จะโพสต์ในกลุ่ม</span>
-          <button type="button" class="sm ghost" onclick="toggleEdit(this)">{{ icon('edit', 13) }} <span>แก้ไขข้อความ</span></button>
+        {% if item.photos %}
+        <p class="rv-label">รูปที่จะแนบ ({{ item.photos | length }})</p>
+        <div class="rv-photos">{% for p in item.photos %}<a href="/media/{{ p }}" target="_blank"><img src="/media/{{ p }}" alt="รูปจากลูกค้า" loading="lazy"></a>{% endfor %}</div>
+        {% endif %}
+        <div class="dt-msg rv-tg">
+          <div class="rv-label-row">
+            <span class="rv-label" style="margin:0">ข้อความที่จะโพสต์ในกลุ่ม</span>
+            <button type="button" class="rv-mini" onclick="toggleEdit(this)">{{ icon('edit', 13) }} <span>แก้ไขข้อความ</span></button>
+          </div>
+          <div class="tg-bubble">{{ item.text }}</div>
+          <textarea name="text" form="post-{{ t.id }}" rows="12" hidden>{{ item.text }}</textarea>
         </div>
-        <div class="tg-bubble">{{ item.text }}</div>
-        <textarea name="text" form="post-{{ t.id }}" rows="13" hidden>{{ item.text }}</textarea>
       </div>
-    </div>
-    <footer class="dt-foot">
-      <form method="post" action="/tickets/{{ t.id }}/skip-dev">
-        <input type="hidden" name="next" value="/replies?box=dev">
-        <button class="danger">ไม่ส่งเข้ากลุ่ม</button>
-      </form>
-      <span class="muted small dt-hint">หลังส่งแล้ว โปรแกรมเมอร์ reply โพสต์นี้เพื่ออัปเดตสถานะได้</span>
-      <form method="post" action="/tickets/{{ t.id }}/post-dev" id="post-{{ t.id }}">
-        <input type="hidden" name="next" value="/replies?box=dev">
-        <button class="go" data-confirm-title="ส่ง Ticket #{{ t.id }} เข้ากลุ่มโปรแกรมเมอร์?"
-          data-confirm="ข้อความด้านล่างจะถูกโพสต์ใน {{ dev_group_title }} พร้อมรูปจากลูกค้า" data-confirm-ok="ส่งเข้ากลุ่ม"
-          data-confirm-tone="send" data-confirm-preview="textarea[form=post-{{ t.id }}]">{{ icon('send', 15) }} อนุมัติและส่งเข้ากลุ่ม</button>
-      </form>
-    </footer>
-  </article>
+      <footer class="rv-foot">
+        <form method="post" action="/tickets/{{ t.id }}/skip-dev">
+          <input type="hidden" name="next" value="/replies?box=dev">
+          <button class="rv-btn danger">ไม่ส่งเข้ากลุ่ม</button>
+        </form>
+        <span class="rv-hint">หลังส่งแล้ว โปรแกรมเมอร์ reply โพสต์นี้เพื่ออัปเดตสถานะได้</span>
+        <form method="post" action="/tickets/{{ t.id }}/post-dev" id="post-{{ t.id }}">
+          <input type="hidden" name="next" value="/replies?box=dev">
+          <button class="rv-btn primary" data-confirm-title="ส่ง Ticket #{{ t.id }} เข้ากลุ่มโปรแกรมเมอร์?"
+            data-confirm="ข้อความด้านล่างจะถูกโพสต์ใน {{ dev_group_title }} พร้อมรูปจากลูกค้า" data-confirm-ok="ส่งเข้ากลุ่ม"
+            data-confirm-tone="send" data-confirm-preview="textarea[form=post-{{ t.id }}]">{{ icon('send', 16) }} อนุมัติและส่งเข้ากลุ่ม</button>
+        </form>
+      </footer>
+    </section>
+    {% endfor %}
   {% else %}
-  <section class="panel">
-    <table class="grid-table"><tbody>
-      <tr class="empty-row"><td>{{ icon('inbox', 24) }}<strong>ไม่มี ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์</strong>ticket ใหม่ที่ต้องอนุมัติก่อนส่งจะเข้ามาที่นี่</td></tr>
-    </tbody></table>
-  </section>
-  {% endfor %}
-{% else %}
-  {% for r in replies %}
-  <article class="card reply">
-    <header class="reply-head">
-      <span class="who">{{ icon('chat', 15) }} {{ chat_titles.get(r.chat_id, r.chat_id) }}</span>
-      <span class="when">{{ r.created_at | localtime }}</span>
-      {% if r.ticket_id %}<a class="tag" href="/tickets/{{ r.ticket_id }}">ticket #{{ r.ticket_id }}</a>{% endif %}
-      {% if r.kind == 'resolved' %}<span class="tag st-resolved">{{ icon('check', 12) }} แจ้งแก้ไขเสร็จ</span>{% endif %}
-      {% if r.kind == 'dev_update' %}<span class="tag st-in_progress">จากโปรแกรมเมอร์</span>{% endif %}
-      <span class="tag rs-{{ r.status }}">{{ REPLY_STATUSES.get(r.status, r.status) }}</span>
-    </header>
-    <div class="reply-body">
-      <div>
-        <p class="section-title">ข้อความล่าสุดในแชท</p>
-        <div class="chatlog compact">
-          {% for m in context.get(r.id, []) %}
-            <div class="msg {{ 'out' if m.is_outgoing }} {{ 'target' if m.tg_message_id == r.reply_to_tg_id }}">
-              <div class="meta">{{ 'ทีมงาน' if m.is_outgoing else m.sender_name }} · {{ m.date | localtime }}</div>
-              {% if m.text %}<div class="body">{{ m.text }}</div>{% endif %}
-              {% if m.media_path %}<a href="/media/{{ m.media_path }}" target="_blank"><img src="/media/{{ m.media_path }}" class="thumb small" alt="รูปจากลูกค้า"></a>{% endif %}
-            </div>
-          {% else %}<p class="muted small">ไม่มีข้อความ</p>{% endfor %}
+    {% for r in replies %}
+    {% set title = chat_titles.get(r.chat_id, r.chat_id) | string %}
+    {% set pics = (r.media | fromjson) or [] %}
+    <section class="rv-pane" id="pane-r{{ r.id }}" data-id="r{{ r.id }}">
+      <header class="rv-ph">
+        <button type="button" class="rv-back" aria-label="กลับไปรายการ">{{ icon('arrow-left', 20) }}</button>
+        <span class="rv-av big av-{{ r.chat_id % 6 }}">{{ title[:1] | upper }}</span>
+        <div class="rv-ph-text">
+          <h2>{{ title }}</h2>
+          <p>ร่างเมื่อ {{ r.created_at | localtime }}
+            {% if r.ticket_id %}· <a href="/tickets/{{ r.ticket_id }}">ticket #{{ r.ticket_id }}</a>{% endif %}
+            {% if r.kind == 'resolved' %}<i class="rv-chip ok">{{ icon('check', 11) }} แจ้งแก้ไขเสร็จ</i>{% endif %}
+            {% if r.kind == 'dev_update' %}<i class="rv-chip info">จากโปรแกรมเมอร์</i>{% endif %}
+          </p>
         </div>
-      </div>
-      <div class="stack">
-        {% if r.note %}<div class="note"><strong>หมายเหตุ:</strong> {{ r.note }}</div>{% endif %}
-        <form method="post" action="/replies/{{ r.id }}/approve" class="stack composer" id="approve-{{ r.id }}">
-          <label class="field">ข้อความที่จะส่ง
-            <textarea name="text" rows="5" required>{{ r.final_text }}</textarea></label>
-          {% set pics = (r.media | fromjson) or [] %}
+        <a class="rv-link" href="/chats/{{ r.chat_id }}">{{ icon('chat', 14) }} เปิดแชท</a>
+      </header>
+
+      <div class="rv-body rv-cols">
+        <p class="rv-label">บทสนทนาล่าสุด</p>
+        <div class="rv-convo">
+          {% for m in context.get(r.id, []) %}
+            <div class="rv-msg {{ 'out' if m.is_outgoing }} {{ 'target' if m.tg_message_id == r.reply_to_tg_id }}">
+              <div class="rv-meta"><b>{{ 'ทีมงาน' if m.is_outgoing else m.sender_name }}</b><time title="{{ m.date | localtime }}">{{ m.date | localtime_hm }}</time>{% if m.tg_message_id == r.reply_to_tg_id %}<em>ข้อความที่ร่างตอบ</em>{% endif %}</div>
+              {% if m.text %}<div class="rv-text">{{ m.text | linkify }}</div>{% endif %}
+              {% if m.media_path %}<a href="/media/{{ m.media_path }}" target="_blank"><img src="/media/{{ m.media_path }}" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>{% endif %}
+            </div>
+          {% else %}<p class="rv-muted">ไม่มีข้อความ</p>{% endfor %}
+        </div>
+
+        <form method="post" action="/replies/{{ r.id }}/approve" class="rv-compose" id="approve-{{ r.id }}">
+          <div class="rv-label-row">
+            <label class="rv-label" for="txt-{{ r.id }}" style="margin:0">ข้อความที่จะส่ง</label>
+            <span class="rv-aitag">{{ icon('sparkles', 13) }} ร่างโดย AI · แก้ไขได้</span>
+          </div>
+          <textarea id="txt-{{ r.id }}" name="text" rows="5" required>{{ r.final_text }}</textarea>
+          {% if r.note %}<p class="rv-note"><b>{{ icon('lightbulb', 14) }} หมายเหตุจาก AI</b>{{ r.note }}</p>{% endif %}
           {% if pics %}
-          <div class="field">
-            <span>รูปที่จะส่งพร้อมข้อความ ({{ pics | length }}) <span class="hint">เอาติ๊กออกถ้าไม่ต้องการส่งรูปนั้น</span></span>
+          <div class="rv-pics">
+            <span class="rv-label" style="margin:0">รูปที่จะส่งพร้อมข้อความ ({{ pics | length }}) <span class="rv-muted">เอาติ๊กออกถ้าไม่ต้องการส่งรูปนั้น</span></span>
             <div class="reply-pics">
               {% for p in pics %}
                 <label class="pick-pic"><input type="checkbox" name="media" value="{{ p }}" checked>
@@ -141,43 +171,63 @@
             </div>
           </div>
           {% endif %}
-          <div class="actions end">
-            <button class="go" data-confirm-title="ส่งข้อความถึงลูกค้า?"
-              data-confirm="ข้อความด้านล่างจะถูกส่งในแชท {{ chat_titles.get(r.chat_id, r.chat_id) }} ทันที{{ ' พร้อมรูปที่เลือก' if pics }}" data-confirm-ok="ส่งข้อความ"
-              data-confirm-tone="send" data-confirm-preview="#approve-{{ r.id }} textarea">{{ icon('send', 15) }} อนุมัติและส่ง</button>
+          <div class="rv-send">
+            <span class="rv-hint">จะส่งถึงลูกค้าเมื่อกดอนุมัติเท่านั้น</span>
+            <button class="rv-btn primary" data-confirm-title="ส่งข้อความถึงลูกค้า?"
+              data-confirm="ข้อความด้านล่างจะถูกส่งในแชท {{ title }} ทันที{{ ' พร้อมรูปที่เลือก' if pics }}" data-confirm-ok="ส่งข้อความ"
+              data-confirm-tone="send" data-confirm-preview="#approve-{{ r.id }} textarea">{{ icon('send', 16) }} อนุมัติและส่ง</button>
           </div>
         </form>
-      </div>
-    </div>
-    <div class="tools">
-      <details class="tools-fold" open>
-        <summary class="tools-sum">{{ icon('edit', 15) }} ให้ AI เขียนใหม่ / ไม่ส่งข้อความนี้</summary>
-        <div class="tools-in">
-          <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
-            <input type="hidden" name="text">
-            <input name="instruction" placeholder="แก้ทั้งข้อความ เช่น สั้นลง / ขอสลิปด้วย / สุภาพขึ้น" required>
-            <button>เขียนใหม่</button>
-          </form>
-          <form method="post" action="/replies/{{ r.id }}/reject">
-            <input name="reason" placeholder="เหตุผล (ไม่บังคับ)">
-            <button class="danger">ไม่ส่ง</button>
-          </form>
+
+        <div class="rv-tools">
+          <div class="rv-ai">
+            <p class="rv-label">{{ icon('wand', 14) }} ให้ AI แก้ข้อความ</p>
+            <div class="rv-chips">
+              {% for q in ['สั้นลง', 'สุภาพขึ้น', 'ขอสลิปด้วย'] %}
+              <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
+                <input type="hidden" name="text"><input type="hidden" name="instruction" value="{{ q }}">
+                <button class="rv-chipbtn">{{ q }}</button>
+              </form>
+              {% endfor %}
+            </div>
+            <form method="post" action="/replies/{{ r.id }}/regenerate" class="rv-inline" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
+              <input type="hidden" name="text">
+              <input name="instruction" placeholder="สั่ง AI เอง เช่น ให้ขอยูสเซอร์ด้วย" required>
+              <button class="rv-btn soft">เขียนใหม่</button>
+            </form>
+          </div>
+          <div class="rv-no">
+            <p class="rv-label">{{ icon('x', 14) }} ไม่ส่งข้อความนี้</p>
+            <form method="post" action="/replies/{{ r.id }}/reject" class="rv-inline">
+              <input name="reason" placeholder="เหตุผล (ไม่บังคับ)">
+              <button class="rv-btn danger">ไม่ส่ง</button>
+            </form>
+          </div>
         </div>
-      </details>
+      </div>
+    </section>
+    {% endfor %}
+  {% endif %}
+
+    <div class="rv-hero">
+      <img src="/static/brand/mark-360.png" width="132" height="132" alt="">
+      {% if box == 'dev' %}
+        <h3>ไม่มี ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์</h3>
+        <p>ticket ใหม่ที่ต้องอนุมัติก่อนส่งจะเข้ามาที่นี่</p>
+      {% else %}
+        <h3>ไม่มีข้อความรออนุมัติ</h3>
+        <p>ร่างคำตอบใหม่จะเข้ามาที่นี่เมื่อลูกค้าส่งข้อความในแชทที่ติดตาม</p>
+      {% endif %}
+      {% if box == 'customer' and dev_queue %}<a class="rv-btn soft" href="/replies?box=dev">ดู ticket ที่รอส่งโปรแกรมเมอร์ ({{ dev_queue | length }})</a>{% endif %}
+      {% if box == 'dev' and replies %}<a class="rv-btn soft" href="/replies?box=customer">ดูข้อความรอตอบลูกค้า ({{ replies | length }})</a>{% endif %}
     </div>
-  </article>
-  {% else %}
-  <section class="panel">
-    <table class="grid-table"><tbody>
-      <tr class="empty-row"><td>{{ icon('inbox', 24) }}<strong>ไม่มีข้อความตอบลูกค้ารออนุมัติ</strong>ร่างคำตอบใหม่จะเข้ามาที่นี่เมื่อลูกค้าส่งข้อความในแชทที่ติดตาม</td></tr>
-    </tbody></table>
-  </section>
-  {% endfor %}
-{% endif %}
+  </div>
+</div>
+
 {% else %}
   <section class="panel">
     <div class="panel-head">
-      <h2>{{ cicon('history', 20) }} {% for key, label, ic, tone in tabs if key == status %}{{ label }}{% endfor %}</h2>
+      <h2>{{ cicon('history', 20) }} {% for key, label in tabs if key == status %}{{ label }}{% endfor %}</h2>
       <span class="count">{{ replies | length }} รายการ{% if replies | length == 100 %} (แสดงล่าสุด 100){% endif %}</span>
     </div>
     <div class="table-wrap">
@@ -223,6 +273,95 @@
     btn.querySelector('span').textContent = editing ? 'ดูตัวอย่าง' : 'แก้ไขข้อความ';
     if (editing) area.focus();
   }
+
+  // กล่องจดหมายรออนุมัติ: เลือกรายการทางซ้าย -> รายละเอียดทางขวา (มือถือ: เต็มจอ มีปุ่มกลับ)
+  (() => {
+    const rv = document.getElementById('rv');
+    if (!rv) return;
+    rv.classList.add('js');
+    const items = [...rv.querySelectorAll('.rv-item')];
+    const panes = [...rv.querySelectorAll('.rv-pane')];
+    const small = () => window.matchMedia && matchMedia('(max-width: 900px)').matches;
+    const KEY = 'rv:' + rv.dataset.box;
+    let cur = '';
+
+    function show(id, opts) {
+      opts = opts || {};
+      cur = id;
+      items.forEach(a => {
+        const on = a.dataset.id === id;
+        a.classList.toggle('on', on);
+        if (on) { a.setAttribute('aria-current', 'true'); if (opts.reveal !== false) a.scrollIntoView({ block: 'nearest' }); }
+        else a.removeAttribute('aria-current');
+      });
+      panes.forEach(p => p.classList.toggle('on', p.dataset.id === id));
+      if (small()) {   // เปิดชั้นรายละเอียดก่อน เพื่อให้วัดความสูงบทสนทนาได้ถูกต้อง
+        rv.classList.add('open');
+        document.body.classList.add('rv-lock');
+      }
+      const pane = panes.find(p => p.dataset.id === id);
+      if (pane) {
+        const cv = pane.querySelector('.rv-convo');
+        if (cv) cv.scrollTop = cv.scrollHeight;
+        const body = pane.querySelector('.rv-body'); if (body) body.scrollTop = 0;
+      }
+    }
+    function close() {
+      rv.classList.remove('open');
+      document.body.classList.remove('rv-lock');
+    }
+
+    items.forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      const id = a.dataset.id;
+      if (small()) history.pushState({ rv: id }, '', '#' + id);
+      else history.replaceState(null, '', '#' + id);
+      show(id);
+    }));
+    rv.querySelectorAll('.rv-back').forEach(b => b.addEventListener('click', () => {
+      if (history.state && history.state.rv) history.back(); else close();
+    }));
+    window.addEventListener('popstate', () => {
+      const id = location.hash.slice(1);
+      if (id && items.some(a => a.dataset.id === id)) show(id); else close();
+    });
+
+    // ลูกศรขึ้น/ลง (หรือ j / k) เลื่อนรายการ เมื่อไม่ได้พิมพ์อยู่
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || small()) return;
+      const t = e.target;
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      const dir = (e.key === 'ArrowDown' || e.key === 'j') ? 1 : (e.key === 'ArrowUp' || e.key === 'k') ? -1 : 0;
+      if (!dir || !items.length) return;
+      e.preventDefault();
+      const i = Math.max(0, items.findIndex(a => a.dataset.id === cur));
+      const next = items[Math.min(items.length - 1, Math.max(0, i + dir))];
+      history.replaceState(null, '', '#' + next.dataset.id);
+      show(next.dataset.id);
+    });
+
+    // จำตำแหน่งที่ทำค้างไว้ -> หลังอนุมัติ/ไม่ส่ง/เขียนใหม่ หน้ารีโหลดแล้วไปที่รายการเดิมหรือรายการถัดไป
+    rv.addEventListener('submit', () => {
+      try { sessionStorage.setItem(KEY, JSON.stringify({ id: cur, idx: items.findIndex(a => a.dataset.id === cur) })); } catch (e) {}
+    });
+
+    // เลือกรายการเริ่มต้น
+    let start = '';
+    const hash = location.hash.slice(1);
+    if (hash && items.some(a => a.dataset.id === hash)) start = hash;
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(KEY) || 'null'); sessionStorage.removeItem(KEY); } catch (e) {}
+    if (!start && saved) {
+      if (items.some(a => a.dataset.id === saved.id)) start = saved.id;
+      else if (items.length) start = items[Math.min(Math.max(saved.idx, 0), items.length - 1)].dataset.id;
+    }
+    if (!start && !small() && items.length) start = items[0].dataset.id;
+    if (start) {
+      if (small() && !hash) { cur = start; items.forEach(a => a.classList.toggle('on', a.dataset.id === start)); panes.forEach(p => p.classList.toggle('on', p.dataset.id === start)); }
+      else show(start, { reveal: true });
+    }
+  })();
+
   // รีเฟรชเมื่อมีร่างใหม่ (ถ้าไม่ได้กำลังพิมพ์อยู่)
   let known = null;
   setInterval(async () => {

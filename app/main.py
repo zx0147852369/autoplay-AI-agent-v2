@@ -196,6 +196,31 @@ def _iso_localtime(value: str) -> str:
 templates.env.filters["localtime"] = _localtime
 templates.env.filters["localtime_hm"] = lambda dt: dt.replace(tzinfo=timezone.utc).astimezone(DISPLAY_TZ).strftime("%H:%M") if dt else "-"
 templates.env.filters["isolocal"] = _iso_localtime
+
+_TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+
+
+def _ago(dt) -> str:
+    """เวลาแบบอ่านง่ายในรายการ: เมื่อสักครู่ / 5 นาทีที่แล้ว / วันนี้ 13:05 / เมื่อวาน 09:30 / 8 ต.ค. 17:20"""
+    if not dt:
+        return "-"
+    if dt.tzinfo:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    secs = (utcnow() - dt).total_seconds()
+    if secs < 60:
+        return "เมื่อสักครู่"
+    if secs < 3600:
+        return f"{int(secs // 60)} นาทีที่แล้ว"
+    local = dt.replace(tzinfo=timezone.utc).astimezone(DISPLAY_TZ)
+    today = utcnow().replace(tzinfo=timezone.utc).astimezone(DISPLAY_TZ).date()
+    if local.date() == today:
+        return f"วันนี้ {local:%H:%M}"
+    if local.date() == today - timedelta(days=1):
+        return f"เมื่อวาน {local:%H:%M}"
+    return f"{local.day} {_TH_MONTHS[local.month - 1]} {local:%H:%M}"
+
+
+templates.env.filters["ago"] = _ago
 templates.env.filters["fromjson"] = lambda s: json.loads(s) if s else None
 
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+)")
