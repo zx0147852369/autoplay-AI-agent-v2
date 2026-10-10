@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=90">
+  <link rel="stylesheet" href="/static/style.css?v=91">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
@@ -60,9 +60,13 @@
       {{ nav_item('/system', 'gauge', 'ทรัพยากรเครื่อง') }}
       {{ nav_item('/logs', 'logs', 'Log ระบบ') }}
       {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
-      {{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot') }}
       {{ nav_item('/brain', 'data-trending', 'สมอง AI') }}
       {{ nav_item('/ai', 'apps-list', 'เชื่อมต่อ AI') }}
+      {# LINE Chat Bot แยกเป็นกลุ่มของตัวเองท้ายแถบ ไม่ปนกับระบบ Telegram #}
+      <div class="nav-group nav-group-line">
+        <div class="nav-label">LINE · แยกจาก Telegram</div>
+        {{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot') }}
+      </div>
     {% endif %}
   </nav>
   {% if quota_info and quota_info.is_gemini and quota_info.current %}
