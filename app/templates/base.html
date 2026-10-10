@@ -9,6 +9,8 @@
       try { t = localStorage.getItem('theme') || 'system'; } catch (e) {}
       var dark = t === 'dark' || (t === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      // เมนูข้างที่พับไว้: ตั้งค่าก่อนวาดหน้า จะได้ไม่กะพริบตอนเปลี่ยนหน้า
+      try { if (localStorage.getItem('nav:collapsed') === '1') document.documentElement.classList.add('nav-collapsed'); } catch (e) {}
     })();
   </script>
   <meta name="color-scheme" content="light dark">
@@ -27,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=91">
+  <link rel="stylesheet" href="/static/style.css?v=92">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
@@ -41,6 +43,7 @@
 <aside class="sidebar" id="sidebar">
   <a class="brand" href="/">
     <img class="brand-logo logo-light" src="/static/brand/logo.png" alt="autopay" width="186" height="38"><img class="brand-logo logo-dark" src="/static/brand/logo-dark.png" alt="autopay" width="186" height="38">
+<img class="brand-rail" src="/static/brand/mark-64.png" width="40" height="40" alt="autopay">
     <span class="brand-sub">Support Desk · ทีมดูแลลูกค้า</span>
   </a>
   <nav class="nav">
@@ -73,7 +76,7 @@
   {% set qcur = quota_info.current %}
   <a class="quota-mini" href="/#quota" title="โควตา Gemini วันนี้ (นับจากระบบนี้)">
     <span class="quota-mini-head"><span>โควตา AI วันนี้</span>
-      <b>{% if qcur.limit %}เหลือ {{ qcur.left }}{% else %}ใช้ {{ qcur.used }}{% endif %}</b></span>
+      <b>{% if qcur.limit %}<span class="q-word">เหลือ </span>{{ qcur.left }}{% else %}<span class="q-word">ใช้ </span>{{ qcur.used }}{% endif %}</b></span>
     {% if qcur.limit %}<span class="qbar {{ qcur.level }}"><span style="width: {{ qcur.pct }}%"></span></span>{% endif %}
     <span class="quota-mini-foot">{{ qcur.used }}{% if qcur.limit %}/{{ qcur.limit }}{% endif %} ครั้ง · รีเซ็ตใน {{ quota_info.reset_in }}</span>
   </a>
@@ -92,6 +95,7 @@
     <form method="post" action="/logout"><button class="icon-btn" title="ออกจากระบบ" aria-label="ออกจากระบบ">{{ icon('logout', 17) }}</button></form>
   </div>
 </aside>
+<button type="button" class="icon-btn sb-toggle" id="sbToggle" aria-controls="sidebar" aria-expanded="true" aria-label="พับเมนูด้านข้าง" title="พับเมนู ( [ )">{{ icon('chevrons-left', 15) }}</button>
 <div class="scrim" id="scrim"></div>
 
 <div class="shell">
@@ -300,6 +304,72 @@
 </script>
 {% if user %}
 <script>
+  // ---------------- เมนูข้าง: พับเป็นแถบไอคอน (จำค่าในเบราว์เซอร์เครื่องนี้ · คีย์ลัด [ ) ----------------
+  (() => {
+    const root = document.documentElement, btn = document.getElementById('sbToggle'), sb = document.getElementById('sidebar');
+    if (!btn || !sb) return;
+    const KEY = 'nav:collapsed';
+    const wide = () => !window.matchMedia || matchMedia('(min-width: 901px)').matches;
+    const isCollapsed = () => root.classList.contains('nav-collapsed');
+    const tip = document.createElement('div');
+    tip.className = 'sb-tip'; tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+    const hideTip = () => tip.classList.remove('show');
+    function paint() {
+      const c = isCollapsed();
+      btn.setAttribute('aria-expanded', c ? 'false' : 'true');
+      btn.setAttribute('aria-label', c ? 'ขยายเมนูด้านข้าง' : 'พับเมนูด้านข้าง');
+      btn.title = (c ? 'ขยายเมนู' : 'พับเมนู') + ' ( [ )';
+    }
+    function set(c) {
+      root.classList.toggle('nav-collapsed', c);
+      try { localStorage.setItem(KEY, c ? '1' : '0'); } catch (e) {}
+      hideTip(); paint();
+    }
+    btn.addEventListener('click', () => { set(!isCollapsed()); btn.blur(); });
+    document.addEventListener('keydown', e => {
+      if (e.key !== '[' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || !wide()) return;
+      const el = document.activeElement;
+      if (el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable)) return;
+      e.preventDefault();
+      set(!isCollapsed());
+    });
+    window.addEventListener('storage', e => {
+      if (e.key === KEY) { root.classList.toggle('nav-collapsed', e.newValue === '1'); hideTip(); paint(); }
+    });
+    // ป้ายชื่อเมนูตอนพับ: ขึ้นทันทีข้างไอคอน (พร้อมตัวเลขแจ้งเตือน) แทน title ของเบราว์เซอร์
+    function showTip(el) {
+      if (!isCollapsed() || !wide()) return hideTip();
+      const lab = el.querySelector('span:not(.nav-badge)');
+      const text = lab ? lab.textContent.trim() : '';
+      if (!text) return hideTip();
+      const badge = el.querySelector('.nav-badge');
+      tip.textContent = '';
+      const t = document.createElement('span');
+      t.textContent = text;
+      tip.appendChild(t);
+      if (badge && badge.textContent.trim()) {
+        const b = document.createElement('b');
+        b.textContent = badge.textContent.trim();
+        tip.appendChild(b);
+      }
+      const r = el.getBoundingClientRect();
+      tip.style.top = Math.round(r.top + r.height / 2) + 'px';
+      tip.style.left = Math.round(r.right + 12) + 'px';
+      tip.classList.add('show');
+    }
+    sb.addEventListener('pointerover', e => {
+      const a = e.target.closest ? e.target.closest('.nav-item') : null;
+      if (a && sb.contains(a)) showTip(a); else hideTip();
+    });
+    sb.addEventListener('pointerleave', hideTip);
+    sb.addEventListener('focusin', e => { const a = e.target.closest ? e.target.closest('.nav-item') : null; if (a) showTip(a); });
+    sb.addEventListener('focusout', hideTip);
+    sb.addEventListener('scroll', hideTip, { passive: true });
+    window.addEventListener('resize', hideTip);
+    paint();
+  })();
+
   // ---------------- เสียงแจ้งเตือน (ตั้งค่าเก็บในเบราว์เซอร์เครื่องนี้) ----------------
   const notifySound = (() => {
     const KEY = 'soundSettings', DEFAULTS = { on: true, sound: 'chime', volume: 70, repeat: 0 };

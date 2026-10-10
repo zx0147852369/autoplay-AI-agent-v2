@@ -2141,3 +2141,82 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 @media (min-width: 901px) and (max-height: 840px) {
   .nav-group-line .nav-label { padding: 8px 12px 4px; }
 }
+
+/* ---- เมนูข้าง: พับเป็นแถบไอคอน (จอกว้าง) · มือถือใช้ลิ้นชักเหมือนเดิม ---- */
+.sb-toggle, .sb-tip, .brand-rail { display: none; }
+@media (min-width: 901px) {
+  :root { --sb-ease: cubic-bezier(.22, .8, .24, 1); }
+  :root.nav-collapsed { --sidebar: 72px; }
+  .sidebar { overflow-x: hidden; transition: transform .25s ease, width .26s var(--sb-ease); }
+  .shell { transition: margin-left .26s var(--sb-ease); }
+  .nav-item > span:not(.nav-badge) { max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: max-width .26s var(--sb-ease), opacity .16s; }
+  .nav-item { transition: background .15s, color .15s, box-shadow .15s, gap .26s var(--sb-ease); }
+
+  /* ปุ่มจับที่ขอบเมนู */
+  .icon-btn.sb-toggle {
+    display: grid; position: fixed; z-index: 41; top: 26px; left: calc(var(--sidebar) - 13px);
+    width: 26px; height: 26px; min-width: 0; min-height: 0; padding: 0; border-radius: 50%;
+    background: var(--surface); color: var(--muted); border: 1px solid var(--line-2);
+    box-shadow: 0 1px 2px rgba(28, 27, 25, .08), 0 3px 10px rgba(28, 27, 25, .07);
+    transition: left .26s var(--sb-ease), color .15s, border-color .15s, box-shadow .15s, transform .15s;
+  }
+  .icon-btn.sb-toggle:hover { background: var(--surface); color: var(--ink); border-color: var(--muted); box-shadow: 0 1px 2px rgba(28, 27, 25, .1), 0 5px 14px rgba(28, 27, 25, .12); transform: scale(1.08); }
+  .icon-btn.sb-toggle:focus-visible { outline: none; box-shadow: var(--focus), 0 1px 2px rgba(28, 27, 25, .1); }
+  .sb-toggle .ic { transition: transform .26s var(--sb-ease); }
+  :root.nav-collapsed .sb-toggle .ic { transform: rotate(180deg); }
+
+  /* ป้ายชื่อเมนูตอนพับ */
+  .sb-tip {
+    display: flex; align-items: center; gap: 8px; position: fixed; z-index: 60; pointer-events: none;
+    padding: 6px 12px; border-radius: 9px; background: var(--ink); color: var(--paper);
+    font-size: .88rem; font-weight: 600; line-height: 1.5; white-space: nowrap; box-shadow: 0 8px 24px rgba(28, 27, 25, .24);
+    opacity: 0; transform: translate(-6px, -50%); transition: opacity .12s, transform .14s var(--sb-ease);
+  }
+  .sb-tip::before { content: ""; position: absolute; left: -4px; top: 50%; width: 9px; height: 9px; border-radius: 2px; background: inherit; transform: translateY(-50%) rotate(45deg); }
+  .sb-tip.show { opacity: 1; transform: translate(0, -50%); }
+  .sb-tip b { font-family: var(--mono); font-size: .74rem; font-weight: 600; line-height: 1.6; padding: 0 7px; border-radius: 99px; background: rgba(128, 128, 128, .32); }
+
+  /* แถบไอคอน */
+  :root.nav-collapsed .sidebar { padding-left: 14px; padding-right: 14px; }
+  :root.nav-collapsed .brand { align-items: center; padding: 0 0 16px; }
+  :root.nav-collapsed .brand-logo, :root.nav-collapsed .brand-sub { display: none; }
+  :root.nav-collapsed .brand-rail { display: block; border-radius: 11px; animation: sb-pop .32s var(--sb-ease) both; }
+  @keyframes sb-pop { from { opacity: 0; transform: scale(.82); } }
+
+  :root.nav-collapsed .nav, :root.nav-collapsed .nav-group-line { align-items: center; }
+  :root.nav-collapsed .nav-item { position: relative; width: 44px; height: 44px; padding: 0; gap: 0; justify-content: center; border-radius: 12px; }
+  :root.nav-collapsed .nav-item > span:not(.nav-badge) { max-width: 0; opacity: 0; }
+  :root.nav-collapsed .nav-item .cicon { width: 22px; height: 22px; }
+  :root.nav-collapsed .nav-item.active::before { left: -14px; top: 11px; bottom: 11px; }
+  :root.nav-collapsed .nav-badge {
+    position: absolute; top: 1px; right: -3px; margin: 0; min-width: 19px; height: 19px; padding: 0 5px;
+    font-size: .66rem; line-height: 19px; text-align: center; box-shadow: 0 0 0 2px var(--paper-2);
+  }
+  :root.nav-collapsed .nav-label { width: 26px; height: 2px; margin: 14px auto 12px; padding: 0; font-size: 0; border-radius: 2px; background: var(--line-2); overflow: hidden; }
+  :root.nav-collapsed .nav-group-line { padding-top: 10px; }
+  :root.nav-collapsed .nav-group-line .nav-label { display: none; }
+
+  :root.nav-collapsed .quota-mini { margin: 0 0 10px; padding: 8px 4px 9px; text-align: center; }
+  :root.nav-collapsed .quota-mini-head { display: block; margin-bottom: 5px; }
+  :root.nav-collapsed .quota-mini-head > span:first-child, :root.nav-collapsed .q-word, :root.nav-collapsed .quota-mini-foot { display: none; }
+  :root.nav-collapsed .quota-mini-head b { font-size: .95rem; font-weight: 600; }
+  :root.nav-collapsed .quota-mini .qbar { margin: 0 7px; }
+
+  :root.nav-collapsed .sidebar-foot { flex-direction: column; align-items: center; gap: 4px; }
+  :root.nav-collapsed .sidebar-foot .user-chip { flex: none; padding: 3px; }
+  :root.nav-collapsed .user-meta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  :root.nav-collapsed .sidebar-foot .icon-btn { width: 36px; height: 36px; }
+}
+@media (min-width: 901px) and (max-height: 840px) {
+  .icon-btn.sb-toggle { top: 20px; }
+  :root.nav-collapsed .brand { padding-bottom: 8px; }
+  :root.nav-collapsed .nav-item { height: 40px; }
+  :root.nav-collapsed .nav-label { margin: 8px auto 6px; }
+  :root.nav-collapsed .sidebar-foot { gap: 2px; padding-top: 8px; }
+  :root.nav-collapsed .sidebar-foot .icon-btn { width: 32px; height: 32px; }
+  :root.nav-collapsed .quota-mini { margin-bottom: 6px; padding: 6px 4px 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .shell, .icon-btn.sb-toggle, .sb-toggle .ic, .nav-item, .nav-item > span, .sb-tip { transition: none !important; }
+  .brand-rail { animation: none !important; }
+}
