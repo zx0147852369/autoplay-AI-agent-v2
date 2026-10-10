@@ -52,6 +52,7 @@
         <td><div class="chat-cell">
           <div class="chat-meta"><a class="title-link {{ 'is-unread' if un }}" href="/chats/{{ c.id }}">{{ c.title }}</a>
             {% if un %}<span class="unread-pill" title="ข้อความลูกค้าที่คุณยังไม่ได้อ่าน">{{ un }} ใหม่</span>{% endif %}
+            {% if c.channel == 'line' %}<span class="tag ch-line">LINE</span>{% endif %}
             {% if c.id == dev_group_id %}<span class="tag st-in_progress">กลุ่มโปรแกรมเมอร์</span>{% endif %}
             {% if c.website_url %}<div class="small muted mono">{{ c.website_url }}</div>{% endif %}
             {% if ai_errors.get(c.id) %}<div class="small error-text">{{ ai_errors[c.id] }}</div>{% endif %}</div>

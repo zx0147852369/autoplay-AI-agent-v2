@@ -94,6 +94,9 @@ class Chat(Base):
     monitored: Mapped[bool] = mapped_column(Boolean, default=False)
     # เว็บไซต์ของลูกค้าแชทนี้ (แอดมินตั้งเอง) ใช้แทนการให้ AI เดา
     website_url: Mapped[str] = mapped_column(String(1024), default="", server_default="")
+    # ช่องทาง: telegram (id = Telegram chat id) / line (LINE Chat Bot · id สร้างเอง ติดลบ, ext_id = LINE userId/groupId/roomId)
+    channel: Mapped[str] = mapped_column(String(16), default="telegram", server_default="telegram")
+    ext_id: Mapped[str] = mapped_column(String(64), default="", server_default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -109,6 +112,7 @@ class Message(Base):
     text: Mapped[str] = mapped_column(Text, default="")
     media_path: Mapped[str] = mapped_column(String(512), default="")  # ชื่อไฟล์ใน data/media
     sent_by: Mapped[str] = mapped_column(String(64), default="", server_default="")  # พนักงานที่กดส่งจากเว็บ/LINE (ว่าง = ไม่ทราบ)
+    ext_id: Mapped[str] = mapped_column(String(64), default="", server_default="")  # id ข้อความของ LINE (กัน webhook ซ้ำ)
     date: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     analyzed: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -339,6 +343,10 @@ DEFAULT_SETTINGS = {
     "dev_usernames": "yuopa9",
     "bank_usernames": "",  # ทีมงานที่ดูแลเรื่องเชื่อมบัญชีธนาคาร (แท็กในกลุ่มแทนโปรแกรมเมอร์)
     "staff_usernames": "",  # ทีมงานคนอื่นในกลุ่มลูกค้า คั่นด้วยจุลภาค
+    # LINE Chat Bot สำหรับลูกค้า (OA คนละตัวกับ LINE แจ้งเตือนอนุมัติ)
+    "linebot_enabled": "1",       # รับข้อความจากลูกค้าทาง LINE (ปิดไว้ = ไม่บันทึก ไม่วิเคราะห์)
+    "linebot_mode": "approve",    # approve = AI ร่างแล้วทีมงานอนุมัติก่อนส่ง · auto = AI ตอบลูกค้าใน LINE เองทันที
+    "linebot_greeting": "",       # ข้อความต้อนรับตอนลูกค้าเพิ่มเพื่อน (ว่าง = ไม่ส่ง)
     "ignore_usernames": "nsbmw_prod_bot",  # บัญชีที่ไม่รับข้อความเลย คั่นด้วยจุลภาค
     "ignore_bots": "1",  # ไม่รับข้อความจากบอท Telegram ทุกตัว
     "dev_forward": "1",

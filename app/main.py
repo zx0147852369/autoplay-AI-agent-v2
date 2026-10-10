@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, chatbus, custom_ai, dev_bridge, learning, line_service, privacy, quota, sysinfo, unread
+from . import ai_service, analyzer, chatbus, custom_ai, dev_bridge, learning, line_service, linebot, privacy, quota, sysinfo, unread
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
@@ -103,6 +103,9 @@ async def lifespan(app: FastAPI):
     if EPHEMERAL_STORAGE:
         log.warning("ข้อมูลไม่ได้อยู่ใน Railway Volume: ตั้งค่าและข้อมูลทั้งหมดจะหายเมื่อ deploy ใหม่")
     telegram.on_message = analyzer.schedule
+    linebot.on_message = analyzer.schedule
+    analyzer.on_draft = _auto_send_bot
+    asyncio.create_task(_load_bot_name())
     dev_bridge.configure()
     startup = asyncio.create_task(telegram.start_from_db())
     sweeper = asyncio.create_task(analyzer.sweeper())
@@ -679,7 +682,9 @@ async def chats_toggle(request: Request, chat_id: int):
         enabled = bool(chat and chat.monitored)
         limit = int_setting(get_settings(db), "context_messages", 5, 100)
     telegram.reload_monitored()
-    if enabled and telegram.connected:
+    with SessionLocal() as db:
+        is_line = ((db.get(Chat, chat_id).channel if db.get(Chat, chat_id) else '') == 'line')
+    if enabled and telegram.connected and not is_line:
         try:
             waiting = await telegram.backfill(chat_id, limit=limit)
         except Exception as e:  # noqa: BLE001
@@ -797,9 +802,14 @@ async def api_chat_say(request: Request, chat_id: int, body: SayIn):
     with SessionLocal() as db:
         if not db.get(Chat, chat_id):
             return JSONResponse({"ok": False, "error": "ไม่พบแชทนี้"}, status_code=404)
+    with SessionLocal() as db:
+        channel = db.get(Chat, chat_id).channel or "telegram"
     try:
-        data = await telegram.send_manual(chat_id, text, body.reply_to, by=user.username)
-    except TelegramLoginError as e:
+        if channel == "line":
+            data = await linebot.send_manual(chat_id, text, by=user.username)
+        else:
+            data = await telegram.send_manual(chat_id, text, body.reply_to, by=user.username)
+    except (TelegramLoginError, linebot.LineBotError) as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
     except Exception as e:  # noqa: BLE001
         log.exception("manual message to chat %s failed", chat_id)
@@ -834,7 +844,9 @@ async def replies_page(request: Request, status: str = "pending", box: str = "")
             query = query.where(Reply.status == status)
         replies = list(db.scalars(query))
         status_counts = dict(db.execute(select(Reply.status, func.count(Reply.id)).group_by(Reply.status)).all())
-        chat_titles = {c.id: c.title for c in db.scalars(select(Chat))}
+        all_chats = list(db.scalars(select(Chat)))
+        chat_titles = {c.id: c.title for c in all_chats}
+        chat_channels = {c.id: c.channel for c in all_chats}
         dev_queue = []
         for t in db.scalars(select(Ticket).where(Ticket.dev_status == "pending").order_by(Ticket.created_at)):
             dev_queue.append({"ticket": t, "photos": [a.media_path for a in t.attachments][:dev_bridge.MAX_PHOTOS],
@@ -853,6 +865,7 @@ async def replies_page(request: Request, status: str = "pending", box: str = "")
         box = "dev" if dev_queue and not (status == "pending" and replies) else "customer"
     return render(request, "replies.html", user, replies=replies, status=status, chat_titles=chat_titles,
                   context=context, status_counts=status_counts, dev_queue=dev_queue, box=box, unread_by_chat=unread_by_chat,
+                  chat_channels=chat_channels,
                   dev_group_title=chat_titles.get(telegram.dev_group_id, "กลุ่มโปรแกรมเมอร์"))
 
 
@@ -876,18 +889,27 @@ async def deliver_reply(reply_id: int, text: str, by: str, media: list[str] | No
         reply.decided_by, reply.decided_at = by, utcnow()
         db.commit()
         chat_id, reply_to, kind, ticket_id = reply.chat_id, reply.reply_to_tg_id, reply.kind, reply.ticket_id
+        channel = (db.get(Chat, chat_id).channel if db.get(Chat, chat_id) else "telegram") or "telegram"
     try:
-        sent_id = await telegram.send_reply(chat_id, text, reply_to)
-        telegram.tag_sent_by(chat_id, [sent_id], by)  # จดว่าใครกดส่ง (แสดงชื่อพนักงานในบทสนทนา)
-        status, error = "sent", ""
-        files = [str(MEDIA_DIR / p) for p in photos if (MEDIA_DIR / p).is_file()]
-        if files:
-            try:
-                telegram.tag_sent_by(chat_id, await telegram.send_files(chat_id, files, reply_to=sent_id), by)
-            except Exception as e:  # noqa: BLE001 - ข้อความส่งแล้ว แจ้งเฉพาะรูปที่ส่งไม่ได้
-                log.exception("send reply photos failed")
-                error = f"ส่งข้อความแล้ว แต่ส่งรูปไม่สำเร็จ: {e}"
-        msg = error or ("อนุมัติและส่งข้อความแล้ว" + (f" พร้อมรูป {len(files)} รูป" if files else ""))
+        if channel == "line":  # LINE Chat Bot: ส่งผ่าน LINE OA ของลูกค้า (ข้อความ + รูปจากคู่มือ)
+            sent = await linebot.send_reply(chat_id, text, photos, by=by)
+            status, error = "sent", ""
+            msg = "อนุมัติและส่งข้อความทาง LINE แล้ว" + (f" พร้อมรูป {len(photos)} รูป" if photos else "")
+            files = photos
+        else:
+            sent_id = await telegram.send_reply(chat_id, text, reply_to)
+            telegram.tag_sent_by(chat_id, [sent_id], by)  # จดว่าใครกดส่ง (แสดงชื่อพนักงานในบทสนทนา)
+            status, error = "sent", ""
+            files = [str(MEDIA_DIR / p) for p in photos if (MEDIA_DIR / p).is_file()]
+            if files:
+                try:
+                    telegram.tag_sent_by(chat_id, await telegram.send_files(chat_id, files, reply_to=sent_id), by)
+                except Exception as e:  # noqa: BLE001 - ข้อความส่งแล้ว แจ้งเฉพาะรูปที่ส่งไม่ได้
+                    log.exception("send reply photos failed")
+                    error = f"ส่งข้อความแล้ว แต่ส่งรูปไม่สำเร็จ: {e}"
+            msg = error or ("อนุมัติและส่งข้อความแล้ว" + (f" พร้อมรูป {len(files)} รูป" if files else ""))
+    except linebot.LineBotError as e:
+        status, error, msg = "failed", str(e), f"ส่งข้อความทาง LINE ไม่สำเร็จ: {e}"
     except TelegramLoginError as e:
         status, error, msg = "failed", str(e), f"ส่งข้อความไม่สำเร็จ: {e}"
     except Exception as e:  # noqa: BLE001
@@ -1246,6 +1268,98 @@ async def api_reply_rewrite(request: Request, reply_id: int, body: RewriteIn):
         return JSONResponse({"ok": False, "error": "ข้อความนี้ถูกดำเนินการไปแล้ว"}, status_code=409)
     return JSONResponse({"ok": True, "text": new_text, "seconds": round(time.perf_counter() - started, 1)})
 
+
+# ---------------------------------------------------------------- LINE Chat Bot (ลูกค้าทักผ่าน LINE OA ที่แยกจาก LINE แจ้งเตือนอนุมัติ)
+@app.post("/linebot/webhook")
+async def linebot_webhook(request: Request):
+    """LINE ส่งข้อความของลูกค้ามาที่นี่ (ตรวจลายเซ็นด้วย Channel secret ของ OA บอท) · ตอบ 200 ทันทีแล้วประมวลผลต่อเบื้องหลัง"""
+    body = await request.body()
+    if len(body) > 1_000_000:
+        return JSONResponse({"error": "too large"}, status_code=413)
+    if not linebot.verify(body, request.headers.get("x-line-signature", "")):
+        return JSONResponse({"error": "bad signature"}, status_code=403)
+    try:
+        events = json.loads(body).get("events", [])
+    except (json.JSONDecodeError, AttributeError):
+        events = []
+    if isinstance(events, list) and events:
+        linebot.spawn([e for e in events if isinstance(e, dict)])
+    return JSONResponse({"ok": True})
+
+
+async def _auto_send_bot(reply_id: int) -> None:
+    """โหมดตอบอัตโนมัติ: ร่างตอบลูกค้าที่ทักมาทาง LINE Chat Bot ถูกส่งทันที (ไม่ผ่านการอนุมัติ)"""
+    with SessionLocal() as db:
+        settings = get_settings(db)
+        reply = db.get(Reply, reply_id)
+        chat = db.get(Chat, reply.chat_id) if reply else None
+        if not (reply and chat and chat.channel == "line" and reply.kind == "ai" and reply.status == "pending"):
+            return
+        if settings.get("linebot_enabled") != "1" or settings.get("linebot_mode") != "auto":
+            return
+        text = reply.final_text
+    status, msg = await deliver_reply(reply_id, text, "AI อัตโนมัติ")
+    log.info("LINE Chat Bot ตอบอัตโนมัติ (ร่าง #%s): %s · %s", reply_id, status, msg)
+
+
+async def _load_bot_name() -> None:
+    if not linebot.configured():
+        return
+    try:
+        linebot.set_bot_name((await linebot.bot_info()).get("displayName", ""))
+    except linebot.LineBotError:
+        log.warning("โหลดชื่อ LINE OA ของบอทไม่สำเร็จ")
+
+
+@app.get("/linebot")
+async def linebot_page(request: Request):
+    user = current_user(request, "admin")
+    with SessionLocal() as db:
+        settings = get_settings(db)
+        n_chats = db.scalar(select(func.count(Chat.id)).where(Chat.channel == "line")) or 0
+        n_today = db.scalar(
+            select(func.count(Message.id)).join(Chat, Chat.id == Message.chat_id)
+            .where(Chat.channel == "line", Message.is_outgoing.is_(False), Message.date >= local_day_start_utc())) or 0
+        n_auto = db.scalar(select(func.count(Reply.id)).where(Reply.decided_by == "AI อัตโนมัติ", Reply.status == "sent")) or 0
+    return render(request, "linebot.html", user, settings=settings, bot_has_token=bool(linebot.token()),
+                  bot_has_secret=bool(linebot.secret()), bot_ready=linebot.configured(),
+                  webhook=str(request.base_url).rstrip("/") + "/linebot/webhook", public_url=line_service.public_url(),
+                  n_chats=n_chats, n_today=n_today, n_auto=n_auto, same_oa=bool(
+                      linebot.token() and linebot.token() == line_service.token()))
+
+
+@app.post("/linebot")
+async def linebot_save(request: Request):
+    current_user(request, "admin")
+    form = await request.form()
+    values = {
+        "linebot_enabled": "1" if form.get("linebot_enabled") else "0",
+        "linebot_mode": "auto" if form.get("linebot_mode") == "auto" else "approve",
+        "linebot_greeting": str(form.get("linebot_greeting", "")).strip()[:500],
+    }
+    with SessionLocal() as db:
+        for key, value in values.items():
+            db.merge(Setting(key=key, value=value))
+        db.commit()
+    flash(request, "บันทึกการตั้งค่า LINE Chat Bot แล้ว")
+    return back("/linebot")
+
+
+@app.post("/linebot/check")
+async def linebot_check(request: Request):
+    """ตรวจว่า LINE_BOT_CHANNEL_ACCESS_TOKEN ใช้ได้จริง (ขอข้อมูลบอทจาก LINE)"""
+    current_user(request, "admin")
+    if not linebot.configured():
+        flash(request, "ยังไม่ได้ตั้ง LINE_BOT_CHANNEL_ACCESS_TOKEN และ LINE_BOT_CHANNEL_SECRET ใน Variables ของ Railway", "error")
+        return back("/linebot")
+    try:
+        info = await linebot.bot_info()
+    except linebot.LineBotError as e:
+        flash(request, f"เชื่อมต่อ LINE OA ของบอทไม่สำเร็จ: {e}", "error")
+        return back("/linebot")
+    linebot.set_bot_name(info.get("displayName", ""))
+    flash(request, f"เชื่อมต่อ OA \"{info.get('displayName', '')}\" {info.get('basicId', '')} ได้แล้ว")
+    return back("/linebot")
 
 # ---------------------------------------------------------------- สมอง AI (โน้ตที่ AI เรียนรู้จากการทำงานจริง)
 BRAIN_FILTERS = {"all": "ทั้งหมด", "global": "ทั่วไป", "chat": "เฉพาะแชท", "auto": "AI จดเอง", "manual": "แอดมินเขียน",
@@ -2062,7 +2176,7 @@ async def settings_save(request: Request):
                 value = str(form.get(key, ""))
                 if value not in known_models:
                     continue
-            elif key.startswith("custom_ai_") or key.startswith("learn_") or key.startswith("line_"):
+            elif key.startswith(("custom_ai_", "learn_", "line_", "linebot_")):
                 continue  # ตั้งที่หน้าของตัวเอง (เชื่อมต่อ AI / สมอง AI / แจ้งเตือน LINE) ไม่รับผ่านฟอร์มนี้
             elif key in ("debounce_seconds", "context_messages"):
                 low, high = (0, 600) if key == "debounce_seconds" else (5, 100)

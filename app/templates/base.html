@@ -27,13 +27,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=89">
+  <link rel="stylesheet" href="/static/style.css?v=90">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
 {% if user %}
 {% macro nav_item(href, ic, label, badge='') -%}
-  {% set active = (path == '/' and href == '/') or (href != '/' and path.startswith(href)) %}
+  {% set active = (path == '/' and href == '/') or (href != '/' and (path == href or path.startswith(href ~ '/'))) %}
   <a href="{{ href }}" class="nav-item {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ cicon(ic, 20) }}<span>{{ label }}</span>
     {%- if badge %}<span class="nav-badge {{ 'hot' if badge == 'badge-pending' }} {{ 'unread' if badge == 'badge-unread' }}" id="{{ badge }}"{% if badge == 'badge-unread' %} title="ข้อความลูกค้าที่ยังไม่ได้อ่าน"{% endif %}></span>{% endif %}</a>
 {%- endmacro %}
@@ -60,6 +60,7 @@
       {{ nav_item('/system', 'gauge', 'ทรัพยากรเครื่อง') }}
       {{ nav_item('/logs', 'logs', 'Log ระบบ') }}
       {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
+      {{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot') }}
       {{ nav_item('/brain', 'data-trending', 'สมอง AI') }}
       {{ nav_item('/ai', 'apps-list', 'เชื่อมต่อ AI') }}
     {% endif %}
@@ -107,7 +108,7 @@
 </div>
 {# แถบเมนูล่าง (มือถือ): ใช้นิ้วโป้งกดง่าย · ตัวเลขแดงของ รออนุมัติ/Tickets อัปเดตจาก /api/badge #}
 {% macro tab_item(href, ic, label, badge='') -%}
-  {% set active = (path == '/' and href == '/') or (href != '/' and path.startswith(href)) %}
+  {% set active = (path == '/' and href == '/') or (href != '/' and (path == href or path.startswith(href ~ '/'))) %}
   <a href="{{ href }}" class="tab {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ icon(ic, 22) }}<span>{{ label }}</span>{% if badge %}<span class="tab-badge" id="{{ badge }}"></span>{% endif %}</a>
 {%- endmacro %}
 <nav class="tabbar" aria-label="เมนูหลัก">

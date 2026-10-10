@@ -2123,3 +2123,12 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .rv .rv-collapse .ic { transition: transform .15s; }
 .rv.collapsed .rv-collapse .ic { transform: rotate(180deg); }
 @media (max-width: 900px) { .rv .rv-collapse { display: none; } }
+
+/* ---- LINE Chat Bot ---- */
+.rv-chip.line { background: #e6f9ec; color: #06853c; }
+[data-theme="dark"] .rv-chip.line { background: rgba(6, 199, 85, .16); color: #5be08b; }
+.tag.ch-line { background: #e6f9ec; color: #06853c; margin-left: 6px; }
+[data-theme="dark"] .tag.ch-line { background: rgba(6, 199, 85, .16); color: #5be08b; }
+.stat-line { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 14px 0; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); font-size: .92rem; }
+.stat-line strong { font-size: 1.15rem; color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.steps-list { margin: 0 0 14px; padding-left: 22px; display: grid; gap: 8px; line-height: 1.7; color: var(--ink-2); }

@@ -46,6 +46,7 @@ _timers: dict[int, asyncio.Task] = {}
 _last_attempt: dict[int, float] = {}
 _locks: dict[int, asyncio.Lock] = {}
 last_error: dict[int, str] = {}  # chat_id -> ข้อผิดพลาดล่าสุด (แสดงบนหน้าเว็บ)
+on_draft = None  # async callback(reply_id) หลังสร้างร่างตอบลูกค้า (ใช้กับโหมดตอบอัตโนมัติของ LINE Chat Bot)
 
 
 def schedule(chat_id: int) -> None:
@@ -190,6 +191,11 @@ async def analyze(chat_id: int) -> str:
             result.needs_reply = False
         if result.needs_reply and result.reply_text.strip() and (settings.get("auto_draft") == "1" or ask_link or ack):
             draft_id = _save_draft(chat_id, result, new_messages, ticket_id)
+            if on_draft:  # โหมดตอบอัตโนมัติของ LINE Chat Bot (ส่งแล้วจะไม่ขึ้นรออนุมัติ / ไม่ส่งการ์ดแจ้งเตือน)
+                try:
+                    await on_draft(draft_id)
+                except Exception:  # noqa: BLE001
+                    log.exception("auto send failed for reply %s", draft_id)
             try:
                 await line_service.notify_reply(draft_id)
             except Exception:  # noqa: BLE001 - แจ้ง LINE ไม่สำเร็จ ไม่ให้ล้มการวิเคราะห์

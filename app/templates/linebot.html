@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}LINE Chat Bot{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>LINE Chat Bot</h1>
+  </div>
+</div>
+
+<form method="post" action="/linebot">
+  <section class="card">
+    <div class="card-head"><h2>{{ cicon('chat-bubbles-question', 20) }} ลูกค้าทักผ่าน LINE OA ของบอท</h2></div>
+    <p class="hint" style="margin:-4px 0 14px">ใช้ LINE OA <strong>คนละตัว</strong>กับ "แจ้งเตือน LINE" (ที่ส่งการ์ดรออนุมัติให้ทีมงาน) ข้อความของลูกค้าเข้ากระบวนการเดียวกับแชท Telegram:
+      AI วิเคราะห์ ร่างคำตอบ เปิด ticket แล้วส่งกลับทาง LINE</p>
+    <div class="key-status">
+      <span><span class="dot {{ 'live' if bot_has_token else 'off' }}"></span> <code>LINE_BOT_CHANNEL_ACCESS_TOKEN</code> {{ 'ตั้งค่าแล้ว' if bot_has_token else 'ยังไม่ได้ตั้ง' }}</span>
+      <span><span class="dot {{ 'live' if bot_has_secret else 'off' }}"></span> <code>LINE_BOT_CHANNEL_SECRET</code> {{ 'ตั้งค่าแล้ว' if bot_has_secret else 'ยังไม่ได้ตั้ง' }}</span>
+      <span><span class="dot {{ 'live' if public_url else 'wait' }}"></span> รูปจากคู่มือที่ส่งให้ลูกค้า {% if public_url %}พร้อมใช้ · <code>{{ public_url }}</code>{% else %}ยังไม่พร้อม · ต้องมีโดเมน HTTPS (Generate Domain ใน Railway หรือตั้ง <code>PUBLIC_URL</code>){% endif %}</span>
+    </div>
+    {% if same_oa %}
+      <div class="note error">Token ของบอทเหมือนกับ OA แจ้งเตือนอนุมัติ ควรใช้ <strong>คนละ OA</strong> เพื่อไม่ให้ลูกค้าไปปนกับการ์ดของทีมงาน</div>
+    {% endif %}
+    <label class="field">Webhook URL <span class="hint">ก๊อปไปวางใน LINE Developers Console ของ OA บอท → Messaging API → Webhook URL แล้วเปิด Use webhook</span>
+      <input value="{{ webhook }}" readonly onclick="this.select()" class="mono"></label>
+
+    <div class="stat-line">
+      <span><strong>{{ n_chats }}</strong> แชท LINE</span>
+      <span><strong>{{ n_today }}</strong> ข้อความจากลูกค้าวันนี้</span>
+      <span><strong>{{ n_auto }}</strong> ครั้งที่บอทตอบอัตโนมัติ</span>
+    </div>
+
+    <label class="check-row"><input type="checkbox" name="linebot_enabled" {{ 'checked' if settings.linebot_enabled == '1' }}>
+      <span>เปิดรับข้อความจากลูกค้าทาง LINE<span class="hint">ปิดไว้ = ระบบรับ webhook แต่ไม่บันทึก ไม่วิเคราะห์ ไม่ตอบ</span></span></label>
+
+    <h3 style="margin-top:18px">เมื่อ AI ร่างคำตอบแล้ว</h3>
+    <label class="check-row"><input type="radio" name="linebot_mode" value="approve" {{ 'checked' if settings.linebot_mode != 'auto' }}>
+      <span>ให้ทีมงานอนุมัติก่อนส่ง <span class="tag st-resolved">แนะนำ</span><span class="hint">ร่างคำตอบเข้าหน้า "รออนุมัติ" (และการ์ดแจ้งเตือน LINE) เหมือนแชท Telegram · กดอนุมัติแล้วส่งทาง LINE</span></span></label>
+    <label class="check-row"><input type="radio" name="linebot_mode" value="auto" {{ 'checked' if settings.linebot_mode == 'auto' }}>
+      <span>ตอบลูกค้าทันทีโดยไม่ต้องอนุมัติ <span class="tag rs-failed">ระวัง</span><span class="hint">AI ตอบเองทุกครั้งที่ร่างคำตอบได้ (ข้อความที่ AI เห็นว่าไม่ต้องตอบจะไม่ถูกส่ง) · ควรใช้เมื่อคู่มือและความรู้ธุรกิจครบแล้ว · ทุกข้อความที่บอทส่งดูย้อนหลังได้ในประวัติแชท โดยแสดงผู้ส่งเป็น "AI อัตโนมัติ"</span></span></label>
+
+    <label class="field" style="margin-top:14px">ข้อความต้อนรับ (ตอนลูกค้าเพิ่มเพื่อน)
+      <textarea name="linebot_greeting" rows="3" maxlength="500" placeholder="เช่น สวัสดีค่ะ ทีมซัพพอร์ตยินดีให้บริการ พิมพ์ปัญหาที่พบได้เลยนะคะ">{{ settings.linebot_greeting }}</textarea>
+      <span class="hint">ว่าง = ไม่ส่ง · ส่งแล้วบันทึกไว้ในประวัติแชทเป็นข้อความของบอท</span></label>
+
+    {% if not bot_ready %}
+      <div class="note warn" style="margin-top:14px">ยังไม่พร้อมใช้งาน: สร้าง Messaging API channel <strong>ใหม่</strong> (แยกจากตัวแจ้งเตือน) แล้วใส่ <code>LINE_BOT_CHANNEL_ACCESS_TOKEN</code> กับ <code>LINE_BOT_CHANNEL_SECRET</code> ใน Variables ของ Railway จากนั้นวาง Webhook URL ด้านบน</div>
+    {% endif %}
+    <div class="line-test">
+      <button type="submit" formaction="/linebot/check" {{ '' if bot_ready else 'disabled' }}>{{ icon('check', 14) }} ตรวจการเชื่อมต่อ</button>
+      <span class="hint">ขอข้อมูลบอทจาก LINE เพื่อดูว่า token ใช้ได้จริง · ใช้ได้ = แสดงชื่อ OA</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{{ icon('clipboard-list', 18) }} ขั้นตอนตั้งค่า</h2></div>
+    <ol class="steps-list">
+      <li>ที่ <strong>LINE Developers Console</strong> สร้าง Provider/Channel แบบ <strong>Messaging API</strong> ใหม่อีกตัว (ไม่ใช้ตัวเดียวกับแจ้งเตือนอนุมัติ)</li>
+      <li>คัดลอก <strong>Channel secret</strong> และออก <strong>Channel access token (long-lived)</strong> แล้วใส่ใน Railway Variables เป็น <code>LINE_BOT_CHANNEL_SECRET</code> / <code>LINE_BOT_CHANNEL_ACCESS_TOKEN</code> (ห้ามส่งหรือพิมพ์ในแชท)</li>
+      <li>วาง <strong>Webhook URL</strong> ด้านบนในช่อง Webhook URL กด Verify แล้วเปิด <strong>Use webhook</strong></li>
+      <li>ที่ <strong>LINE Official Account Manager</strong> ของ OA นี้ ปิด "ข้อความตอบกลับอัตโนมัติ" และ "ข้อความต้อนรับ" ของ LINE เอง (เพื่อไม่ให้ตอบซ้ำกับบอท)</li>
+      <li>ให้ลูกค้าเพิ่มเพื่อนและทักมา แชทจะขึ้นในหน้า "แชทลูกค้า" (มีป้าย LINE) และ AI เริ่มทำงานตามที่ตั้งไว้</li>
+    </ol>
+    <div class="note">
+      <strong>ที่ควรรู้:</strong>
+      ข้อความที่ทีมงานพิมพ์ตรงใน LINE Official Account Manager จะไม่เข้าระบบนี้ (LINE ไม่ส่งมาให้) ให้ตอบผ่านช่องพิมพ์ในหน้า "รออนุมัติ" แทน ·
+      การตอบทันทีหลังลูกค้าทัก (ไม่เกินประมาณ 25 วินาที) ใช้ reply ไม่นับโควตา ส่วนตอบทีหลังใช้ push ซึ่งนับโควตาข้อความรายเดือนของแพ็กเกจ OA
+    </div>
+  </section>
+
+  <div class="save-bar">
+    <span class="muted small">การตั้งค่าในหน้านี้จะมีผลเมื่อกดบันทึก</span>
+    <button class="primary">{{ icon('check', 15) }} บันทึกการตั้งค่า</button>
+  </div>
+</form>
+{% endblock %}

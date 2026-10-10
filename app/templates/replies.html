@@ -48,8 +48,9 @@
             <span class="rv-it-main">
               <span class="rv-it-top"><strong>{{ title }}</strong><time title="{{ r.created_at | localtime }}">{{ r.created_at | ago }}</time></span>
               <span class="rv-it-row"><span class="rv-it-snip">{{ snippet }}</span><b class="rv-un" title="ข้อความลูกค้าที่ยังไม่ได้อ่าน" {{ 'hidden' if not un }}>{{ un or '' }}</b></span>
-              {% if r.ticket_id or r.kind in ('resolved', 'dev_update') %}
+              {% if r.ticket_id or r.kind in ('resolved', 'dev_update') or chat_channels.get(r.chat_id) == 'line' %}
               <span class="rv-it-tags">
+                {% if chat_channels.get(r.chat_id) == 'line' %}<i class="rv-chip line">LINE</i>{% endif %}
                 {% if r.ticket_id %}<i class="rv-chip">ticket #{{ r.ticket_id }}</i>{% endif %}
                 {% if r.kind == 'resolved' %}<i class="rv-chip ok">แจ้งแก้ไขเสร็จ</i>{% endif %}
                 {% if r.kind == 'dev_update' %}<i class="rv-chip info">จากโปรแกรมเมอร์</i>{% endif %}
