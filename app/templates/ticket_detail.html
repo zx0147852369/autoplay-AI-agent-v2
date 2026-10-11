@@ -168,7 +168,7 @@
         <div class="mini-reply"><span class="tag rs-{{ r.status }}">{{ REPLY_STATUSES.get(r.status, r.status) }}</span>
           {% if r.kind == 'resolved' %}<span class="tag st-resolved">แจ้งแก้ไขเสร็จ</span>{% endif %}
           {% if r.kind == 'dev_update' %}<span class="tag st-in_progress">จากโปรแกรมเมอร์</span>{% endif %}
-          {% if r.status == 'pending' %}<a class="small" href="/replies">ไปอนุมัติ →</a>{% endif %}<br>{{ r.final_text }}</div>
+          {% if r.status == 'pending' %}<a class="small" href="{{ '/linebot/replies' if chat and chat.channel == 'line' else '/replies' }}">ไปอนุมัติ →</a>{% endif %}<br>{{ r.final_text }}</div>
       {% endfor %}
     </section>
     {% endif %}

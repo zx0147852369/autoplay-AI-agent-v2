@@ -33,7 +33,7 @@
     {% if n_pending %}
       <div class="note warn" style="margin:0 0 14px">
         <strong>มี {{ n_pending }} ร่างคำตอบของลูกค้า LINE รอทีมงานอนุมัติอยู่</strong> — บอทยังไม่ส่งถึงลูกค้าจนกว่าจะอนุมัติ ·
-        <a href="/replies">ไปหน้ารออนุมัติ</a>{% if settings.linebot_mode != 'auto' %} · หรือเลือกโหมด "ตอบลูกค้าทันที" ด้านล่างแล้วกดบันทึก เพื่อให้บอทตอบเองจากเนื้อหา{% endif %}
+        <a href="/linebot/replies">ไปหน้ารออนุมัติ LINE</a>{% if settings.linebot_mode != 'auto' %} · หรือเลือกโหมด "ตอบลูกค้าทันที" ด้านล่างแล้วกดบันทึก เพื่อให้บอทตอบเองจากเนื้อหา{% endif %}
       </div>
     {% endif %}
     <label class="check-row"><input type="checkbox" name="linebot_enabled" {{ 'checked' if settings.linebot_enabled == '1' }}>
@@ -41,11 +41,11 @@
 
     <h3 style="margin-top:18px">เมื่อ AI ร่างคำตอบแล้ว</h3>
     <label class="check-row"><input type="radio" name="linebot_mode" value="approve" {{ 'checked' if settings.linebot_mode != 'auto' }}>
-      <span>ให้ทีมงานอนุมัติก่อนส่ง <span class="tag st-resolved">แนะนำ</span><span class="hint">ร่างคำตอบเข้าหน้า "รออนุมัติ" (และการ์ดแจ้งเตือน LINE) เหมือนแชท Telegram · กดอนุมัติแล้วส่งทาง LINE</span></span></label>
+      <span>ให้ทีมงานอนุมัติก่อนส่ง <span class="tag st-resolved">แนะนำ</span><span class="hint">ร่างคำตอบเข้าหน้า "รออนุมัติ LINE" (แยกจากคิวของ Telegram) · กดอนุมัติแล้วส่งทาง LINE</span></span></label>
     <label class="check-row"><input type="radio" name="linebot_mode" value="auto" {{ 'checked' if settings.linebot_mode == 'auto' }}>
       <span>ตอบลูกค้าทันทีโดยไม่ต้องอนุมัติ <span class="tag rs-failed">ระวัง</span><span class="hint">AI ตอบลูกค้าเองจาก "เนื้อหาบอท LINE" · ควรใช้เมื่อเนื้อหาครบแล้ว · ทุกข้อความที่บอทส่งดูย้อนหลังได้ในประวัติแชท โดยแสดงผู้ส่งเป็น "AI อัตโนมัติ"</span></span></label>
     <label class="check-row sub-opt"><input type="checkbox" name="linebot_auto_only_found" {{ 'checked' if settings.linebot_auto_only_found != '0' }}>
-      <span>ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้ <span class="tag st-resolved">แนะนำ</span><span class="hint">เรื่องที่ไม่มีในเนื้อหา การแจ้งปัญหา หรือข้อความยาว จะเข้าหน้า "รออนุมัติ" ให้ทีมงานตอบแทน · มีผลเมื่อเลือกโหมดตอบทันที</span></span></label>
+      <span>ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้ <span class="tag st-resolved">แนะนำ</span><span class="hint">เรื่องที่ไม่มีในเนื้อหา การแจ้งปัญหา หรือข้อความยาว จะเข้าหน้า "รออนุมัติ LINE" ให้ทีมงานตอบแทน · มีผลเมื่อเลือกโหมดตอบทันที</span></span></label>
 
     <label class="field" style="margin-top:14px">ข้อความต้อนรับ (ตอนลูกค้าเพิ่มเพื่อน)
       <textarea name="linebot_greeting" rows="3" maxlength="500" placeholder="เช่น สวัสดีค่ะ ทีมซัพพอร์ตยินดีให้บริการ พิมพ์ปัญหาที่พบได้เลยนะคะ">{{ settings.linebot_greeting }}</textarea>
@@ -86,11 +86,11 @@
       <li>วาง <strong>Webhook URL</strong> ด้านบนในช่อง Webhook URL กด Verify แล้วเปิด <strong>Use webhook</strong></li>
       <li>ที่ <strong>LINE Official Account Manager</strong> ของ OA นี้ ปิด "ข้อความตอบกลับอัตโนมัติ" และ "ข้อความต้อนรับ" ของ LINE เอง (เพื่อไม่ให้ตอบซ้ำกับบอท)</li>
       <li>เพิ่มเนื้อหาที่บอทใช้ตอบที่หน้า <a href="/linebot/content">"เนื้อหาบอท LINE"</a> (แยกจากคู่มือของ Telegram) แล้วลองถามบอทจากหน้านั้นได้เลย</li>
-      <li>ให้ลูกค้าเพิ่มเพื่อนและทักมา แชทจะขึ้นในหน้า "แชทลูกค้า" (มีป้าย LINE) และ AI เริ่มทำงานตามที่ตั้งไว้</li>
+      <li>ให้ลูกค้าเพิ่มเพื่อนและทักมา แชทจะขึ้นในหน้า "แชทลูกค้า LINE" และ AI เริ่มทำงานตามที่ตั้งไว้</li>
     </ol>
     <div class="note">
       <strong>ที่ควรรู้:</strong>
-      ข้อความที่ทีมงานพิมพ์ตรงใน LINE Official Account Manager จะไม่เข้าระบบนี้ (LINE ไม่ส่งมาให้) ให้ตอบผ่านช่องพิมพ์ในหน้า "รออนุมัติ" แทน ·
+      ข้อความที่ทีมงานพิมพ์ตรงใน LINE Official Account Manager จะไม่เข้าระบบนี้ (LINE ไม่ส่งมาให้) ให้ตอบผ่านช่องพิมพ์ในหน้า "รออนุมัติ LINE" แทน ·
       การตอบทันทีหลังลูกค้าทัก (ไม่เกินประมาณ 25 วินาที) ใช้ reply ไม่นับโควตา ส่วนตอบทีหลังใช้ push ซึ่งนับโควตาข้อความรายเดือนของแพ็กเกจ OA
     </div>
   </section>

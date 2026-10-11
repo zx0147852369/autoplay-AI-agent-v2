@@ -366,7 +366,8 @@ def flash(request: Request, message: str, kind: str = "ok") -> None:
 
 
 def render(request: Request, name: str, user: User | None, **context):
-    context.update(user=user, flashes=request.session.pop("flash", []), path=request.url.path)
+    nav_path = context.pop("nav_path", None)  # ใช้ไฮไลต์เมนูข้างเมื่อหน้านี้เป็นของอีกระบบ (เช่น รายละเอียดแชท LINE)
+    context.update(user=user, flashes=request.session.pop("flash", []), path=nav_path or request.url.path)
     if user and "quota_info" not in context:
         try:
             with SessionLocal() as db:
@@ -424,6 +425,35 @@ async def logout(request: Request):
 
 
 # ---------------------------------------------------------------- dashboard
+def _line_ids():
+    """subquery: id ของแชท LINE Chat Bot"""
+    return select(Chat.id).where(Chat.channel == "line")
+
+
+def _in_scope(column, scope: str):
+    """เงื่อนไขกรองตามระบบ: scope="line" = เฉพาะ LINE Chat Bot · อื่นๆ = Telegram (ไม่รวม LINE) · ใช้กับคอลัมน์ chat_id"""
+    cond = column.in_(_line_ids())
+    return cond if scope == "line" else ~cond
+
+
+def _chat_scope(chat_id: int) -> str:
+    with SessionLocal() as db:
+        chat = db.get(Chat, chat_id)
+    return "line" if chat and chat.channel == "line" else "telegram"
+
+
+def _chats_home(chat_id: int) -> str:
+    return "/linebot/chats" if _chat_scope(chat_id) == "line" else "/chats"
+
+
+def _replies_home(reply_id: int) -> str:
+    """หน้ารออนุมัติที่ควรกลับไปหลังตัดสินใจร่างนี้ (ร่างของ LINE กลับไปคิว LINE ไม่ปนกับ Telegram)"""
+    with SessionLocal() as db:
+        reply = db.get(Reply, reply_id)
+        chat_id = reply.chat_id if reply else None
+    return "/linebot/replies" if chat_id is not None and _chat_scope(chat_id) == "line" else "/replies"
+
+
 def local_day_start_utc():
     """เวลาเริ่มต้นของ "วันนี้" ตามเวลาไทย แปลงเป็น UTC (naive) สำหรับค้นในฐานข้อมูล"""
     now_local = utcnow().replace(tzinfo=timezone.utc).astimezone(DISPLAY_TZ)
@@ -446,7 +476,8 @@ async def dashboard(request: Request):
     with SessionLocal() as db:
         settings = get_settings(db)
         account = db.get(TelegramAccount, 1)
-        pending = db.scalar(select(func.count(Reply.id)).where(Reply.status == "pending")) + dev_bridge.pending_count(db)
+        tg_reply = _in_scope(Reply.chat_id, "telegram")
+        pending = db.scalar(select(func.count(Reply.id)).where(Reply.status == "pending", tg_reply)) + dev_bridge.pending_count(db)
         open_by_cat = dict(db.execute(
             select(Ticket.category, func.count(Ticket.id))
             .where(Ticket.status.in_(analyzer.OPEN_STATUSES)).group_by(Ticket.category)
@@ -454,18 +485,19 @@ async def dashboard(request: Request):
         by_status = dict(db.execute(select(Ticket.status, func.count(Ticket.id)).group_by(Ticket.status)).all())
         recent = list(db.scalars(select(Ticket).order_by(Ticket.created_at.desc()).limit(6)))
         pending_list = list(db.scalars(
-            select(Reply).where(Reply.status == "pending").order_by(Reply.created_at.desc()).limit(5)))
-        monitored = db.scalar(select(func.count(Chat.id)).where(Chat.monitored))
+            select(Reply).where(Reply.status == "pending", tg_reply).order_by(Reply.created_at.desc()).limit(5)))
+        monitored = db.scalar(select(func.count(Chat.id)).where(Chat.monitored, Chat.channel != "line"))
         chat_titles = {c.id: c.title for c in db.scalars(select(Chat))}
         dev_title = chat_titles.get(telegram.dev_group_id, "") if telegram.dev_group_id else ""
         today = {
             "messages": db.scalar(select(func.count(Message.id))
-                                  .where(Message.date >= day, Message.is_outgoing.is_(False))),
+                                  .where(Message.date >= day, Message.is_outgoing.is_(False),
+                                         _in_scope(Message.chat_id, "telegram"))),
             "tickets": db.scalar(select(func.count(Ticket.id)).where(Ticket.created_at >= day)),
             "resolved": db.scalar(select(func.count(Ticket.id))
                                   .where(Ticket.updated_at >= day, Ticket.status.in_(("resolved", "closed")))),
             "sent": db.scalar(select(func.count(Reply.id))
-                              .where(Reply.status == "sent", Reply.decided_at >= day)),
+                              .where(Reply.status == "sent", Reply.decided_at >= day, tg_reply)),
         }
     model = settings.get("ai_model", "")
     model_label = ai_service.all_models(settings).get(model, model)
@@ -546,10 +578,21 @@ async def api_sysinfo(request: Request):
 async def badge(request: Request):
     user = current_user(request)
     with SessionLocal() as db:
-        pending = db.scalar(select(func.count(Reply.id)).where(Reply.status == "pending")) + dev_bridge.pending_count(db)
+        pending = db.scalar(select(func.count(Reply.id)).where(
+            Reply.status == "pending", _in_scope(Reply.chat_id, "telegram"))) + dev_bridge.pending_count(db)
+        line_pending = db.scalar(select(func.count(Reply.id)).where(
+            Reply.status == "pending", _in_scope(Reply.chat_id, "line"))) or 0
         open_tickets = db.scalar(select(func.count(Ticket.id)).where(Ticket.status.in_(analyzer.OPEN_STATUSES)))
-        unread_total = unread.total(db, user.id) if user.role in ("admin", "agent") else 0
-    return JSONResponse({"pending": pending, "open_tickets": open_tickets, "unread": unread_total})
+        unread_total = line_unread = 0
+        if user.role in ("admin", "agent"):  # นับข้อความที่ยังไม่ได้อ่านแยกระบบ
+            line_ids = set(db.scalars(_line_ids()))
+            for chat_id, n in unread.counts(db, user.id).items():
+                if chat_id in line_ids:
+                    line_unread += n
+                else:
+                    unread_total += n
+    return JSONResponse({"pending": pending, "line_pending": line_pending, "open_tickets": open_tickets,
+                         "unread": unread_total, "line_unread": line_unread})
 
 
 # ---------------------------------------------------------------- telegram account
@@ -618,10 +661,21 @@ async def telegram_logout(request: Request):
 # ---------------------------------------------------------------- chats
 @app.get("/chats")
 async def chats_page(request: Request):
-    user = current_user(request, "agent")
+    return _chats_view(request, current_user(request, "agent"), "telegram")
+
+
+@app.get("/linebot/chats")
+async def linebot_chats_page(request: Request):
+    return _chats_view(request, current_user(request, "agent"), "line")
+
+
+def _chats_view(request: Request, user: User, scope: str):
+    """รายชื่อแชท: scope="telegram" = แชท Telegram (ไม่รวม LINE) · scope="line" = แชท LINE Chat Bot เท่านั้น"""
     day = local_day_start_utc()
     with SessionLocal() as db:
-        chats = list(db.scalars(select(Chat).order_by(Chat.monitored.desc(), Chat.title)))
+        chats = list(db.scalars(
+            select(Chat).where(Chat.channel == "line" if scope == "line" else Chat.channel != "line")
+            .order_by(Chat.monitored.desc(), Chat.title)))
         counts = dict(db.execute(select(Message.chat_id, func.count(Message.id)).group_by(Message.chat_id)).all())
         today_counts = dict(db.execute(
             select(Message.chat_id, func.count(Message.id))
@@ -644,8 +698,9 @@ async def chats_page(request: Request):
     }
     return render(request, "chats.html", user, chats=chats, counts=counts, today_counts=today_counts,
                   last_at=last_at, open_tickets=open_tickets, pending=pending, summary=summary, unanalyzed=unanalyzed,
-                  unread_by_chat=unread_by_chat,
-                  dev_group_id=telegram.dev_group_id,
+                  unread_by_chat=unread_by_chat, scope=scope,
+                  approvals_url="/linebot/replies" if scope == "line" else "/replies",
+                  dev_group_id=telegram.dev_group_id, line_ready=linebot.configured(),
                   connected=telegram.connected, ai_errors=analyzer.last_error)
 
 
@@ -692,13 +747,13 @@ async def chats_toggle(request: Request, chat_id: int):
         except Exception as e:  # noqa: BLE001
             log.exception("backfill failed")
             flash(request, f"เปิดติดตามแล้ว แต่ดึงข้อความย้อนหลังไม่สำเร็จ: {e}", "error")
-            return back("/chats")
+            return back(_chats_home(chat_id))
         if waiting:
             analyzer.schedule(chat_id)
             flash(request, f"เปิดติดตามแล้ว พบข้อความลูกค้าที่ยังไม่ได้ตอบ {waiting} ข้อความ กำลังวิเคราะห์ให้อัตโนมัติ")
         else:
             flash(request, "เปิดติดตามแล้ว ระบบจะวิเคราะห์ข้อความใหม่ให้อัตโนมัติ")
-    return back("/chats")
+    return back(_chats_home(chat_id))
 
 
 @app.post("/chats/{chat_id}/analyze")
@@ -706,7 +761,7 @@ async def chats_analyze(request: Request, chat_id: int):
     current_user(request, "agent")
     result = await analyzer.analyze(chat_id)
     flash(request, f"วิเคราะห์แล้ว: {result}", "error" if result.startswith("ผิดพลาด") else "ok")
-    return back("/chats")
+    return back(_chats_home(chat_id))
 
 
 @app.get("/chats/{chat_id}")
@@ -724,8 +779,12 @@ async def chat_detail(request: Request, chat_id: int):
         unread.mark_read(db, user.id, chat_id)  # เปิดแชทนี้ดู = อ่านแล้ว
     view = build_chat_view(messages)
     customers = {i["key"] for i in view if not i["m"].is_outgoing}
+    is_line = chat.channel == "line"
     return render(request, "chat_detail.html", user, chat=chat, messages=messages, view=view,
                   dev_group=chat_id == telegram.dev_group_id,
+                  nav_path="/linebot/chats" if is_line else None,
+                  back_url="/linebot/chats" if is_line else "/chats",
+                  back_label="แชทลูกค้า LINE" if is_line else "แชทลูกค้า",
                   waiting=sum(1 for i in view if not i["m"].is_outgoing and not i["m"].analyzed),
                   people=len(customers))
 
@@ -839,20 +898,33 @@ async def api_chat_read(request: Request, chat_id: int, body: ReadIn):
 # ---------------------------------------------------------------- replies (approval queue)
 @app.get("/replies")
 async def replies_page(request: Request, status: str = "pending", box: str = ""):
-    user = current_user(request, "agent")
+    return _replies_view(request, current_user(request, "agent"), "telegram", status, box)
+
+
+@app.get("/linebot/replies")
+async def linebot_replies_page(request: Request, status: str = "pending"):
+    return _replies_view(request, current_user(request, "agent"), "line", status, "customer")
+
+
+def _replies_view(request: Request, user: User, scope: str, status: str, box: str):
+    """คิวรออนุมัติ: scope="telegram" = ร่างของแชท Telegram (+ ticket รอส่งกลุ่มโปรแกรมเมอร์) · scope="line" = ร่างของลูกค้า LINE เท่านั้น"""
+    is_line = scope == "line"
+    in_scope = _in_scope(Reply.chat_id, scope)
     with SessionLocal() as db:
-        query = select(Reply).order_by(Reply.created_at.desc()).limit(100)
+        query = select(Reply).where(in_scope).order_by(Reply.created_at.desc()).limit(100)
         if status != "all":
             query = query.where(Reply.status == status)
         replies = list(db.scalars(query))
-        status_counts = dict(db.execute(select(Reply.status, func.count(Reply.id)).group_by(Reply.status)).all())
+        status_counts = dict(db.execute(
+            select(Reply.status, func.count(Reply.id)).where(in_scope).group_by(Reply.status)).all())
         all_chats = list(db.scalars(select(Chat)))
         chat_titles = {c.id: c.title for c in all_chats}
         chat_channels = {c.id: c.channel for c in all_chats}
         dev_queue = []
-        for t in db.scalars(select(Ticket).where(Ticket.dev_status == "pending").order_by(Ticket.created_at)):
-            dev_queue.append({"ticket": t, "photos": [a.media_path for a in t.attachments][:dev_bridge.MAX_PHOTOS],
-                              "text": dev_bridge.format_ticket(t, chat_titles.get(t.chat_id, str(t.chat_id)))})
+        if not is_line:  # ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์เป็นของฝั่ง Telegram
+            for t in db.scalars(select(Ticket).where(Ticket.dev_status == "pending").order_by(Ticket.created_at)):
+                dev_queue.append({"ticket": t, "photos": [a.media_path for a in t.attachments][:dev_bridge.MAX_PHOTOS],
+                                  "text": dev_bridge.format_ticket(t, chat_titles.get(t.chat_id, str(t.chat_id)))})
         unread_by_chat = unread.counts(db, user.id, {r.chat_id for r in replies}) if status == "pending" else {}
         context = {}
         for r in replies:
@@ -867,7 +939,7 @@ async def replies_page(request: Request, status: str = "pending", box: str = "")
         box = "dev" if dev_queue and not (status == "pending" and replies) else "customer"
     return render(request, "replies.html", user, replies=replies, status=status, chat_titles=chat_titles,
                   context=context, status_counts=status_counts, dev_queue=dev_queue, box=box, unread_by_chat=unread_by_chat,
-                  chat_channels=chat_channels,
+                  chat_channels=chat_channels, scope=scope,
                   dev_group_title=chat_titles.get(telegram.dev_group_id, "กลุ่มโปรแกรมเมอร์"))
 
 
@@ -957,28 +1029,30 @@ def reject_reply(reply_id: int, reason: str, by: str) -> bool:
 @app.post("/replies/{reply_id}/approve")
 async def replies_approve(request: Request, reply_id: int, text: str = Form(...), media: list[str] = Form([])):
     user = current_user(request, "agent")
+    home = _replies_home(reply_id)
     if not _load_pending(reply_id):
         flash(request, "ข้อความนี้ถูกดำเนินการไปแล้ว", "error")
-        return back("/replies")
+        return back(home)
     status, msg = await deliver_reply(reply_id, text, user.username, media=media)
     with SessionLocal() as db:
         row = db.get(Reply, reply_id)
         if row:
             unread.mark_read(db, user.id, row.chat_id)
     flash(request, msg, "ok" if status == "sent" else "error")
-    return back("/replies")
+    return back(home)
 
 
 @app.post("/replies/{reply_id}/reject")
 async def replies_reject(request: Request, reply_id: int, reason: str = Form("")):
     user = current_user(request, "agent")
+    home = _replies_home(reply_id)
     if reject_reply(reply_id, reason, user.username):
         with SessionLocal() as db:
             row = db.get(Reply, reply_id)
             if row:
                 unread.mark_read(db, user.id, row.chat_id)
         flash(request, "ปฏิเสธการส่งข้อความแล้ว (ไม่ได้ส่งถึงลูกค้า)")
-    return back("/replies")
+    return back(home)
 
 
 # ---------------------------------------------------------------- LINE webhook (กดอนุมัติจาก LINE)
@@ -1238,15 +1312,16 @@ async def _rewrite_draft(reply_id: int, instruction: str, text: str = "") -> str
 async def replies_regenerate(request: Request, reply_id: int, instruction: str = Form(...),
                              text: str = Form("")):
     current_user(request, "agent")
+    home = _replies_home(reply_id)
     try:
         new_text = await _rewrite_draft(reply_id, instruction, text)
     except ai_service.AIError as e:
         flash(request, str(e), "error")
-        return back("/replies")
+        return back(home)
     if new_text is None:
-        return back("/replies")
+        return back(home)
     flash(request, "AI เขียนคำตอบใหม่แล้ว ตรวจสอบก่อนกดอนุมัติ")
-    return back("/replies")
+    return back(home)
 
 
 class RewriteIn(BaseModel):

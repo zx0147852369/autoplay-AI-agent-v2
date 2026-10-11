@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, cicon %}
-{% block title %}แชทลูกค้า{% endblock %}
+{% block title %}{{ 'แชทลูกค้า LINE' if scope == 'line' else 'แชทลูกค้า' }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>แชทลูกค้า</h1>
-    <p class="sub">เปิดติดตามเฉพาะกลุ่มลูกค้า ระบบจะอ่านข้อความเฉพาะแชทที่เปิดไว้</p>
+    <h1>{{ 'แชทลูกค้า LINE' if scope == 'line' else 'แชทลูกค้า' }}</h1>
+    <p class="sub">{{ 'ลูกค้าที่ทักมาทาง LINE Chat Bot เท่านั้น · แยกจากแชท Telegram · ปิดการรับรายแชทได้ที่ปุ่มติดตาม' if scope == 'line' else 'เปิดติดตามเฉพาะกลุ่มลูกค้า ระบบจะอ่านข้อความเฉพาะแชทที่เปิดไว้' }}</p>
   </div>
-  {% if user.role == 'admin' %}
+  {% if user.role == 'admin' and scope != 'line' %}
   <form method="post" action="/chats/sync"><button class="primary" {{ '' if connected else 'disabled' }}>{{ icon('refresh', 14) }} ดึงรายชื่อแชทจาก Telegram</button></form>
   {% endif %}
 </div>
@@ -19,8 +19,11 @@
   <div class="strip-cell"><span class="strip-ic">{{ cicon('clipboard-task', 22) }}</span><span class="strip-label">Ticket ค้าง</span><span class="strip-value">{{ summary.open_tickets }}</span></div>
 </div>
 
-{% if not connected %}
+{% if scope != 'line' and not connected %}
   <div class="note warn" style="margin-bottom:16px">ยังไม่ได้เชื่อมต่อ Telegram ระบบจะยังไม่รับข้อความใหม่ {% if user.role == 'admin' %}<a href="/telegram">ไปเชื่อมต่อบัญชี</a>{% endif %}</div>
+{% endif %}
+{% if scope == 'line' and not line_ready %}
+  <div class="note warn" style="margin-bottom:16px">ยังไม่ได้ตั้งค่า LINE Chat Bot ระบบจะยังไม่รับข้อความจากลูกค้า LINE {% if user.role == 'admin' %}<a href="/linebot">ไปตั้งค่า</a>{% endif %}</div>
 {% endif %}
 
 <section class="panel">
@@ -71,7 +74,7 @@
         <td class="num center {{ 'zero' if not n_all }}">{{ n_all }}</td>
         <td class="when">{{ last_at[c.id] | localtime if last_at.get(c.id) else '—' }}</td>
         <td class="num center">{% if n_open %}<a href="/tickets" class="tag st-open">{{ n_open }}</a>{% else %}<span class="zero">0</span>{% endif %}</td>
-        <td class="num center">{% if n_pending %}<a href="/replies" class="tag rs-pending">{{ n_pending }}</a>{% else %}<span class="zero">0</span>{% endif %}</td>
+        <td class="num center">{% if n_pending %}<a href="{{ approvals_url }}" class="tag rs-pending">{{ n_pending }}</a>{% else %}<span class="zero">0</span>{% endif %}</td>
         {% set n_wait = unanalyzed.get(c.id, 0) %}
         <td class="shrink">
           {% if c.id == dev_group_id %}<span class="state off">ใช้แจ้งปัญหา</span>
@@ -90,8 +93,9 @@
         </td>
       </tr>
     {% else %}
-      <tr class="empty-row"><td colspan="9">{{ icon('chat', 24) }}<strong>ยังไม่มีรายชื่อแชท</strong>
-        {% if not connected %}<a href="/telegram">เชื่อมต่อบัญชี Telegram</a> ก่อน แล้วกด "ดึงรายชื่อแชทจาก Telegram"
+      <tr class="empty-row"><td colspan="9">{{ icon('chat', 24) }}<strong>{{ 'ยังไม่มีลูกค้าทักมาทาง LINE' if scope == 'line' else 'ยังไม่มีรายชื่อแชท' }}</strong>
+        {% if scope == 'line' %}เมื่อลูกค้าทักมาที่ LINE OA ของบอท แชทจะขึ้นที่นี่อัตโนมัติ
+        {% elif not connected %}<a href="/telegram">เชื่อมต่อบัญชี Telegram</a> ก่อน แล้วกด "ดึงรายชื่อแชทจาก Telegram"
         {% else %}กด "ดึงรายชื่อแชทจาก Telegram" ด้านบน แล้วเปิดติดตามเฉพาะกลุ่มลูกค้า{% endif %}
       </td></tr>
     {% endfor %}

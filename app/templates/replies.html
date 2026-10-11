@@ -1,16 +1,21 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, cicon %}
-{% block title %}รออนุมัติ{% endblock %}
+{% block title %}{{ 'รออนุมัติ LINE' if scope == 'line' else 'รออนุมัติ' }}{% endblock %}
 {% block content %}
+{% set base = '/linebot/replies' if scope == 'line' else '/replies' %}
+<script>window.__pendingKey = '{{ 'line_pending' if scope == 'line' else 'pending' }}';</script>
 {% set tabs = [('pending', 'รออนุมัติ'), ('sent', 'ส่งแล้ว'), ('rejected', 'ปฏิเสธ'), ('failed', 'ส่งไม่สำเร็จ'), ('all', 'ทั้งหมด')] %}
 <div class="page-head">
-  <h1>{{ 'รออนุมัติ' if status == 'pending' else 'ข้อความตอบกลับ' }}</h1>
+  <div>
+    <h1>{{ ('รออนุมัติ' if status == 'pending' else 'ข้อความตอบกลับ') ~ (' LINE' if scope == 'line' else '') }}</h1>
+    {% if scope == 'line' %}<p class="sub">ร่างคำตอบของลูกค้าที่ทักมาทาง LINE Chat Bot เท่านั้น · แยกจากคิวรออนุมัติของ Telegram</p>{% endif %}
+  </div>
 </div>
 
 <nav class="rv-tabs" aria-label="กรองตามสถานะ">
   {% for key, label in tabs %}
     {% set n = status_counts.get(key, 0) %}
-    <a class="rv-tab {{ 'on' if status == key }}" href="/replies?status={{ key }}" {{ 'aria-current=page' if status == key }}>{{ label }}<b class="{{ 'hot' if key == 'pending' and n }}">{{ n }}</b></a>
+    <a class="rv-tab {{ 'on' if status == key }}" href="{{ base }}?status={{ key }}" {{ 'aria-current=page' if status == key }}>{{ label }}<b class="{{ 'hot' if key == 'pending' and n }}">{{ n }}</b></a>
   {% endfor %}
 </nav>
 
@@ -18,12 +23,16 @@
 {% set items = dev_queue if box == 'dev' else replies %}
 <button type="button" class="newbar" id="newBar" hidden onclick="location.reload()">มีรายการรออนุมัติใหม่ <b id="newCount"></b> · แตะเพื่อรีเฟรช</button>
 
-<div class="rv {{ 'empty' if not items }}" id="rv" data-box="{{ box }}">
+<div class="rv {{ 'empty' if not items }}" id="rv" data-box="{{ 'line' if scope == 'line' else box }}">
   {# ---------------- คิวทางซ้าย ---------------- #}
   <aside class="rv-queue" aria-label="รายการรออนุมัติ">
     <div class="rv-seg">
+    {% if scope == 'line' %}
+      <a class="on" href="{{ base }}">{{ cicon('line-approve', 20) }}<span>ตอบลูกค้า LINE</span><b class="{{ 'hot' if replies }}">{{ replies | length }}</b></a>
+    {% else %}
       <a class="{{ 'on' if box == 'customer' }}" href="/replies?box=customer">{{ cicon('chat', 20) }}<span>ตอบลูกค้า</span><b class="{{ 'hot' if replies }}">{{ replies | length }}</b></a>
       <a class="{{ 'on' if box == 'dev' }}" href="/replies?box=dev">{{ cicon('wrench', 20) }}<span title="ticket ที่จะส่งเข้ากลุ่มโปรแกรมเมอร์">ส่งเข้ากลุ่ม</span><b class="{{ 'hot' if dev_queue }}">{{ dev_queue | length }}</b></a>
+    {% endif %}
     </div>
     <ul class="rv-list">
       {% if box == 'dev' %}
@@ -230,8 +239,8 @@
         <h3>ไม่มี ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์</h3>
         <p>ticket ใหม่ที่ต้องอนุมัติก่อนส่งจะเข้ามาที่นี่</p>
       {% else %}
-        <h3>ไม่มีข้อความรออนุมัติ</h3>
-        <p>ร่างคำตอบใหม่จะเข้ามาที่นี่เมื่อลูกค้าส่งข้อความในแชทที่ติดตาม</p>
+        <h3>{{ 'ไม่มีข้อความ LINE รออนุมัติ' if scope == 'line' else 'ไม่มีข้อความรออนุมัติ' }}</h3>
+        <p>{{ 'ร่างคำตอบใหม่จะเข้ามาที่นี่เมื่อลูกค้าทักมาทาง LINE (โหมดให้ทีมงานอนุมัติก่อนส่ง)' if scope == 'line' else 'ร่างคำตอบใหม่จะเข้ามาที่นี่เมื่อลูกค้าส่งข้อความในแชทที่ติดตาม' }}</p>
       {% endif %}
       {% if box == 'customer' and dev_queue %}<a class="rv-btn soft" href="/replies?box=dev">ดู ticket ที่รอส่งโปรแกรมเมอร์ ({{ dev_queue | length }})</a>{% endif %}
       {% if box == 'dev' and replies %}<a class="rv-btn soft" href="/replies?box=customer">ดูข้อความรอตอบลูกค้า ({{ replies | length }})</a>{% endif %}

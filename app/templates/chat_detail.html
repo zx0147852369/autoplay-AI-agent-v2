@@ -2,7 +2,7 @@
 {% from "_icons.html" import icon, cicon %}
 {% block title %}{{ chat.title }}{% endblock %}
 {% block content %}
-<a class="crumb" href="/chats">{{ icon('arrow-left', 14) }} แชทลูกค้า</a>
+<a class="crumb" href="{{ back_url or '/chats' }}">{{ icon('arrow-left', 14) }} {{ back_label or 'แชทลูกค้า' }}</a>
 <div class="page-head">
   <div>
     <h1>{{ chat.title }}</h1>

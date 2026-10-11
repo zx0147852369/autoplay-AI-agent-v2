@@ -450,13 +450,14 @@ def approval_messages(reply_id: int, chat_label: str, draft: str, kind: str = "a
     body.append(_text(f"รหัสรายการ #{reply_id}", size="xxs", color="#A8A397"))
 
     url = public_url()
-    small = "รออนุมัติ" + (f" · ticket #{ticket['id']}" if ticket.get("id") is not None else "")
+    is_line = ctx.get("channel") == "line"
+    small = "รออนุมัติ" + (" · ลูกค้า LINE" if is_line else "") + (f" · ticket #{ticket['id']}" if ticket.get("id") is not None else "")
     bubble = {
         "type": "bubble", "size": "giga",
         "header": _header(small, head, color),
         "body": {"type": "box", "layout": "vertical", "paddingAll": "16px", "spacing": "sm", "contents": body},
         "footer": _footer(_postback("ไม่ส่ง", f"reject:{reply_id}"), _postback("อนุมัติส่ง", f"approve:{reply_id}"), color,
-                          ("เปิดดูในเว็บ", f"{url}/replies") if url else None),
+                          ("เปิดดูในเว็บ", f"{url}/linebot/replies" if is_line else f"{url}/replies") if url else None),
         "styles": {"footer": {"separator": True, "separatorColor": LINE_GREY}},
     }
     preview = " ".join(draft.split())[:70]
@@ -628,6 +629,7 @@ def _reply_context(db, reply, chat) -> dict:
     rows = list(db.scalars(select(Message).where(Message.chat_id == reply.chat_id)
                            .order_by(Message.date.desc(), Message.tg_message_id.desc()).limit(6)))[::-1]
     ctx = {
+        "channel": getattr(chat, "channel", "") or "telegram",
         "when": _fmt_time(reply.created_at), "note": (reply.note or "").strip(), "photos": photos,
         "media_urls": [u for u in (_image_url(n) for n in media_names[:MAX_REPLY_IMAGES]) if u],
         "customer": next((m.sender_name for m in reversed(rows) if not m.is_outgoing and m.sender_name), ""),

@@ -37,7 +37,7 @@
 {% macro nav_item(href, ic, label, badge='', exact=False) -%}
   {% set active = (path == '/' and href == '/') or (href != '/' and (path == href or (not exact and path.startswith(href ~ '/')))) %}
   <a href="{{ href }}" class="nav-item {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ cicon(ic, 20) }}<span>{{ label }}</span>
-    {%- if badge %}<span class="nav-badge {{ 'hot' if badge == 'badge-pending' }} {{ 'unread' if badge == 'badge-unread' }}" id="{{ badge }}"{% if badge == 'badge-unread' %} title="ข้อความลูกค้าที่ยังไม่ได้อ่าน"{% endif %}></span>{% endif %}</a>
+    {%- if badge %}<span class="nav-badge {{ 'hot' if badge in ('badge-pending', 'badge-line-pending') }} {{ 'unread' if badge in ('badge-unread', 'badge-line-unread') }}" id="{{ badge }}"{% if badge in ('badge-unread', 'badge-line-unread') %} title="ข้อความลูกค้าที่ยังไม่ได้อ่าน"{% endif %}></span>{% endif %}</a>
 {%- endmacro %}
 <a class="skip-link" href="#main">ข้ามไปยังเนื้อหา</a>
 <aside class="sidebar" id="sidebar">
@@ -65,11 +65,15 @@
       {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
       {{ nav_item('/brain', 'data-trending', 'สมอง AI') }}
       {{ nav_item('/ai', 'apps-list', 'เชื่อมต่อ AI') }}
-      {# LINE Chat Bot แยกเป็นกลุ่มของตัวเองท้ายแถบ ไม่ปนกับระบบ Telegram #}
+    {% endif %}
+    {% if user.role in ('admin', 'agent') %}
+      {# ระบบ LINE Chat Bot แยกเป็นกลุ่มของตัวเองท้ายแถบ: แชท / รออนุมัติ / เนื้อหา ไม่ปนกับ Telegram #}
       <div class="nav-group nav-group-line">
         <div class="nav-label">LINE · แยกจาก Telegram</div>
-        {{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot', exact=True) }}
-        {{ nav_item('/linebot/content', 'line-content', 'เนื้อหาบอท LINE') }}
+        {% if user.role == 'admin' %}{{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot', exact=True) }}{% endif %}
+        {{ nav_item('/linebot/chats', 'line-chats', 'แชทลูกค้า LINE', 'badge-line-unread') }}
+        {{ nav_item('/linebot/replies', 'line-approve', 'รออนุมัติ LINE', 'badge-line-pending') }}
+        {% if user.role == 'admin' %}{{ nav_item('/linebot/content', 'line-content', 'เนื้อหาบอท LINE') }}{% endif %}
       </div>
     {% endif %}
   </nav>
@@ -454,21 +458,26 @@
       const r = await fetch('/api/badge');
       if (!r.ok) return;
       const d = await r.json();
-      {% if user.role in ('admin', 'agent') %}notifySound.check(d.pending || 0);{% endif %}
+      const lineP = d.line_pending || 0;
+      {% if user.role in ('admin', 'agent') %}notifySound.check((d.pending || 0) + lineP);{% endif %}
       const p = document.getElementById('badge-pending');
       const t = document.getElementById('badge-tickets');
       if (p) p.textContent = d.pending || '';
       if (t) t.textContent = d.open_tickets || '';
       const un = document.getElementById('badge-unread');
       if (un) un.textContent = d.unread ? (d.unread > 99 ? '99+' : d.unread) : '';
+      const lp = document.getElementById('badge-line-pending'), lu = document.getElementById('badge-line-unread');
+      if (lp) lp.textContent = lineP || '';
+      if (lu) lu.textContent = d.line_unread ? (d.line_unread > 99 ? '99+' : d.line_unread) : '';
       const tp = document.getElementById('tab-pending'), tt = document.getElementById('tab-tickets');
       if (tp) tp.textContent = d.pending || '';
       if (tt) tt.textContent = d.open_tickets || '';
-      document.title = (d.pending ? `(${d.pending}) ` : '') + document.title.replace(/^\(\d+\) /, '');
+      const allPending = (d.pending || 0) + lineP;
+      document.title = (allPending ? `(${allPending}) ` : '') + document.title.replace(/^\(\d+\) /, '');
       // หน้า รออนุมัติ: มีรายการใหม่เข้ามาหลังเปิดหน้า -> แถบ "แตะเพื่อรีเฟรช" (ไม่ต้องรีโหลดเอง)
       const nb = document.getElementById('newBar');
       if (nb) {
-        const now = d.pending || 0;
+        const now = d[window.__pendingKey || 'pending'] || 0;
         if (window.__pendingBase === undefined) window.__pendingBase = now;
         else if (now > window.__pendingBase) { document.getElementById('newCount').textContent = '(+' + (now - window.__pendingBase) + ')'; nb.hidden = false; }
       }
