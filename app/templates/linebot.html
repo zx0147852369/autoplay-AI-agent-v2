@@ -45,7 +45,7 @@
     <label class="check-row"><input type="radio" name="linebot_mode" value="auto" {{ 'checked' if settings.linebot_mode == 'auto' }}>
       <span>ตอบลูกค้าทันทีโดยไม่ต้องอนุมัติ <span class="tag rs-failed">ระวัง</span><span class="hint">AI ตอบลูกค้าเองจาก "เนื้อหาบอท LINE" · ควรใช้เมื่อเนื้อหาครบแล้ว · ทุกข้อความที่บอทส่งดูย้อนหลังได้ในประวัติแชท โดยแสดงผู้ส่งเป็น "AI อัตโนมัติ"</span></span></label>
     <label class="check-row sub-opt"><input type="checkbox" name="linebot_auto_only_found" {{ 'checked' if settings.linebot_auto_only_found != '0' }}>
-      <span>ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้ <span class="tag st-resolved">แนะนำ</span><span class="hint">ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาและคำทักทาย (สวัสดี) · เรื่องที่ไม่มีในเนื้อหาหรือแจ้งปัญหา จะเข้าหน้า "รออนุมัติ LINE" ให้ทีมงานตอบแทน · มีผลเมื่อเลือกโหมดตอบทันที</span></span></label>
+      <span>ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้ <span class="tag st-resolved">แนะนำ</span><span class="hint">ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหา คำทักทาย (สวัสดี) และข้อความ "ขอตรวจสอบ" เมื่อไม่มีในเนื้อหา (ลูกค้าไม่เงียบ แล้วขึ้นรายการคำถามที่บอทตอบไม่ได้ให้ทีมงานตอบต่อ) · การแจ้งปัญหาจะเข้าหน้า "รออนุมัติ LINE" · มีผลเมื่อเลือกโหมดตอบทันที</span></span></label>
 
     <label class="field" style="margin-top:14px">ข้อความต้อนรับ (ตอนลูกค้าเพิ่มเพื่อน)
       <textarea name="linebot_greeting" rows="3" maxlength="500" placeholder="เช่น สวัสดีค่ะ ทีมซัพพอร์ตยินดีให้บริการ พิมพ์ปัญหาที่พบได้เลยนะคะ">{{ settings.linebot_greeting }}</textarea>

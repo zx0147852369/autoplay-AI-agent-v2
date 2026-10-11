@@ -29,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=96">
+  <link rel="stylesheet" href="/static/style.css?v=98">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
@@ -37,7 +37,7 @@
 {% macro nav_item(href, ic, label, badge='', exact=False) -%}
   {% set active = (path == '/' and href == '/') or (href != '/' and (path == href or (not exact and path.startswith(href ~ '/')))) %}
   <a href="{{ href }}" class="nav-item {{ 'active' if active }}" {{ 'aria-current=page' if active }}>{{ cicon(ic, 20) }}<span>{{ label }}</span>
-    {%- if badge %}<span class="nav-badge {{ 'hot' if badge in ('badge-pending', 'badge-line-pending') }} {{ 'unread' if badge in ('badge-unread', 'badge-line-unread') }}" id="{{ badge }}"{% if badge in ('badge-unread', 'badge-line-unread') %} title="ข้อความลูกค้าที่ยังไม่ได้อ่าน"{% endif %}></span>{% endif %}</a>
+    {%- if badge %}<span class="nav-badge {{ 'hot' if badge in ('badge-pending', 'badge-line-pending', 'badge-line-questions') }} {{ 'unread' if badge in ('badge-unread', 'badge-line-unread') }}" id="{{ badge }}"{% if badge in ('badge-unread', 'badge-line-unread') %} title="ข้อความลูกค้าที่ยังไม่ได้อ่าน"{% elif badge == 'badge-line-questions' %} title="คำถามที่บอทตอบไม่ได้ (รอทีมงานตอบ/เพิ่มเนื้อหา)"{% endif %}></span>{% endif %}</a>
 {%- endmacro %}
 <a class="skip-link" href="#main">ข้ามไปยังเนื้อหา</a>
 <aside class="sidebar" id="sidebar">
@@ -57,15 +57,26 @@
       {{ nav_item('/guides', 'book-open-lightbulb', 'คู่มือตอบคำถาม') }}
     {% endif %}
     {% if user.role == 'admin' %}
-      <div class="nav-label">ระบบ</div>
-      {{ nav_item('/telegram', 'telegram', 'บัญชี Telegram') }}
-      {{ nav_item('/settings', 'settings', 'ตั้งค่า') }}
-      {{ nav_item('/system', 'gauge', 'ทรัพยากรเครื่อง') }}
-      {{ nav_item('/logs', 'logs', 'Log ระบบ') }}
-      {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
-      {{ nav_item('/brain', 'data-trending', 'สมอง AI') }}
-      {{ nav_item('/ai', 'apps-list', 'เชื่อมต่อ AI') }}
+      {# กลุ่ม "ระบบ" พับเก็บได้ (จำค่าในเบราว์เซอร์) · ถ้าเปิดหน้าในกลุ่มนี้อยู่จะแสดงเสมอ #}
+      {% set sys_hrefs = ['/telegram', '/settings', '/system', '/logs', '/line', '/brain', '/ai'] %}
+      {% set sysns = namespace(active=false) %}
+      {% for h in sys_hrefs %}{% if path == h or path.startswith(h ~ '/') %}{% set sysns.active = true %}{% endif %}{% endfor %}
+      <div class="nav-group nav-group-sys {{ 'has-active' if sysns.active }}" id="navSys">
+        <div class="nav-label nav-fold" role="button" tabindex="0" aria-expanded="true" aria-controls="navSysBody" title="พับ/ขยายเมนูระบบ">ระบบ<span class="nav-fold-ic">{{ icon('chevron-down', 14) }}</span></div>
+        <div class="nav-fold-body" id="navSysBody"><div class="nav-fold-inner">
+          {{ nav_item('/telegram', 'telegram', 'บัญชี Telegram') }}
+          {{ nav_item('/settings', 'settings', 'ตั้งค่า') }}
+          {{ nav_item('/system', 'gauge', 'ทรัพยากรเครื่อง') }}
+          {{ nav_item('/logs', 'logs', 'Log ระบบ') }}
+          {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
+          {{ nav_item('/brain', 'data-trending', 'สมอง AI') }}
+          {{ nav_item('/ai', 'apps-list', 'เชื่อมต่อ AI') }}
+        </div></div>
+      </div>
+      <script>(function(){try{var g=document.getElementById('navSys');if(g&&!g.classList.contains('has-active')&&localStorage.getItem('nav:sys')==='1')g.classList.add('is-folded');}catch(e){}})();</script>
     {% endif %}
+    {# ตัวดันกลุ่ม LINE ลงล่างสุดของแถบ · พับเมนู "ระบบ" แล้วหดเป็น 0 กลุ่ม LINE จึงเลื่อนขึ้นมาต่อท้ายทันที #}
+    <div class="nav-spacer" aria-hidden="true"></div>
     {% if user.role in ('admin', 'agent') %}
       {# ระบบ LINE Chat Bot แยกเป็นกลุ่มของตัวเองท้ายแถบ: แชท / รออนุมัติ / เนื้อหา ไม่ปนกับ Telegram #}
       <div class="nav-group nav-group-line">
@@ -73,7 +84,7 @@
         {% if user.role == 'admin' %}{{ nav_item('/linebot', 'chat-bubbles-question', 'LINE Chat Bot', exact=True) }}{% endif %}
         {{ nav_item('/linebot/chats', 'line-chats', 'แชทลูกค้า LINE', 'badge-line-unread') }}
         {{ nav_item('/linebot/replies', 'line-approve', 'รออนุมัติ LINE', 'badge-line-pending') }}
-        {% if user.role == 'admin' %}{{ nav_item('/linebot/content', 'line-content', 'เนื้อหาบอท LINE') }}{% endif %}
+        {% if user.role == 'admin' %}{{ nav_item('/linebot/content', 'line-content', 'เนื้อหาบอท LINE', 'badge-line-questions') }}{% endif %}
       </div>
     {% endif %}
   </nav>
@@ -309,6 +320,26 @@
 </script>
 {% if user %}
 <script>
+  // ---------------- เมนูข้าง: พับกลุ่ม "ระบบ" (จำค่าในเบราว์เซอร์เครื่องนี้) ----------------
+  (() => {
+    const g = document.getElementById('navSys');
+    const head = g && g.querySelector('.nav-fold');
+    if (!head) return;
+    const KEY = 'nav:sys';
+    const paint = () => head.setAttribute('aria-expanded', g.classList.contains('is-folded') ? 'false' : 'true');
+    const toggle = () => {
+      const folded = g.classList.toggle('is-folded');
+      try { localStorage.setItem(KEY, folded ? '1' : '0'); } catch (e) {}
+      paint();
+    };
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    window.addEventListener('storage', e => {
+      if (e.key === KEY && !g.classList.contains('has-active')) { g.classList.toggle('is-folded', e.newValue === '1'); paint(); }
+    });
+    paint();
+  })();
+
   // ---------------- เมนูข้าง: พับเป็นแถบไอคอน (จำค่าในเบราว์เซอร์เครื่องนี้ · คีย์ลัด [ ) ----------------
   (() => {
     const root = document.documentElement, btn = document.getElementById('sbToggle'), sb = document.getElementById('sidebar');
@@ -458,8 +489,8 @@
       const r = await fetch('/api/badge');
       if (!r.ok) return;
       const d = await r.json();
-      const lineP = d.line_pending || 0;
-      {% if user.role in ('admin', 'agent') %}notifySound.check((d.pending || 0) + lineP);{% endif %}
+      const lineP = d.line_pending || 0, lineQ = d.line_questions || 0;
+      {% if user.role in ('admin', 'agent') %}notifySound.check((d.pending || 0) + lineP + lineQ);{% endif %}
       const p = document.getElementById('badge-pending');
       const t = document.getElementById('badge-tickets');
       if (p) p.textContent = d.pending || '';
@@ -468,11 +499,13 @@
       if (un) un.textContent = d.unread ? (d.unread > 99 ? '99+' : d.unread) : '';
       const lp = document.getElementById('badge-line-pending'), lu = document.getElementById('badge-line-unread');
       if (lp) lp.textContent = lineP || '';
+      const lq = document.getElementById('badge-line-questions');
+      if (lq) lq.textContent = lineQ || '';
       if (lu) lu.textContent = d.line_unread ? (d.line_unread > 99 ? '99+' : d.line_unread) : '';
       const tp = document.getElementById('tab-pending'), tt = document.getElementById('tab-tickets');
       if (tp) tp.textContent = d.pending || '';
       if (tt) tt.textContent = d.open_tickets || '';
-      const allPending = (d.pending || 0) + lineP;
+      const allPending = (d.pending || 0) + lineP + lineQ;
       document.title = (allPending ? `(${allPending}) ` : '') + document.title.replace(/^\(\d+\) /, '');
       // หน้า รออนุมัติ: มีรายการใหม่เข้ามาหลังเปิดหน้า -> แถบ "แตะเพื่อรีเฟรช" (ไม่ต้องรีโหลดเอง)
       const nb = document.getElementById('newBar');

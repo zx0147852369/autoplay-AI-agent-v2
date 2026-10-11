@@ -486,6 +486,14 @@ def init_db() -> None:
             for uid in list(db.scalars(select(User.id))):
                 db.add_all([ChatRead(user_id=uid, chat_id=c, last_id=m or 0) for c, m in latest])
             db.add(Setting(key="chat_reads_v1", value="1"))
+        # ครั้งเดียว: ระบบที่ใช้บอท LINE อยู่แล้ว (มีแชท LINE) และยังเป็นโหมด "อนุมัติก่อนส่ง" -> เปลี่ยนเป็นตอบลูกค้าทันที ตามที่แอดมินขอ
+        # (บอทส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหา/ทักทาย/ข้อความขอตรวจสอบ · สลับกลับได้ที่หน้ารออนุมัติ LINE) · ติดตั้งใหม่ที่ยังไม่มีแชท LINE ไม่ถูกเปลี่ยน
+        if db.get(Setting, "linebot_auto_v1") is None:
+            db.flush()
+            row = db.get(Setting, "linebot_mode")
+            if row is not None and row.value != "auto" and db.scalar(select(Chat.id).where(Chat.channel == "line").limit(1)) is not None:
+                row.value = "auto"
+            db.add(Setting(key="linebot_auto_v1", value="1"))
         if db.get(TelegramAccount, 1) is None:
             db.add(TelegramAccount(id=1))
         db.commit()

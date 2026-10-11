@@ -2134,7 +2134,7 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .steps-list { margin: 0 0 14px; padding-left: 22px; display: grid; gap: 8px; line-height: 1.7; color: var(--ink-2); }
 
 /* ---- LINE Chat Bot: กลุ่มเมนูแยกท้ายแถบข้าง (ไม่ปนกับระบบ Telegram) ---- */
-.nav-group-line { margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.nav-group-line { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
 .nav-group-line .nav-label { display: flex; align-items: center; gap: 7px; padding: 12px 12px 6px; text-transform: none; }
 .nav-group-line .nav-label::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #06c755; flex-shrink: 0; }
 .nav-group-line .nav-item.active::before { background: #06c755; }
@@ -2238,3 +2238,36 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .mode-note form { flex-shrink: 0; }
 .note.mode-note.ok { border-color: var(--pine); background: var(--pine-tint); color: #0a4d33; }
 [data-theme="dark"] .note.mode-note.ok { color: #9fe3c2; background: rgba(23, 138, 93, .14); }
+
+/* ---- เมนูข้าง: กลุ่ม "ระบบ" พับเก็บได้ ---- */
+.nav-group-sys { display: flex; flex-direction: column; }
+.nav-fold { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; border-radius: 8px; transition: color .15s, background .15s; }
+.nav-fold:hover { color: var(--ink); background: rgba(0, 0, 0, .035); }
+[data-theme="dark"] .nav-fold:hover { background: rgba(255, 255, 255, .06); }
+.nav-fold:focus-visible { outline: none; box-shadow: var(--focus); }
+.nav-fold-ic { display: grid; place-items: center; margin-right: 4px; transition: transform .24s cubic-bezier(.22, .8, .24, 1); }
+.nav-group-sys.is-folded .nav-fold-ic { transform: rotate(-90deg); }
+.nav-fold-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .24s cubic-bezier(.22, .8, .24, 1); }
+.nav-fold-inner { display: flex; flex-direction: column; gap: 2px; overflow: hidden; min-height: 0; }
+.nav-group-sys.is-folded .nav-fold-body { grid-template-rows: 0fr; }
+.nav-group-sys.is-folded .nav-fold-inner { visibility: hidden; transition: visibility 0s .24s; }
+@media (min-width: 901px) and (max-height: 840px) { .nav-fold-inner { gap: 0; } }
+@media (min-width: 901px) {
+  /* แถบไอคอน: กลุ่มระบบแสดงเสมอ (หัวข้อเหลือเป็นเส้นคั่น) */
+  :root.nav-collapsed .nav-fold { pointer-events: none; cursor: default; }
+  :root.nav-collapsed .nav-fold-ic { display: none; }
+  :root.nav-collapsed .nav-fold-inner { align-items: center; }
+  :root.nav-collapsed .nav-group-sys.is-folded .nav-fold-body { grid-template-rows: 1fr; }
+  :root.nav-collapsed .nav-group-sys.is-folded .nav-fold-inner { visibility: visible; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-fold-body, .nav-fold-ic, .nav-fold-inner { transition: none !important; }
+}
+
+/* ตัวดันกลุ่ม LINE ลงล่างสุด: พับเมนูระบบ -> หดเป็น 0 แล้วกลุ่ม LINE เลื่อนขึ้นมาต่อท้ายอย่างนุ่มนวล */
+.nav-spacer { flex: 1 1 0; min-height: 0; transition: flex-grow .24s cubic-bezier(.22, .8, .24, 1); }
+.nav-group-sys.is-folded ~ .nav-spacer { flex-grow: 0; }
+@media (min-width: 901px) {
+  :root.nav-collapsed .nav-group-sys.is-folded ~ .nav-spacer { flex-grow: 1; }  /* แถบไอคอนแสดงกลุ่มระบบเสมอ: LINE อยู่ล่างสุดตามเดิม */
+}
+@media (prefers-reduced-motion: reduce) { .nav-spacer { transition: none !important; } }

@@ -269,7 +269,9 @@ def _handle_question(chat_id: int, result: ai_service.Analysis, guides: list, cu
             note = ("คำถามนี้ยังไม่มีในเนื้อหาของบอท ตรวจคำตอบก่อนส่ง · เพิ่มเนื้อหาได้ที่หน้า \"เนื้อหาบอท LINE\""
                     if is_line else
                     "คำถามนี้ยังไม่มีในคู่มือ ตรวจคำตอบก่อนส่ง · เพิ่มคู่มือได้ที่หน้า \"คู่มือตอบคำถาม\"")
-            if not (result.needs_reply and result.reply_text.strip()):
+            if is_line:  # บอท LINE ไม่เดา: ใช้ข้อความ "ขอตรวจสอบ" มาตรฐานเสมอ (ไม่ใช้ข้อความที่ AI คิดเองนอกเนื้อหา) แล้วทีมงานตอบต่อ
+                result.needs_reply, result.reply_text = True, GUIDE_HOLD
+            elif not (result.needs_reply and result.reply_text.strip()):
                 result.needs_reply, result.reply_text = True, GUIDE_HOLD
         db.commit()
     result.note_for_admin = (f"{QUESTION_NOTE} {question} · {note} · " + result.note_for_admin).strip(" ·")

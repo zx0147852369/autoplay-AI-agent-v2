@@ -582,6 +582,7 @@ async def badge(request: Request):
             Reply.status == "pending", _in_scope(Reply.chat_id, "telegram"))) + dev_bridge.pending_count(db)
         line_pending = db.scalar(select(func.count(Reply.id)).where(
             Reply.status == "pending", _in_scope(Reply.chat_id, "line"))) or 0
+        line_questions = db.scalar(select(func.count(LineQuestion.id)).where(LineQuestion.status == "open")) or 0
         open_tickets = db.scalar(select(func.count(Ticket.id)).where(Ticket.status.in_(analyzer.OPEN_STATUSES)))
         unread_total = line_unread = 0
         if user.role in ("admin", "agent"):  # นับข้อความที่ยังไม่ได้อ่านแยกระบบ
@@ -591,8 +592,8 @@ async def badge(request: Request):
                     line_unread += n
                 else:
                     unread_total += n
-    return JSONResponse({"pending": pending, "line_pending": line_pending, "open_tickets": open_tickets,
-                         "unread": unread_total, "line_unread": line_unread})
+    return JSONResponse({"pending": pending, "line_pending": line_pending, "line_questions": line_questions,
+                         "open_tickets": open_tickets, "unread": unread_total, "line_unread": line_unread})
 
 
 # ---------------------------------------------------------------- telegram account
@@ -1366,10 +1367,13 @@ async def linebot_webhook(request: Request):
 
 
 def _bot_answer_is_safe(reply: Reply) -> bool:
-    """โหมดตอบอัตโนมัติ: ส่งเองเฉพาะ (1) ตอบจากเนื้อหาของบอท หรือ (2) ตอบทักทายด้วยข้อความต้อนรับ
-    ที่เหลือ (ไม่มีในเนื้อหา / แจ้งปัญหา / AI ตอบเองนอกเนื้อหา) ต้องผ่านการอนุมัติ"""
+    """โหมดตอบอัตโนมัติ: ส่งเองเฉพาะ (1) ตอบจากเนื้อหาของบอท (2) ตอบทักทายด้วยข้อความต้อนรับ
+    (3) ข้อความ "ขอตรวจสอบ" มาตรฐานเมื่อไม่มีในเนื้อหา (ลูกค้าไม่เงียบ ทีมงานตอบต่อจากรายการคำถามที่ตอบไม่ได้)
+    ที่เหลือ (แจ้งปัญหา / AI ตอบเองนอกเนื้อหา) ต้องผ่านการอนุมัติ"""
     note = reply.note or ""
-    return analyzer.LINE_NOTE in note or analyzer.LINE_HELLO_NOTE in note
+    if analyzer.LINE_NOTE in note or analyzer.LINE_HELLO_NOTE in note:
+        return True
+    return analyzer.QUESTION_NOTE in note and (reply.final_text or "").strip() == analyzer.GUIDE_HOLD
 
 
 async def _auto_send_bot(reply_id: int) -> None:
@@ -1450,7 +1454,7 @@ async def linebot_set_mode(request: Request, mode: str = Form("")):
     with SessionLocal() as db:
         db.merge(Setting(key="linebot_mode", value=mode))
         db.commit()
-    flash(request, "เปิดโหมดตอบลูกค้าทันทีแล้ว: บอทส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้และคำทักทาย เรื่องอื่นรอทีมงานในหน้านี้"
+    flash(request, "เปิดโหมดตอบลูกค้าทันทีแล้ว: บอทส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอท คำทักทาย และข้อความขอตรวจสอบ เรื่องอื่นรอทีมงานในหน้านี้"
           if mode == "auto" else "กลับไปโหมดให้ทีมงานอนุมัติก่อนส่งแล้ว")
     return back("/linebot/replies")
 
