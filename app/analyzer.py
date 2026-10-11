@@ -52,6 +52,16 @@ on_draft = None  # async callback(reply_id) หลังสร้างร่า
 GUIDE_NOTE = "ตอบจากคู่มือ #"          # แชท Telegram: คู่มือตอบคำถาม
 LINE_NOTE = "ตอบจากเนื้อหาบอท #"       # แชท LINE: เนื้อหาบอท LINE (แยกจากคู่มือของ Telegram)
 QUESTION_NOTE = "คำถามการใช้งาน:"
+LINE_HELLO_NOTE = "ตอบทักทายอัตโนมัติ"  # ลูกค้า LINE ทักทายเฉยๆ: ตอบด้วยข้อความต้อนรับ ไม่เรียก AI
+DEFAULT_HELLO = "สวัสดีค่ะ ยินดีให้บริการค่ะ พิมพ์สิ่งที่ต้องการสอบถามได้เลยนะคะ"
+_HELLO_RE = re.compile(
+    r"(สวัสดี|หวัดดี|ดี|hello|hi+|hey)(ครับผม|ครับ|ค่ะ|คะ|คับ|จ้า|จ้ะ|ค่า|ค้าบ|นะ|ๆ|ทุกคน|ทีมงาน|แอดมิน|admin)*", re.IGNORECASE)
+
+
+def is_greeting(text: str) -> bool:
+    """ข้อความที่เป็นแค่คำทักทาย (สวัสดีครับ / หวัดดีค่ะ / hello) ไม่มีเรื่องอื่นปน"""
+    t = re.sub(r"[\s!.,~?\u2764\U0001F300-\U0001FAFF]+", "", (text or "").lower())
+    return bool(t) and len(t) <= 30 and _HELLO_RE.fullmatch(t) is not None
 
 
 def schedule(chat_id: int) -> None:
@@ -151,7 +161,8 @@ async def analyze(chat_id: int) -> str:
         rejected = recent_rejected(chat_id)
 
         notes_text, note_ids = "", []
-        if settings.get("learn_use_notes") == "1":  # โน้ตที่ AI เรียนรู้ไว้ (สมอง AI) · ดึงไม่ได้ก็วิเคราะห์ต่อได้ปกติ
+        # โน้ตที่ AI เรียนรู้ไว้ (สมอง AI) เป็นบทเรียนจากงาน Telegram จึงไม่ใช้กับบอท LINE (แยกระบบ) · ดึงไม่ได้ก็วิเคราะห์ต่อได้ปกติ
+        if settings.get("learn_use_notes") == "1" and channel != "line":
             try:
                 with SessionLocal() as db:
                     notes_text, note_ids = learning.notes_for_prompt(
@@ -159,17 +170,26 @@ async def analyze(chat_id: int) -> str:
             except Exception:  # noqa: BLE001
                 log.exception("load AI notes failed")
 
-        try:
-            result = await ai_service.analyze_chat(
-                settings, chat.title if chat else str(chat_id), history, new_messages, open_tickets,
-                rejected=[r for r, _ in rejected], chat_website=chat.website_url if chat else "", guides=guides,
-                notes=notes_text, channel=channel,
-            )
-        except ai_service.AIError as e:
-            last_error[chat_id] = str(e)
-            log.warning("AI error on chat %s: %s", chat_id, e)
-            return f"ผิดพลาด: {e}"
-        last_error.pop(chat_id, None)
+        result = None
+        if channel == "line" and customer_new and all(not m.media_path and is_greeting(m.text) for m in customer_new):
+            # ลูกค้า LINE ทักทายเฉยๆ -> ตอบด้วยข้อความต้อนรับที่ตั้งไว้ (ไม่เรียก AI ไม่เสียโควตา ไม่ตอบหลุดเรื่อง)
+            hello = (settings.get("linebot_greeting") or "").strip() or DEFAULT_HELLO
+            result = ai_service.Analysis(
+                needs_reply=True, reply_text=hello, reply_to_message_id=customer_new[-1].tg_message_id,
+                issue_category="none", issue_title="", issue_summary="", severity="low", website_url="",
+                customer_name="", existing_ticket_id=0, note_for_admin=f"ลูกค้าทักทาย · {LINE_HELLO_NOTE} (ไม่เรียก AI)")
+        if result is None:
+            try:
+                result = await ai_service.analyze_chat(
+                    settings, chat.title if chat else str(chat_id), history, new_messages, open_tickets,
+                    rejected=[r for r, _ in rejected], chat_website=chat.website_url if chat else "", guides=guides,
+                    notes=notes_text, channel=channel,
+                )
+            except ai_service.AIError as e:
+                last_error[chat_id] = str(e)
+                log.warning("AI error on chat %s: %s", chat_id, e)
+                return f"ผิดพลาด: {e}"
+            last_error.pop(chat_id, None)
         if note_ids:  # บอกแอดมินว่าครั้งนี้ใช้บทเรียนข้อไหน (ตรวจสอบย้อนกลับได้ที่หน้า "สมอง AI")
             shown = ", ".join(f"#{i}" for i in note_ids[:6]) + (f" +{len(note_ids) - 6}" if len(note_ids) > 6 else "")
             result.note_for_admin = (result.note_for_admin + f" · ใช้บทเรียน AI {shown}").strip(" ·")
@@ -185,7 +205,8 @@ async def analyze(chat_id: int) -> str:
             else:
                 result.needs_reply, result.reply_text = True, ASK_LINK_FULL
             result.note_for_admin = (result.note_for_admin + " · ระบบขอลิงก์เว็บไซต์จากลูกค้า").strip(" ·")
-        ack = asked_info and settings.get("ack_info") == "1" and has_content(customer_new)
+        # ตอบรับ "ได้รับข้อมูลแล้ว" ใช้กับแชท Telegram ที่ทีมงานขอข้อมูล (บอท LINE ตอบจากเนื้อหา ไม่ได้ขอสลิป/ยูส)
+        ack = asked_info and settings.get("ack_info") == "1" and has_content(customer_new) and channel != "line"
         if ack:
             await _apply_customer_link(chat_id, customer_new, open_tickets, settings)
             if not (result.needs_reply and result.reply_text.strip()):

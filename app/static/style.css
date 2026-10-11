@@ -2231,3 +2231,10 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .ask-meta { font-size: .88rem; color: var(--ink-2); line-height: 1.9; }
 .ask-answer { margin-top: 8px; padding: 12px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
 @media (max-width: 700px) { .ask-row { flex-direction: column; } .check-row.sub-opt { margin-left: 8px; } }
+
+/* ---- แถบบอกโหมดบอท LINE ในหน้ารออนุมัติ LINE ---- */
+.mode-note { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.mode-note > div { flex: 1 1 320px; min-width: 0; }
+.mode-note form { flex-shrink: 0; }
+.note.mode-note.ok { border-color: var(--pine); background: var(--pine-tint); color: #0a4d33; }
+[data-theme="dark"] .note.mode-note.ok { color: #9fe3c2; background: rgba(23, 138, 93, .14); }

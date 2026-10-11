@@ -12,6 +12,28 @@
   </div>
 </div>
 
+{% if scope == 'line' %}
+<div class="note mode-note {{ 'ok' if linebot_mode == 'auto' else 'warn' }}">
+  <div>
+    {% if linebot_mode == 'auto' %}
+      <strong>โหมดตอนนี้: ตอบลูกค้าทันที</strong> · บอทส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้และคำทักทาย เรื่องอื่นมารอทีมงานที่หน้านี้
+    {% else %}
+      <strong>โหมดตอนนี้: ให้ทีมงานอนุมัติก่อนส่ง</strong> · บอทจะไม่ตอบลูกค้าเองจนกว่าจะกดอนุมัติในหน้านี้ ถ้าอยากให้ข้อความขึ้นใน LINE ทันที กดปุ่มเปิดโหมดตอบลูกค้าทันที
+    {% endif %}
+  </div>
+  {% if user.role == 'admin' %}
+  <form method="post" action="/linebot/mode"
+        {% if linebot_mode != 'auto' %}data-confirm="AI จะส่งข้อความถึงลูกค้า LINE เองโดยไม่ผ่านการอนุมัติ (เฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้และคำทักทาย) · เรื่องอื่นยังเข้าคิวให้ทีมงานตอบ" data-confirm-title="เปิดโหมดตอบลูกค้าทันที?" data-confirm-ok="เปิดโหมดตอบทันที" data-confirm-tone="send"{% endif %}>
+    {% if linebot_mode == 'auto' %}
+      <input type="hidden" name="mode" value="approve"><button class="sm ghost">กลับไปโหมดอนุมัติก่อนส่ง</button>
+    {% else %}
+      <input type="hidden" name="mode" value="auto"><button class="go">เปิดโหมดตอบลูกค้าทันที</button>
+    {% endif %}
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
 <nav class="rv-tabs" aria-label="กรองตามสถานะ">
   {% for key, label in tabs %}
     {% set n = status_counts.get(key, 0) %}

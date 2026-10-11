@@ -640,7 +640,10 @@ async def analyze_chat(
     model = settings.get("ai_model") or DEFAULT_SETTINGS["ai_model"]
     # Gemini รุ่นหลักช่วงโหลดสูงอาจค้างเกิน 30 วินาที -> รอรุ่นละ 30 วินาทีแล้วสลับไปรุ่นสำรองที่เร็วกว่า (ไม่ตัดงานของ Claude/AI ภายนอก)
     gemini_wait = 30 if is_gemini(model) and not custom_ai.is_custom(model) else None
-    system = _system_text(settings) + LINE_RULES if channel == "line" else None
+    system = None
+    if channel == "line":
+        # ฐานความรู้/วิธีตอบในหน้าตั้งค่าเป็นของงาน Telegram (เช่น ขอสลิป/ยูสเซอร์) ไม่ใช้กับบอท LINE · บอทตอบจากเนื้อหาของบอท
+        system = _system_text(dict(settings, knowledge_base="")) + LINE_RULES
     return _parse_analysis(await _call(settings, parts, ANALYSIS_SCHEMA, system=system,
                                        names=_known_names(chat_title, history), timeout=gemini_wait))
 

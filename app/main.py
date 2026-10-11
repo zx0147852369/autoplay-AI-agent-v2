@@ -920,6 +920,7 @@ def _replies_view(request: Request, user: User, scope: str, status: str, box: st
         all_chats = list(db.scalars(select(Chat)))
         chat_titles = {c.id: c.title for c in all_chats}
         chat_channels = {c.id: c.channel for c in all_chats}
+        linebot_mode = get_settings(db).get("linebot_mode", "approve")
         dev_queue = []
         if not is_line:  # ticket รอส่งเข้ากลุ่มโปรแกรมเมอร์เป็นของฝั่ง Telegram
             for t in db.scalars(select(Ticket).where(Ticket.dev_status == "pending").order_by(Ticket.created_at)):
@@ -939,7 +940,7 @@ def _replies_view(request: Request, user: User, scope: str, status: str, box: st
         box = "dev" if dev_queue and not (status == "pending" and replies) else "customer"
     return render(request, "replies.html", user, replies=replies, status=status, chat_titles=chat_titles,
                   context=context, status_counts=status_counts, dev_queue=dev_queue, box=box, unread_by_chat=unread_by_chat,
-                  chat_channels=chat_channels, scope=scope,
+                  chat_channels=chat_channels, scope=scope, linebot_mode=linebot_mode,
                   dev_group_title=chat_titles.get(telegram.dev_group_id, "กลุ่มโปรแกรมเมอร์"))
 
 
@@ -1364,17 +1365,11 @@ async def linebot_webhook(request: Request):
     return JSONResponse({"ok": True})
 
 
-SMALL_TALK_MAX = 160  # ตอบทักทาย/ขอบคุณสั้นๆ ได้เอง (ไม่มีคำถาม ไม่มี ticket) ยาวกว่านี้ให้คนตรวจ
-
-
 def _bot_answer_is_safe(reply: Reply) -> bool:
-    """โหมดตอบอัตโนมัติ: ส่งเองเฉพาะ (1) ตอบจากเนื้อหาของบอท หรือ (2) ทักทาย/ขอบคุณสั้นๆ ที่ AI ไม่ได้ถือเป็นคำถาม
-    เรื่องที่ไม่มีในเนื้อหา / แจ้งปัญหา (มี ticket) / ข้อความยาว ต้องผ่านการอนุมัติ"""
+    """โหมดตอบอัตโนมัติ: ส่งเองเฉพาะ (1) ตอบจากเนื้อหาของบอท หรือ (2) ตอบทักทายด้วยข้อความต้อนรับ
+    ที่เหลือ (ไม่มีในเนื้อหา / แจ้งปัญหา / AI ตอบเองนอกเนื้อหา) ต้องผ่านการอนุมัติ"""
     note = reply.note or ""
-    if analyzer.LINE_NOTE in note:
-        return True
-    return (reply.ticket_id is None and analyzer.QUESTION_NOTE not in note
-            and len((reply.final_text or "").strip()) <= SMALL_TALK_MAX)
+    return analyzer.LINE_NOTE in note or analyzer.LINE_HELLO_NOTE in note
 
 
 async def _auto_send_bot(reply_id: int) -> None:
@@ -1445,6 +1440,19 @@ async def linebot_save(request: Request):
         db.commit()
     flash(request, "บันทึกการตั้งค่า LINE Chat Bot แล้ว")
     return back("/linebot")
+
+
+@app.post("/linebot/mode")
+async def linebot_set_mode(request: Request, mode: str = Form("")):
+    """สลับโหมดจากหน้ารออนุมัติ LINE (ปุ่มเดียว): auto = ตอบลูกค้าทันที · approve = ให้ทีมงานอนุมัติก่อนส่ง"""
+    current_user(request, "admin")
+    mode = "auto" if mode == "auto" else "approve"
+    with SessionLocal() as db:
+        db.merge(Setting(key="linebot_mode", value=mode))
+        db.commit()
+    flash(request, "เปิดโหมดตอบลูกค้าทันทีแล้ว: บอทส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้และคำทักทาย เรื่องอื่นรอทีมงานในหน้านี้"
+          if mode == "auto" else "กลับไปโหมดให้ทีมงานอนุมัติก่อนส่งแล้ว")
+    return back("/linebot/replies")
 
 
 @app.post("/linebot/check")

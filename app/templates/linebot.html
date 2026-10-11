@@ -45,11 +45,11 @@
     <label class="check-row"><input type="radio" name="linebot_mode" value="auto" {{ 'checked' if settings.linebot_mode == 'auto' }}>
       <span>ตอบลูกค้าทันทีโดยไม่ต้องอนุมัติ <span class="tag rs-failed">ระวัง</span><span class="hint">AI ตอบลูกค้าเองจาก "เนื้อหาบอท LINE" · ควรใช้เมื่อเนื้อหาครบแล้ว · ทุกข้อความที่บอทส่งดูย้อนหลังได้ในประวัติแชท โดยแสดงผู้ส่งเป็น "AI อัตโนมัติ"</span></span></label>
     <label class="check-row sub-opt"><input type="checkbox" name="linebot_auto_only_found" {{ 'checked' if settings.linebot_auto_only_found != '0' }}>
-      <span>ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้ <span class="tag st-resolved">แนะนำ</span><span class="hint">เรื่องที่ไม่มีในเนื้อหา การแจ้งปัญหา หรือข้อความยาว จะเข้าหน้า "รออนุมัติ LINE" ให้ทีมงานตอบแทน · มีผลเมื่อเลือกโหมดตอบทันที</span></span></label>
+      <span>ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาของบอทได้ <span class="tag st-resolved">แนะนำ</span><span class="hint">ส่งเองเฉพาะเรื่องที่ตอบจากเนื้อหาและคำทักทาย (สวัสดี) · เรื่องที่ไม่มีในเนื้อหาหรือแจ้งปัญหา จะเข้าหน้า "รออนุมัติ LINE" ให้ทีมงานตอบแทน · มีผลเมื่อเลือกโหมดตอบทันที</span></span></label>
 
     <label class="field" style="margin-top:14px">ข้อความต้อนรับ (ตอนลูกค้าเพิ่มเพื่อน)
       <textarea name="linebot_greeting" rows="3" maxlength="500" placeholder="เช่น สวัสดีค่ะ ทีมซัพพอร์ตยินดีให้บริการ พิมพ์ปัญหาที่พบได้เลยนะคะ">{{ settings.linebot_greeting }}</textarea>
-      <span class="hint">ว่าง = ไม่ส่ง · ส่งแล้วบันทึกไว้ในประวัติแชทเป็นข้อความของบอท</span></label>
+      <span class="hint">ใช้ตอบเมื่อลูกค้าเพิ่มเพื่อน และเมื่อลูกค้าพิมพ์ทักทาย เช่น "สวัสดีครับ" (ไม่เรียก AI) · ว่าง = ไม่ส่งตอนเพิ่มเพื่อน และใช้ข้อความมาตรฐานตอนทักทาย</span></label>
 
     {% if not bot_ready %}
       <div class="note warn" style="margin-top:14px">ยังไม่พร้อมใช้งาน: สร้าง Messaging API channel <strong>ใหม่</strong> (แยกจากตัวแจ้งเตือน) แล้วใส่ <code>LINE_BOT_CHANNEL_ACCESS_TOKEN</code> กับ <code>LINE_BOT_CHANNEL_SECRET</code> ใน Variables ของ Railway จากนั้นวาง Webhook URL ด้านบน</div>
