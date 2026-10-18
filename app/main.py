@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, announce, chase, chase_audio, chatbus, dev_bridge, learning, line_service, linebot, quota, sysinfo, unread
+from . import ai_service, analyzer, announce, chase, chase_audio, chatbus, dev_bridge, learning, line_service, linebot, links, quota, sysinfo, unread
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
@@ -30,6 +30,7 @@ from .database import (
     AnnouncementTarget,
     ChaseLog,
     ChaseSound,
+    SiteLink,
     AiNote,
     AiUsage,
     Chat,
@@ -56,7 +57,7 @@ from .database import (
     utcnow,
 )
 from .notices import sync_resolved_notice
-from .security import decrypt, hash_password, verify_password
+from .security import decrypt, encrypt, hash_password, verify_password
 from .telegram_service import TelegramLoginError, telegram
 
 # คอนโซล Windows ไม่ใช่ UTF-8 โดยค่าเริ่มต้น ทำให้ log ภาษาไทยพัง
@@ -1071,6 +1072,275 @@ async def announce_retry(request: Request, aid: int):
     if n:
         log.info("%s สั่งส่งต่อประกาศ #%s (%s แชท)", user.username, aid, n)
     return back(f"/announce/{aid}")
+
+# ---------------------------------------------------------------- ลิงก์เว็บไซต์ (แอดมิน + ทีมงาน)
+def _link_fields(url: str, title: str, category: str, note: str) -> tuple[dict | None, str]:
+    try:
+        clean = links.normalize_url(url)
+    except ValueError as e:
+        return None, str(e)
+    return {"url": clean, "title": (title.strip() or links.host_of(clean))[:120], "category": category.strip()[:60], "note": note.strip()[:300]}, ""
+
+
+def _link_login(row: SiteLink) -> tuple[dict | None, str]:
+    """รหัสล็อกอินอัตโนมัติของลิงก์ (ถอดรหัสตอนใช้งานเท่านั้น) -> ({user, password, action, fields...}, "") หรือ (None, เหตุผล)"""
+    if not row.cred_user and not row.cred_pass:
+        return None, "ลิงก์นี้ยังไม่ได้ตั้งรหัสล็อกอินอัตโนมัติ"
+    user, password = decrypt(row.cred_user), decrypt(row.cred_pass)
+    if not (user and password):
+        return None, "ถอดรหัสที่เก็บไว้ไม่ได้ (คีย์ของระบบเปลี่ยนไป) ให้แอดมินตั้งรหัสใหม่"
+    try:
+        action = links.check_login_url(row.url, row.login_url) or row.url
+        extra = json.loads(row.extra_fields) if row.extra_fields else {}
+    except (ValueError, TypeError) as e:
+        return None, str(e)
+    uf, pf = row.user_field or "username", row.pass_field or "password"
+    if uf == pf:
+        return None, "ชื่อช่องชื่อผู้ใช้กับรหัสผ่านซ้ำกัน ให้แอดมินแก้ในหน้าลิงก์"
+    return {"user": user, "password": password, "action": action, "user_field": uf, "pass_field": pf, "extra": list(extra.items())}, ""
+
+
+@app.get("/links")
+async def links_page(request: Request):
+    user = current_user(request, "agent")
+    is_admin = user.role == "admin"
+    with SessionLocal() as db:
+        rows = list(db.scalars(select(SiteLink)))
+        chats = list(db.scalars(select(Chat).where(Chat.website_url != "").order_by(Chat.title)))
+    rows.sort(key=lambda r: (not r.category, r.category.lower(), r.title.lower()))
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        stored = bool(r.cred_user or r.cred_pass)
+        cu = decrypt(r.cred_user) if stored else ""
+        item = {"id": r.id, "title": r.title, "url": r.url, "host": links.host_of(r.url), "category": r.category, "note": r.note,
+                "by": r.created_by, "at": r.created_at, "q": f"{r.title} {r.url} {r.category} {r.note}".lower(),
+                "login": bool(cu and decrypt(r.cred_pass)), "login_broken": stored and not (cu and decrypt(r.cred_pass))}
+        if is_admin:  # ชื่อผู้ใช้ให้แอดมินเห็นเพื่อแก้ไข · รหัสผ่านไม่ส่งมาที่หน้าเลย
+            item.update(cu=cu, has_pass=bool(r.cred_pass), login_url=r.login_url, uf=r.user_field, pf=r.pass_field,
+                        extra="\n".join(f"{k}={v}" for k, v in (json.loads(r.extra_fields) if r.extra_fields else {}).items()))
+        groups.setdefault(r.category, []).append(item)
+    have = {links.url_key(r.url) for r in rows}
+    sites = []
+    for c in chats:
+        url = links.safe_url(c.website_url)
+        if url and links.url_key(url) not in have:  # ที่นำเข้าเป็นลิงก์ของทีมแล้วไม่ต้องโชว์ซ้ำ
+            sites.append({"title": c.title or str(c.id), "url": url, "host": links.host_of(url), "q": f"{c.title} {url}".lower()})
+    return render(request, "links.html", user, groups=list(groups.items()), total=len(rows), sites=sites, is_admin=is_admin,
+                  categories=sorted({r.category for r in rows if r.category}, key=str.lower), max_links=links.MAX_LINKS)
+
+
+@app.post("/links")
+async def links_create(request: Request, url: str = Form(""), title: str = Form(""), category: str = Form(""), note: str = Form("")):
+    user = current_user(request, "agent")
+    data, err = _link_fields(url, title, category, note)
+    if err:
+        flash(request, err, "error")
+        return back("/links")
+    with SessionLocal() as db:
+        existing = list(db.scalars(select(SiteLink)))
+        if len(existing) >= links.MAX_LINKS:
+            flash(request, f"เก็บลิงก์ได้ไม่เกิน {links.MAX_LINKS} ลิงก์ ลบอันที่ไม่ใช้ก่อน", "error")
+            return back("/links")
+        dup = next((r for r in existing if links.url_key(r.url) == links.url_key(data["url"])), None)
+        if dup is not None:
+            flash(request, f"มีลิงก์นี้อยู่แล้ว: {dup.title}", "error")
+            return back("/links")
+        db.add(SiteLink(created_by=user.username, **data))
+        db.commit()
+    flash(request, f"เพิ่มลิงก์ “{data['title']}” แล้ว")
+    return back("/links")
+
+
+@app.post("/links/bulk")
+async def links_bulk(request: Request, lines: str = Form(""), category: str = Form("")):
+    """วางหลายลิงก์ทีเดียว (บรรทัดละ 1 ลิงก์ หรือ ชื่อ | ลิงก์) · ข้ามบรรทัดที่ผิดหรือซ้ำ แล้วสรุปให้"""
+    user = current_user(request, "agent")
+    items = links.parse_bulk(lines)
+    if not items:
+        flash(request, "วางลิงก์ก่อน (บรรทัดละ 1 ลิงก์)", "error")
+        return back("/links")
+    added, bad, dup, full = 0, [], 0, False
+    with SessionLocal() as db:
+        existing = list(db.scalars(select(SiteLink)))
+        keys = {links.url_key(r.url) for r in existing}
+        for title, raw in items:
+            data, err = _link_fields(raw, title, category, "")
+            if err:
+                bad.append(raw[:60])
+                continue
+            k = links.url_key(data["url"])
+            if k in keys:
+                dup += 1
+                continue
+            if len(existing) + added >= links.MAX_LINKS:
+                full = True
+                break
+            db.add(SiteLink(created_by=user.username, **data))
+            keys.add(k)
+            added += 1
+        db.commit()
+    parts = [f"เพิ่ม {added} ลิงก์"]
+    if dup:
+        parts.append(f"ข้ามที่ซ้ำ {dup}")
+    if bad:
+        parts.append(f"ข้ามที่ลิงก์ไม่ถูกต้อง {len(bad)} ({', '.join(bad[:3])}{'…' if len(bad) > 3 else ''})")
+    if full:
+        parts.append(f"เต็มจำนวนสูงสุด {links.MAX_LINKS} ลิงก์")
+    flash(request, " · ".join(parts), "ok" if added else "error")
+    return back("/links")
+
+
+@app.post("/links/import-customers")
+async def links_import_customers(request: Request):
+    """เอาเว็บไซต์ของลูกค้าทุกแชท (ช่อง เว็บไซต์ ของแชท) มาใส่เป็นลิงก์ของทีม เพื่อเก็บรหัสล็อกอินอัตโนมัติ/จัดกลุ่ม · ข้ามที่มีอยู่แล้ว"""
+    user = current_user(request, "agent")
+    added, dup, bad, full = 0, 0, 0, False
+    with SessionLocal() as db:
+        chats = list(db.scalars(select(Chat).where(Chat.website_url != "").order_by(Chat.title)))
+        existing = list(db.scalars(select(SiteLink)))
+        keys = {links.url_key(r.url) for r in existing}
+        for c in chats:
+            url = links.safe_url(c.website_url)
+            if not url:
+                bad += 1
+                continue
+            if links.url_key(url) in keys:
+                dup += 1
+                continue
+            if len(existing) + added >= links.MAX_LINKS:
+                full = True
+                break
+            db.add(SiteLink(title=(c.title or links.host_of(url))[:120], url=url, category="ลูกค้า", created_by=user.username))
+            keys.add(links.url_key(url))
+            added += 1
+        db.commit()
+    parts = [f"นำเข้าเว็บไซต์ลูกค้า {added} ลิงก์"]
+    if dup:
+        parts.append(f"ข้ามที่มีอยู่แล้ว {dup}")
+    if bad:
+        parts.append(f"ข้ามที่ลิงก์ใช้ไม่ได้ {bad}")
+    if full:
+        parts.append(f"เต็มจำนวนสูงสุด {links.MAX_LINKS} ลิงก์")
+    flash(request, " · ".join(parts), "ok" if added else "error")
+    return back("/links")
+
+
+@app.post("/links/{lid}")
+async def links_update(request: Request, lid: int, url: str = Form(""), title: str = Form(""), category: str = Form(""), note: str = Form(""),
+                       cred_user: str = Form(""), cred_pass: str = Form(""), clear_cred: str = Form(""), login_url: str = Form(""),
+                       user_field: str = Form(""), pass_field: str = Form(""), extra: str = Form("")):
+    user = current_user(request, "agent")
+    is_admin = user.role == "admin"
+    data, err = _link_fields(url, title, category, note)
+    with SessionLocal() as db:
+        row = db.get(SiteLink, lid)
+        if row is None:
+            flash(request, "ไม่พบลิงก์นี้", "error")
+            return back("/links")
+        had_login = bool(row.cred_user or row.cred_pass)
+        if not err and had_login and not is_admin and links.host_of(data["url"]) != links.host_of(row.url):
+            err = "ลิงก์นี้มีรหัสล็อกอินเก็บไว้ เปลี่ยนเว็บไซต์ได้เฉพาะแอดมิน (กันส่งรหัสไปเว็บอื่น)"
+        login_cfg = None
+        if not err and is_admin and not clear_cred:
+            try:
+                new_user, new_pass = cred_user.strip(), cred_pass.replace("\r", "").replace("\n", "")
+                lu = links.check_login_url(data["url"], login_url)
+                uf, pf = links.field_name(user_field, ""), links.field_name(pass_field, "")
+                ex = links.parse_extra(extra)
+                if (new_user or new_pass or lu or uf or pf or ex) and not (new_user or row.cred_user):
+                    raise ValueError("ใส่ชื่อผู้ใช้สำหรับล็อกอินอัตโนมัติด้วย")
+                if (new_user or new_pass or lu or uf or pf or ex) and not (new_pass or row.cred_pass):
+                    raise ValueError("ใส่รหัสผ่านสำหรับล็อกอินอัตโนมัติด้วย")
+                if (uf or "username") == (pf or "password"):
+                    raise ValueError("ชื่อช่องชื่อผู้ใช้กับรหัสผ่านต้องไม่ซ้ำกัน")
+                login_cfg = (new_user, new_pass, lu, uf, pf, ex)
+            except ValueError as e:
+                err = str(e)
+        if err:
+            flash(request, err, "error")
+            return back("/links")
+        dup = next((r for r in db.scalars(select(SiteLink).where(SiteLink.id != lid)) if links.url_key(r.url) == links.url_key(data["url"])), None)
+        if dup is not None:
+            flash(request, f"มีลิงก์นี้อยู่แล้ว: {dup.title}", "error")
+            return back("/links")
+        row.url, row.title, row.category, row.note = data["url"], data["title"], data["category"], data["note"]
+        msg = f"แก้ลิงก์ “{data['title']}” แล้ว"
+        if is_admin and clear_cred:
+            row.cred_user = row.cred_pass = row.login_url = row.user_field = row.pass_field = row.extra_fields = ""
+            msg += " · ลบรหัสล็อกอินที่เก็บไว้แล้ว"
+        elif login_cfg is not None:
+            new_user, new_pass, lu, uf, pf, ex = login_cfg
+            if new_user:
+                row.cred_user = encrypt(new_user)
+            if new_pass:
+                row.cred_pass = encrypt(new_pass)
+            if row.cred_user or row.cred_pass:
+                row.login_url, row.user_field, row.pass_field = lu, uf, pf
+                row.extra_fields = json.dumps(ex, ensure_ascii=False) if ex else ""
+                if new_user or new_pass:
+                    msg += " · บันทึกรหัสล็อกอินอัตโนมัติ (เข้ารหัสไว้) แล้ว"
+                    if (lu or data["url"]).lower().startswith("http://"):
+                        msg += " · ⚠ เว็บนี้ใช้ http:// (ไม่เข้ารหัส) รหัสผ่านจะเดินทางผ่านเครือข่ายแบบเปิดเผย แนะนำให้ใช้ https://"
+                    log.info("%s ตั้ง/เปลี่ยนรหัสล็อกอินอัตโนมัติของลิงก์ #%s", user.username, lid)
+        db.commit()
+    flash(request, msg)
+    return back("/links")
+
+
+@app.post("/links/{lid}/delete")
+async def links_delete(request: Request, lid: int):
+    current_user(request, "agent")
+    with SessionLocal() as db:
+        row = db.get(SiteLink, lid)
+        if row is None:
+            flash(request, "ไม่พบลิงก์นี้", "error")
+        else:
+            title = row.title
+            db.delete(row)
+            db.commit()
+            flash(request, f"ลบลิงก์ “{title}” แล้ว")
+    return back("/links")
+
+
+@app.post("/links/{lid}/login")
+async def links_login(request: Request, lid: int):
+    """กดแล้วเปิดแท็บใหม่ ระบบส่งชื่อผู้ใช้/รหัสผ่านที่เก็บไว้เข้าฟอร์มล็อกอินของเว็บนั้นให้เอง (ส่งจากเบราว์เซอร์ของผู้กดโดยตรง)
+    ต้องกดจากหน้าเว็บของระบบเท่านั้น (POST + คุกกี้ SameSite) · ไม่แคช · ไม่ส่ง Referer · จดชื่อผู้ใช้งานลง Log ไม่จดรหัส"""
+    user = current_user(request, "agent")
+    with SessionLocal() as db:
+        row = db.get(SiteLink, lid)
+        cfg, why = _link_login(row) if row is not None else (None, "ไม่พบลิงก์นี้")
+        title = row.title if row is not None else ""
+    if cfg is None:
+        flash(request, why, "error")
+        return back("/links")
+    log.info("%s ใช้ล็อกอินอัตโนมัติของลิงก์ “%s” (#%s)", user.username, title, lid)
+    return templates.TemplateResponse(request, "link_login.html", {
+        "title": title, "action": cfg["action"], "user_field": cfg["user_field"], "pass_field": cfg["pass_field"],
+        "username": cfg["user"], "password": cfg["password"], "extra": cfg["extra"], "insecure": cfg["action"].lower().startswith("http://")},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex"})
+
+
+@app.post("/api/links/{lid}/secret")
+async def api_links_secret(request: Request, lid: int):
+    """ปุ่มคัดลอกชื่อผู้ใช้/รหัสผ่าน (เผื่อเว็บนั้นล็อกอินอัตโนมัติไม่ได้) · รหัสไม่อยู่ในหน้ารายการ ดึงเฉพาะตอนกด · เรียกจากหน้าเว็บของระบบเท่านั้น"""
+    user = current_user(request, "agent")
+    if request.headers.get("x-requested-with") != "links":
+        return JSONResponse({"ok": False, "error": "คำขอไม่ถูกต้อง"}, status_code=400)
+    try:
+        which = (await request.json()).get("which")
+    except Exception:  # noqa: BLE001
+        which = None
+    if which not in ("user", "password"):
+        return JSONResponse({"ok": False, "error": "คำขอไม่ถูกต้อง"}, status_code=400)
+    with SessionLocal() as db:
+        row = db.get(SiteLink, lid)
+        cfg, why = _link_login(row) if row is not None else (None, "ไม่พบลิงก์นี้")
+        title = row.title if row is not None else ""
+    if cfg is None:
+        return JSONResponse({"ok": False, "error": why}, status_code=404 if row is None else 409)
+    log.info("%s คัดลอก%sของลิงก์ “%s” (#%s)", user.username, "ชื่อผู้ใช้" if which == "user" else "รหัสผ่าน", title, lid)
+    return JSONResponse({"ok": True, "value": cfg["user"] if which == "user" else cfg["password"]}, headers={"Cache-Control": "no-store"})
 
 # ---------------------------------------------------------------- โทรตามทีมงานอนุมัติ (แอดมินเท่านั้น)
 @app.get("/chase")

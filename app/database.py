@@ -356,6 +356,28 @@ class ChaseLog(Base):
     note: Mapped[str] = mapped_column(Text, default="", server_default="")  # ข้อมูลเพิ่มเติม เช่น เพิ่มปลายทางเป็นรายชื่อติดต่อให้อัตโนมัติ
 
 
+class SiteLink(Base):
+    """ลิงก์เว็บไซต์ที่ทีมใช้งานบ่อย (หน้า ลิงก์เว็บไซต์) กดเปิดในแท็บใหม่ได้เลย"""
+
+    __tablename__ = "site_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(120), default="")
+    url: Mapped[str] = mapped_column(String(2048), default="")
+    category: Mapped[str] = mapped_column(String(60), default="", server_default="")  # หมวดสำหรับจัดกลุ่ม (ว่าง = ทั่วไป)
+    note: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    # ล็อกอินอัตโนมัติ (แอดมินตั้ง): ชื่อผู้ใช้/รหัสผ่านเข้ารหัสด้วยคีย์ของระบบ (Fernet) ไม่เก็บเป็นข้อความเปล่า ไม่แสดงในรายการหรือ Log
+    cred_user: Mapped[str] = mapped_column(Text, default="", server_default="")
+    cred_pass: Mapped[str] = mapped_column(Text, default="", server_default="")
+    login_url: Mapped[str] = mapped_column(String(2048), default="", server_default="")   # ที่อยู่รับฟอร์มล็อกอิน (ว่าง = ใช้ลิงก์เอง) ต้องเป็นเว็บเดียวกับลิงก์
+    user_field: Mapped[str] = mapped_column(String(60), default="", server_default="")    # ชื่อช่องชื่อผู้ใช้ในฟอร์ม (ว่าง = username)
+    pass_field: Mapped[str] = mapped_column(String(60), default="", server_default="")    # ชื่อช่องรหัสผ่านในฟอร์ม (ว่าง = password)
+    extra_fields: Mapped[str] = mapped_column(Text, default="", server_default="")        # JSON ช่องเพิ่มเติมที่ต้องส่งด้วย
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class ChaseSound(Base):
     """ไฟล์เสียงที่เล่นให้แอดมินฟังเมื่อรับสายโทรตามอนุมัติ (ไฟล์ WAV โมโน 48 kHz เก็บใน DATA_DIR/chase_audio)"""
 

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}ลิงก์เว็บไซต์{% endblock %}
+{% block content %}
+{% macro card(l, manage) %}
+<article class="ln-card" data-q="{{ l.q }}">
+  <a class="ln-open" href="{{ l.url }}" target="_blank" rel="noopener noreferrer" title="เปิด {{ l.url }} ในแท็บใหม่">
+    <span class="ln-ico" aria-hidden="true">{{ (l.host[:1] or '?') | upper }}</span>
+    <span class="ln-main"><strong>{{ l.title }}</strong><span class="ln-host">{{ l.host }}{% if l.login %} <span class="ln-lock">{{ icon('lock', 12) }} ล็อกอินอัตโนมัติ</span>{% endif %}</span>{% if l.note %}<span class="ln-note">{{ l.note }}</span>{% endif %}</span>
+    <span class="ln-go" aria-hidden="true">{{ icon('external', 16) }}</span>
+  </a>
+  <div class="ln-acts">
+    {% if l.login %}
+    <form method="post" action="/links/{{ l.id }}/login" target="_blank" class="ln-login">
+      <button class="primary sm" title="เปิดแท็บใหม่และใส่ชื่อผู้ใช้/รหัสผ่านให้เอง">{{ icon('key', 14) }} ล็อกอินอัตโนมัติ</button>
+    </form>
+    <button type="button" class="ghost sm" data-secret="user" data-id="{{ l.id }}" title="คัดลอกชื่อผู้ใช้">{{ icon('copy', 14) }} ชื่อผู้ใช้</button>
+    <button type="button" class="ghost sm" data-secret="password" data-id="{{ l.id }}" title="คัดลอกรหัสผ่าน">{{ icon('copy', 14) }} รหัสผ่าน</button>
+    {% elif l.login_broken %}<span class="tag ch-st-failed">รหัสที่เก็บไว้ใช้ไม่ได้ · ให้แอดมินตั้งใหม่</span>{% endif %}
+    <button type="button" class="ghost sm" data-copy="{{ l.url }}" title="คัดลอกลิงก์">{{ icon('copy', 14) }} คัดลอกลิงก์</button>
+    {% if manage %}
+    <details class="ln-edit">
+      <summary class="ghost sm">{{ icon('edit', 14) }} แก้ไข</summary>
+      <form method="post" action="/links/{{ l.id }}" class="ln-edit-form">
+        <label class="field">ลิงก์ <input name="url" value="{{ l.url }}" required autocomplete="off"></label>
+        <label class="field">ชื่อที่แสดง <input name="title" value="{{ l.title }}" maxlength="120"></label>
+        <label class="field">หมวด <input name="category" value="{{ l.category }}" maxlength="60" list="lnCats"></label>
+        <label class="field">หมายเหตุ <input name="note" value="{{ l.note }}" maxlength="300"></label>
+        {% if is_admin %}
+        <fieldset class="ln-cred">
+          <legend>{{ icon('lock', 14) }} ล็อกอินอัตโนมัติ (แอดมินตั้งค่า)</legend>
+          <label class="field">ชื่อผู้ใช้ <input name="cred_user" value="{{ l.cu }}" autocomplete="off" maxlength="200"></label>
+          <label class="field">รหัสผ่าน <input type="password" name="cred_pass" autocomplete="new-password" maxlength="200" placeholder="{{ 'ตั้งไว้แล้ว · เว้นว่างเพื่อใช้ค่าเดิม' if l.has_pass else 'ใส่รหัสผ่านของเว็บนี้' }}"></label>
+          <label class="field">URL ที่รับฟอร์มล็อกอิน (ไม่ใส่ = ใช้ลิงก์นี้) <input name="login_url" value="{{ l.login_url }}" autocomplete="off" maxlength="2000"></label>
+          <div class="ln-cred-2">
+            <label class="field">ชื่อช่องชื่อผู้ใช้ (ค่าเริ่มต้น username) <input name="user_field" value="{{ l.uf }}" placeholder="username" autocomplete="off" maxlength="60"></label>
+            <label class="field">ชื่อช่องรหัสผ่าน (ค่าเริ่มต้น password) <input name="pass_field" value="{{ l.pf }}" placeholder="password" autocomplete="off" maxlength="60"></label>
+          </div>
+          <label class="field">ช่องเพิ่มเติมที่ฟอร์มต้องส่งด้วย (บรรทัดละ ชื่อ=ค่า) <textarea name="extra" rows="2" placeholder="remember=1">{{ l.extra }}</textarea></label>
+          {% if l.has_pass %}<label class="check-inline"><input type="checkbox" name="clear_cred"> ลบรหัสล็อกอินที่เก็บไว้ของลิงก์นี้</label>{% endif %}
+          <p class="hint">รหัสเก็บแบบเข้ารหัส ไม่แสดงในรายการ · ระบบส่งชื่อผู้ใช้/รหัสผ่านเข้าฟอร์มล็อกอินของเว็บนั้นโดยตรงจากเบราว์เซอร์ของคนที่กดปุ่ม · ใช้ได้กับเว็บที่ล็อกอินด้วยฟอร์มธรรมดา ถ้าเว็บมี captcha / OTP / รหัสยืนยันที่เปลี่ยนทุกครั้ง จะล็อกอินอัตโนมัติไม่ได้ ให้ใช้ปุ่มคัดลอกแทน · หาชื่อช่อง: เปิดหน้าล็อกอิน คลิกขวาที่ช่องแล้วเลือก “ตรวจสอบ” ดูค่า name=</p>
+        </fieldset>
+        {% endif %}
+        <button class="primary sm">{{ icon('check', 14) }} บันทึก</button>
+      </form>
+    </details>
+    <form method="post" action="/links/{{ l.id }}/delete" class="ln-del">
+      <button class="ghost sm danger" data-confirm-title="ลบลิงก์นี้?" data-confirm="ลบ “{{ l.title }}” ออกจากรายการ (ไม่กระทบเว็บไซต์จริง)" data-confirm-ok="ลบลิงก์" data-confirm-tone="danger">{{ icon('trash', 14) }} ลบ</button>
+    </form>
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}
+
+<div class="page-head">
+  <div>
+    <h1>ลิงก์เว็บไซต์</h1>
+    <p class="sub">รวมลิงก์เว็บไซต์ที่ใช้บ่อยไว้ที่เดียว กดแล้วเปิดในแท็บใหม่ได้เลย · วางลิงก์เพิ่มได้ ทั้งทีมเห็นเหมือนกัน</p>
+  </div>
+</div>
+
+<section class="card ln-add">
+  <form method="post" action="/links" class="ln-form" id="lnForm">
+    <label class="field ln-f-url">ลิงก์เว็บไซต์
+      <input type="text" name="url" id="lnUrl" required placeholder="วางลิงก์ที่นี่ เช่น https://example.com/admin" autocomplete="off" inputmode="url" maxlength="2000"></label>
+    <label class="field">ชื่อที่แสดง (ไม่ใส่ก็ได้)
+      <input name="title" maxlength="120" placeholder="เช่น หลังบ้าน BettingG"></label>
+    <label class="field">หมวด
+      <input name="category" maxlength="60" list="lnCats" placeholder="เช่น หลังบ้านลูกค้า"></label>
+    <label class="field ln-f-note">หมายเหตุ
+      <input name="note" maxlength="300" placeholder="ไม่ใส่ก็ได้"></label>
+    <button class="primary ln-addbtn">{{ icon('plus', 15) }} เพิ่มลิงก์</button>
+  </form>
+  <datalist id="lnCats">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist>
+  <details class="ln-bulk">
+    <summary>วางหลายลิงก์พร้อมกัน</summary>
+    <form method="post" action="/links/bulk" class="ln-bulk-form">
+      <label class="field">ลิงก์ (บรรทัดละ 1 ลิงก์ หรือเขียนเป็น ชื่อ | ลิงก์)
+        <textarea name="lines" rows="5" placeholder="https://example.com/admin&#10;หลังบ้าน A | https://a.example.com/login&#10;b.example.com"></textarea></label>
+      <label class="field">หมวด (ใช้กับทุกลิงก์ที่วาง)
+        <input name="category" maxlength="60" list="lnCats" placeholder="ไม่ใส่ก็ได้"></label>
+      <button class="primary">{{ icon('plus', 15) }} เพิ่มทั้งหมด</button>
+    </form>
+  </details>
+  <p class="hint">รับเฉพาะลิงก์เว็บ (http / https) · ไม่ใส่ https:// ระบบเติมให้ · เก็บได้ {{ max_links }} ลิงก์ · ลิงก์ซ้ำจะไม่ถูกเพิ่ม</p>
+</section>
+
+{% set all_n = total + (sites | length) %}
+<div class="ln-tools">
+  <div class="search ln-search">{{ icon('search', 16) }}<input type="search" id="lnSearch" placeholder="พิมพ์ค้นหาชื่อ ลิงก์ หรือหมวด…" autocomplete="off" aria-label="ค้นหาลิงก์" enterkeyhint="search"></div>
+  <span class="ln-count"><b id="lnShown">{{ all_n }}</b> จาก {{ all_n }} ลิงก์</span>
+</div>
+
+{% for cat, items in groups %}
+<section class="ln-group" data-group>
+  <h2>{{ cat or 'ทั่วไป' }} <span class="count">{{ items | length }}</span></h2>
+  <div class="ln-grid">{% for l in items %}{{ card(l, true) }}{% endfor %}</div>
+</section>
+{% endfor %}
+
+{% if sites %}
+<section class="ln-group" data-group>
+  <div class="ln-gh">
+    <h2>เว็บไซต์ของลูกค้า <span class="count">{{ sites | length }}</span></h2>
+    <form method="post" action="/links/import-customers"><button class="ghost sm" data-confirm-title="นำเข้าเว็บไซต์ลูกค้าทั้งหมด?" data-confirm="ระบบจะเพิ่มเว็บไซต์ของลูกค้าที่ยังไม่มีในรายการ ({{ sites | length }} เว็บ) เป็นลิงก์ของทีมในหมวด “ลูกค้า” เพื่อให้จัดหมวดและตั้งรหัสล็อกอินอัตโนมัติได้" data-confirm-ok="นำเข้า" data-confirm-tone="send">{{ icon('plus', 14) }} นำเข้าทั้งหมดเป็นลิงก์ของทีม</button></form>
+  </div>
+  <p class="hint">ดึงมาจากช่อง “เว็บไซต์” ของแต่ละแชทโดยอัตโนมัติ · นำเข้าเป็นลิงก์ของทีมเพื่อจัดหมวดและให้ระบบใส่รหัสล็อกอินให้เอง · แก้ที่อยู่เว็บที่หน้า แชทลูกค้า</p>
+  <div class="ln-grid">{% for l in sites %}{{ card(l, false) }}{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if not total %}
+<div class="empty"><strong>ยังไม่มีลิงก์ของทีม</strong>วางลิงก์เว็บไซต์ในช่องด้านบนแล้วกด “เพิ่มลิงก์” ได้เลย</div>
+{% endif %}
+<p class="an-none ln-none" id="lnNone" hidden><strong>ไม่พบลิงก์ที่ตรงกับคำค้น</strong>ลองพิมพ์คำอื่น หรือลบคำค้นออก</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const q = document.getElementById('lnSearch'), shown = document.getElementById('lnShown'), none = document.getElementById('lnNone');
+    if (!q) return;
+    const cards = [...document.querySelectorAll('.ln-card')], groups = [...document.querySelectorAll('.ln-group[data-group]')];
+    function apply() {
+      const s = q.value.trim().toLowerCase();
+      let n = 0;
+      cards.forEach(c => { const on = !s || c.dataset.q.includes(s); c.hidden = !on; if (on) n++; });
+      groups.forEach(g => { g.hidden = !g.querySelector('.ln-card:not([hidden])'); });
+      shown.textContent = n;
+      none.hidden = n > 0 || !cards.length;
+    }
+    document.addEventListener('click', async e => {
+      const b = e.target.closest('[data-secret]');
+      if (!b) return;
+      e.preventDefault();
+      try {
+        const r = await fetch('/api/links/' + b.dataset.id + '/secret', { method: 'POST', credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'links', 'Content-Type': 'application/json' }, body: JSON.stringify({ which: b.dataset.secret }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        const ok = await copyText(d.value);
+        showToast(ok ? (b.dataset.secret === 'user' ? 'คัดลอกชื่อผู้ใช้แล้ว' : 'คัดลอกรหัสผ่านแล้ว · วางด้วย Ctrl+V') : 'คัดลอกไม่สำเร็จ', ok ? 'ok' : 'error');
+      } catch (err) { showToast(err.message || 'คัดลอกไม่สำเร็จ', 'error'); }
+    });
+    q.addEventListener('input', apply);
+    q.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+  })();
+</script>
+{% endblock %}
