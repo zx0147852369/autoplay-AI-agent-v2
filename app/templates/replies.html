@@ -124,21 +124,39 @@
             {% if t.website_url %}
               {% set state = '' if not sc else ('down' if not sc.ok else ('moved' if sc.other_host else 'up')) %}
               <span class="mono">{{ t.website_url }}</span>
+              <button type="button" class="rv-copy" data-copy="{{ t.website_url }}" title="คัดลอกลิงก์เว็บไซต์ลูกค้า" aria-label="คัดลอกลิงก์เว็บไซต์ลูกค้า">{{ icon('copy', 14) }}</button>
               {% if state %}<span class="site-pill {{ state }}"><span class="dot {{ {'up': 'live', 'moved': 'wait', 'down': 'off'}[state] }}"></span>{{ {'up': 'เข้าได้', 'moved': 'ถูกพาไปโดเมนอื่น', 'down': 'เข้าไม่ได้'}[state] }}</span>{% endif %}
             {% else %}<span class="rv-muted">ยังไม่มีลิงก์</span>{% endif %}</dd></div>
         </dl>
         {% if t.summary %}
-        <p class="rv-label">สรุปปัญหา</p>
-        <p class="rv-summary">{{ t.summary }}</p>
+        <div class="rv-label-row">
+          <span class="rv-label">สรุปปัญหา</span>
+          <span class="rv-mini-row"><button type="button" class="rv-mini" data-copy-from="#sum-{{ t.id }}" title="คัดลอกสรุปปัญหา">{{ icon('copy', 15) }} <span>คัดลอก</span></button></span>
+        </div>
+        <p class="rv-summary" id="sum-{{ t.id }}">{{ t.summary }}</p>
         {% endif %}
-        {% if item.photos %}
-        <p class="rv-label">รูปที่จะแนบ ({{ item.photos | length }})</p>
-        <div class="rv-photos">{% for p in item.photos %}<a href="/media/{{ p }}" target="_blank"><img src="/media/{{ p }}" alt="รูปจากลูกค้า" loading="lazy"></a>{% endfor %}</div>
-        {% endif %}
+        <div class="rv-pics-edit" data-max="{{ max_photos }}">
+          <p class="rv-label">รูปที่จะแนบ <span data-photo-count>({{ item.photos | length }})</span>
+            <span class="rv-muted">ติ๊กออกเพื่อไม่แนบรูปนั้น · เพิ่มรูปใหม่ได้ รวมไม่เกิน {{ max_photos }} รูป</span></p>
+          <input type="hidden" name="photo_edit" value="1" form="post-{{ t.id }}">
+          <div class="rv-photo-grid">
+            {% for p in item.photos %}
+            <label class="pick-pic"><input type="checkbox" name="media" value="{{ p }}" form="post-{{ t.id }}" checked>
+              <img src="/media/{{ p }}" alt="รูปจากลูกค้า" loading="lazy"><span class="pick-mark">{{ icon('check', 12) }}</span>
+              <a class="pick-zoom" href="/media/{{ p }}" target="_blank" rel="noopener" title="เปิดดูรูปใหญ่" aria-label="เปิดดูรูปใหญ่">{{ icon('external', 12) }}</a>
+              <button type="button" class="pick-copy" data-copy-image="/media/{{ p }}" title="คัดลอกรูป (วางต่อใน LINE / Messenger ได้)" aria-label="คัดลอกรูป">{{ icon('copy', 12) }}</button>
+              <a class="pick-save" href="/media/{{ p }}" download="{{ p }}" title="บันทึกรูปลงเครื่อง" aria-label="บันทึกรูปลงเครื่อง">{{ icon('download', 12) }}</a></label>
+            {% endfor %}
+            <label class="rv-addphoto" {{ 'hidden' if item.photos | length >= max_photos }}>{{ cicon('add-circle', 24) }}<span>เพิ่มรูป</span>
+              <input type="file" name="images" form="post-{{ t.id }}" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden></label>
+          </div>
+          <p class="rv-photo-warn" role="status" hidden></p>
+        </div>
         <div class="dt-msg rv-tg">
           <div class="rv-label-row">
             <span class="rv-label" style="margin:0">ข้อความที่จะโพสต์ในกลุ่ม</span>
             <span class="rv-mini-row">
+              <button type="button" class="rv-mini" data-copy-from="textarea[form=post-{{ t.id }}]" title="คัดลอกข้อความทั้งหมด (วางต่อใน LINE / Messenger ได้)">{{ icon('copy', 15) }} <span>คัดลอกข้อความ</span></button>
               <button type="button" class="rv-mini" data-reanalyze-ticket="{{ t.id }}" title="ให้ระบบวิเคราะห์แชทนี้ใหม่ แล้วจัดทำข้อความแจ้งปัญหาที่จะส่งเข้ากลุ่มใหม่ (นับโควตา AI 1 ครั้ง)">{{ cicon('arrow-sync', 17) }} <span>วิเคราะห์ใหม่</span></button>
               <button type="button" class="rv-mini" onclick="toggleEdit(this)">{{ cicon('edit', 17) }} <span>แก้ไขข้อความ</span></button>
             </span>
@@ -154,10 +172,10 @@
           <button class="rv-btn danger">{{ cicon('dismiss-circle', 22) }} ไม่ส่งเข้ากลุ่ม</button>
         </form>
         <span class="rv-hint">หลังส่งแล้ว โปรแกรมเมอร์ reply โพสต์นี้เพื่ออัปเดตสถานะได้</span>
-        <form method="post" action="/tickets/{{ t.id }}/post-dev" id="post-{{ t.id }}">
+        <form method="post" action="/tickets/{{ t.id }}/post-dev" id="post-{{ t.id }}" enctype="multipart/form-data">
           <input type="hidden" name="next" value="/replies?box=dev">
           <button class="rv-btn primary" data-confirm-title="ส่ง Ticket #{{ t.id }} เข้ากลุ่มโปรแกรมเมอร์?"
-            data-confirm="ข้อความด้านล่างจะถูกโพสต์ใน {{ dev_group_title }} พร้อมรูปจากลูกค้า" data-confirm-ok="ส่งเข้ากลุ่ม"
+            data-confirm="ข้อความด้านล่างจะถูกโพสต์ใน {{ dev_group_title }} พร้อมรูปที่เลือกไว้" data-confirm-ok="ส่งเข้ากลุ่ม"
             data-confirm-tone="send" data-confirm-preview="textarea[form=post-{{ t.id }}]">{{ cicon('send', 24) }} อนุมัติและส่งเข้ากลุ่ม</button>
         </form>
       </footer>
@@ -215,7 +233,7 @@
         <form method="post" action="/replies/{{ r.id }}/approve" class="rv-compose" id="approve-{{ r.id }}">
           <div class="rv-label-row">
             <label class="rv-label" for="txt-{{ r.id }}" style="margin:0">ร่างข้อความตอบกลับ</label>
-            <span class="rv-aitag">ฉบับร่าง · แก้ไขได้</span>
+            <span class="rv-mini-row"><button type="button" class="rv-mini" data-copy-from="#txt-{{ r.id }}" title="คัดลอกข้อความที่ร่างไว้">{{ icon('copy', 15) }} <span>คัดลอก</span></button><span class="rv-aitag">ฉบับร่าง · แก้ไขได้</span></span>
           </div>
           <textarea id="txt-{{ r.id }}" name="text" rows="5" required>{{ r.final_text }}</textarea>
           <p class="rv-ai-status" role="status" aria-live="polite" hidden></p>
@@ -346,9 +364,9 @@
         <div class="rv-side">
           <div class="rv-label-row">
             <span class="rv-label">ข้อความ{{ 'ที่ส่งถึงลูกค้า' if r.status == 'sent' else 'ที่ร่างไว้' }}</span>
-            <span class="rv-aitag">{{ REPLY_STATUSES.get(r.status, r.status) }}</span>
+            <span class="rv-mini-row"><button type="button" class="rv-mini" data-copy-from="#sent-{{ r.id }}" title="คัดลอกข้อความนี้">{{ icon('copy', 15) }} <span>คัดลอก</span></button><span class="rv-aitag">{{ REPLY_STATUSES.get(r.status, r.status) }}</span></span>
           </div>
-          <div class="rv-sent-text">{{ r.final_text }}</div>
+          <div class="rv-sent-text" id="sent-{{ r.id }}">{{ r.final_text }}</div>
           {% if pics %}<div class="rv-photos">{% for p in pics %}<a href="/media/{{ p }}" target="_blank"><img src="/media/{{ p }}" alt="รูปที่แนบ" loading="lazy"></a>{% endfor %}</div>{% endif %}
           {% if r.reject_reason %}<p class="rv-note"><b>เหตุผลที่ไม่ส่ง</b><span>{{ r.reject_reason }}</span></p>{% endif %}
           {% if r.error %}<p class="rv-note rv-err"><b>ข้อผิดพลาดตอนส่ง</b><span>{{ r.error }}</span></p>{% endif %}
@@ -662,6 +680,55 @@
     });
   })();
 
+  // แท็บ "ส่งเข้ากลุ่ม": แก้ไขรูปที่จะแนบ — ติ๊กออก = ไม่แนบรูปเดิม · เพิ่มรูปใหม่ได้ (เห็นตัวอย่าง เอาออกทีละรูปได้) · นับจำนวนรวมไม่เกินที่กำหนด
+  (() => {
+    const rv = document.getElementById('rv');
+    if (!rv) return;
+    rv.querySelectorAll('.rv-pics-edit').forEach(w => {
+      const input = w.querySelector('input[type=file]');
+      if (!input) return;
+      const max = +w.dataset.max || 6;
+      const grid = w.querySelector('.rv-photo-grid'), add = w.querySelector('.rv-addphoto');
+      const count = w.querySelector('[data-photo-count]'), warn = w.querySelector('.rv-photo-warn');
+      let dt = new DataTransfer();
+      const urls = [];
+      const kept = () => w.querySelectorAll('input[type=checkbox][name=media]:checked').length;
+      function refresh(msg) {
+        input.files = dt.files;
+        urls.splice(0).forEach(u => URL.revokeObjectURL(u));
+        grid.querySelectorAll('.rv-newphoto').forEach(n => n.remove());
+        [...dt.files].forEach((f, i) => {
+          const u = URL.createObjectURL(f); urls.push(u);
+          const el = document.createElement('div');
+          el.className = 'pick-pic rv-newphoto';
+          el.title = f.name;
+          el.innerHTML = '<img alt="รูปที่เพิ่ม" src="' + u + '"><button type="button" class="pick-del" data-i="' + i + '" aria-label="เอารูปนี้ออก">×</button>';
+          grid.insertBefore(el, add);
+        });
+        const total = kept() + dt.files.length;
+        if (count) count.textContent = '(' + total + ')';
+        if (add) add.hidden = total >= max;
+        if (warn) { warn.hidden = !msg; warn.textContent = msg || ''; }
+      }
+      input.addEventListener('change', () => {
+        const room = Math.max(0, max - kept() - dt.files.length);
+        const picked = [...input.files];
+        let msg = '';
+        picked.forEach((f, i) => { if (i < room) dt.items.add(f); });
+        if (picked.length > room) msg = 'เพิ่มรูปได้รวมไม่เกิน ' + max + ' รูป · ข้ามรูปที่เกิน ' + (picked.length - room) + ' รูป';
+        refresh(msg);
+      });
+      w.addEventListener('click', e => {
+        const b = e.target.closest('.pick-del');
+        if (!b) return;
+        e.preventDefault();
+        const i = +b.dataset.i, nd = new DataTransfer();
+        [...dt.files].forEach((f, k) => { if (k !== i) nd.items.add(f); });
+        dt = nd; refresh('');
+      });
+      w.addEventListener('change', e => { if (e.target.matches && e.target.matches('input[type=checkbox][name=media]')) refresh(''); });
+    });
+  })();
   // แชทสด: ข้อความใหม่เข้ามาที่บทสนทนาทันที (WebSocket) + พิมพ์ตอบลูกค้าได้ในช่องใต้บทสนทนา
   (() => {
     const rv = document.getElementById('rv');

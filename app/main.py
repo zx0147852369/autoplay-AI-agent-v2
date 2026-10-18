@@ -41,6 +41,7 @@ from .database import (
     Setting,
     TelegramAccount,
     Ticket,
+    TicketAttachment,
     TicketEvent,
     TicketLink,
     User,
@@ -947,7 +948,7 @@ def _replies_view(request: Request, user: User, scope: str, status: str, box: st
         box = "dev" if dev_queue and not (status == "pending" and replies) else "customer"
     return render(request, "replies.html", user, replies=replies, status=status, chat_titles=chat_titles,
                   context=context, status_counts=status_counts, dev_queue=dev_queue, box=box, unread_by_chat=unread_by_chat,
-                  chat_channels=chat_channels, scope=scope, linebot_mode=linebot_mode,
+                  chat_channels=chat_channels, scope=scope, linebot_mode=linebot_mode, max_photos=dev_bridge.MAX_PHOTOS,
                   dev_group_title=chat_titles.get(telegram.dev_group_id, "กลุ่มโปรแกรมเมอร์"))
 
 
@@ -1975,15 +1976,36 @@ def _safe_next(value: str, default: str) -> str:
 
 
 @app.post("/tickets/{ticket_id}/post-dev")
-async def ticket_post_dev(request: Request, ticket_id: int, text: str = Form(""), next: str = Form("")):
-    """อนุมัติและส่ง ticket เข้ากลุ่มโปรแกรมเมอร์ (text = ข้อความที่แอดมินแก้)"""
+async def ticket_post_dev(request: Request, ticket_id: int, text: str = Form(""), next: str = Form(""),
+                          photo_edit: str = Form(""), media: list[str] = Form([]),
+                          images: list[UploadFile] = File([])):
+    """อนุมัติและส่ง ticket เข้ากลุ่มโปรแกรมเมอร์ (text = ข้อความที่แอดมินแก้)
+    · photo_edit=1: ส่งเฉพาะรูปเดิมที่ติ๊กไว้ (media) + รูปที่เพิ่มใหม่ (images) · ไม่ส่ง photo_edit = ส่งรูปของ ticket ทั้งหมดเหมือนเดิม"""
     user = current_user(request, "agent")
+    photos: list[str] | None = None
+    notes: list[str] = []
+    if photo_edit == "1":
+        with SessionLocal() as db:
+            ticket = db.get(Ticket, ticket_id)
+            own = [a.media_path for a in ticket.attachments] if ticket else []
+        chosen = [m for m in dict.fromkeys(media) if m in own][:dev_bridge.MAX_PHOTOS]
+        saved, notes = await _save_guide_images(images, max(dev_bridge.MAX_PHOTOS - len(chosen), 0),
+                                                prefix="devphoto", max_total=dev_bridge.MAX_PHOTOS)
+        if saved:
+            with SessionLocal() as db:
+                for name in saved:
+                    db.add(TicketAttachment(ticket_id=ticket_id, media_path=name, caption=f"เพิ่มโดย {user.username}"))
+                db.commit()
+        photos = chosen + saved
     try:
-        result = await dev_bridge.post_ticket(ticket_id, force=True, text=text, approver=user.username)
+        result = await dev_bridge.post_ticket(ticket_id, force=True, text=text, approver=user.username, photos=photos)
     except Exception as e:  # noqa: BLE001
         log.exception("post ticket to dev group failed")
         result = f"ส่งไม่สำเร็จ: {e}"
-    flash(request, result or "ส่งแล้ว", "ok" if result.startswith("ส่งเข้ากลุ่ม") else "error")
+    shown = result or "ส่งแล้ว"
+    if notes:
+        shown += " · " + "; ".join(notes)
+    flash(request, shown, "ok" if result.startswith("ส่งเข้ากลุ่ม") else "error")
     return back(_safe_next(next, f"/tickets/{ticket_id}"))
 
 
@@ -2207,14 +2229,15 @@ def _image_ext(data: bytes) -> str:
     return ""
 
 
-async def _save_guide_images(files: list[UploadFile], room: int) -> tuple[list[str], list[str]]:
-    """บันทึกรูปที่อัปโหลด คืนค่า (ชื่อไฟล์ที่บันทึก, ข้อผิดพลาด)"""
+async def _save_guide_images(files: list[UploadFile], room: int, prefix: str = "guide",
+                             max_total: int = GUIDE_MAX_IMAGES) -> tuple[list[str], list[str]]:
+    """บันทึกรูปที่อัปโหลด คืนค่า (ชื่อไฟล์ที่บันทึก, ข้อผิดพลาด) · prefix = คำนำหน้าชื่อไฟล์ (guide = รูปคู่มือ, devphoto = รูปเพิ่มของ ticket)"""
     saved, errors = [], []
     for f in files:
         if not f or not f.filename:
             continue
         if len(saved) >= room:
-            errors.append(f"แนบรูปได้สูงสุด {GUIDE_MAX_IMAGES} รูป ข้าม {f.filename}")
+            errors.append(f"แนบรูปได้สูงสุด {max_total} รูป ข้าม {f.filename}")
             continue
         data = await f.read(GUIDE_MAX_BYTES + 1)
         if len(data) > GUIDE_MAX_BYTES:
@@ -2224,7 +2247,7 @@ async def _save_guide_images(files: list[UploadFile], room: int) -> tuple[list[s
         if not ext:
             errors.append(f"{f.filename} ไม่ใช่ไฟล์รูป (รองรับ JPG PNG GIF WEBP)")
             continue
-        name = f"guide_{uuid.uuid4().hex[:16]}{ext}"
+        name = f"{prefix}_{uuid.uuid4().hex[:16]}{ext}"
         (MEDIA_DIR / name).write_bytes(data)
         saved.append(name)
     return saved, errors

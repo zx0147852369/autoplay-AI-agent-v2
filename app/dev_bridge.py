@@ -232,8 +232,10 @@ def format_ticket(ticket: Ticket, chat_title: str) -> str:
     return "\n".join(lines)
 
 
-async def post_ticket(ticket_id: int, force: bool = False, text: str | None = None, approver: str = "") -> str:
-    """โพสต์ ticket เข้ากลุ่มโปรแกรมเมอร์ คืนค่าข้อความสรุปผล (text = ข้อความที่แอดมินแก้ก่อนอนุมัติ)"""
+async def post_ticket(ticket_id: int, force: bool = False, text: str | None = None, approver: str = "",
+                      photos: list[str] | None = None) -> str:
+    """โพสต์ ticket เข้ากลุ่มโปรแกรมเมอร์ คืนค่าข้อความสรุปผล (text = ข้อความที่แอดมินแก้ก่อนอนุมัติ)
+    photos = ชื่อไฟล์รูป (ใน MEDIA_DIR) ที่จะแนบ · None = รูปของ ticket ทั้งหมดเหมือนเดิม · [] = ไม่แนบรูป"""
     custom_text = (text or "").strip()
     with SessionLocal() as db:
         settings = get_settings(db)
@@ -242,7 +244,8 @@ async def post_ticket(ticket_id: int, force: bool = False, text: str | None = No
             return "ไม่พบ ticket"
         posted = db.scalar(select(TicketLink.id).where(TicketLink.ticket_id == ticket_id).limit(1))
         chat = db.get(Chat, ticket.chat_id)
-        photos = [str(MEDIA_DIR / a.media_path) for a in ticket.attachments][:MAX_PHOTOS]
+        names = [a.media_path for a in ticket.attachments] if photos is None else list(photos)
+        photos = [str(MEDIA_DIR / n) for n in names][:MAX_PHOTOS]
         text = custom_text or format_ticket(ticket, chat.title if chat else str(ticket.chat_id))
     group_id = _group_id(settings)
     if not group_id:

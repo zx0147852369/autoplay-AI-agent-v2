@@ -29,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=114">
+  <link rel="stylesheet" href="/static/style.css?v=116">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
@@ -183,7 +183,73 @@
     t.querySelector('.toast-x').onclick = close;
     if (t.classList.contains('ok')) setTimeout(close, 4000);
   });
-  // popup ยืนยันแทน confirm() ของเบราว์เซอร์
+  // ---------------- toast แจ้งผลจากสคริปต์ + ปุ่มคัดลอก ----------------
+  function showToast(message, kind) {
+    const box = document.querySelector('.toasts');
+    if (!box) return;
+    const t = document.createElement('div');
+    t.className = 'toast ' + (kind || 'ok'); t.setAttribute('role', 'status');
+    t.innerHTML = '<span class="toast-ic"></span><span class="toast-msg"></span><button type="button" class="toast-x" aria-label="ปิด">×</button>';
+    t.querySelector('.toast-msg').textContent = message;
+    const close = () => { t.classList.add('leaving'); setTimeout(() => t.remove(), 200); };
+    t.querySelector('.toast-x').onclick = close;
+    box.appendChild(t);
+    setTimeout(close, kind === 'error' ? 6500 : 2600);
+  }
+  window.showToast = showToast;
+  async function copyText(text) {
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (e) { /* ใช้วิธีสำรองด้านล่าง */ }
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+  // คัดลอกรูปเข้าคลิปบอร์ด (วางต่อใน LINE / Messenger ได้) · แปลงเป็น PNG ให้ถ้าเป็น JPG/WEBP/GIF · ส่ง Promise เข้า ClipboardItem เพื่อให้ Safari ยังนับว่าเป็นการกดของผู้ใช้
+  async function copyImage(url) {
+    if (!(navigator.clipboard && window.ClipboardItem && window.isSecureContext)) throw new Error('unsupported');
+    const png = (async () => {
+      const resp = await fetch(url, { credentials: 'same-origin' });
+      if (!resp.ok) throw new Error('http ' + resp.status);
+      let blob = await resp.blob();
+      if (blob.type !== 'image/png') {
+        const bmp = await createImageBitmap(blob);
+        const cv = document.createElement('canvas');
+        cv.width = bmp.width; cv.height = bmp.height;
+        cv.getContext('2d').drawImage(bmp, 0, 0);
+        blob = await new Promise((res, rej) => cv.toBlob(x => x ? res(x) : rej(new Error('convert')), 'image/png'));
+      }
+      return blob;
+    })();
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+  }
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-copy], [data-copy-from], [data-copy-image]');
+    if (!b) return;
+    e.preventDefault(); e.stopPropagation();   // ปุ่มอยู่ใน <label> ของรูปได้: ไม่ให้ติ๊ก/เอาติ๊กรูปโดยไม่ตั้งใจ
+    const mark = () => { b.classList.add('copied'); setTimeout(() => b.classList.remove('copied'), 1400); };
+    try {
+      if (b.dataset.copyImage) {
+        await copyImage(b.dataset.copyImage);
+        mark(); showToast('คัดลอกรูปแล้ว · กด Ctrl+V วางในแชทได้เลย');
+        return;
+      }
+      let text = b.dataset.copy;
+      if (text === undefined) {
+        const src = document.querySelector(b.dataset.copyFrom);
+        text = src ? (src.value !== undefined ? src.value : src.textContent) : '';
+      }
+      text = String(text || '').trim();
+      if (!text) { showToast('ไม่มีข้อความให้คัดลอก', 'error'); return; }
+      const ok = await copyText(text);
+      if (ok) { mark(); showToast('คัดลอกแล้ว · กด Ctrl+V วางที่ LINE / Messenger ได้เลย'); }
+      else showToast('คัดลอกไม่สำเร็จ · ลองลากคลุมข้อความแล้วกด Ctrl+C', 'error');
+    } catch (err) {
+      showToast('เบราว์เซอร์นี้คัดลอกรูปตรงๆ ไม่ได้ · กดปุ่มบันทึกรูป หรือคลิกขวาที่รูปแล้วเลือก "คัดลอกรูปภาพ"', 'error');
+    }
+  });  // popup ยืนยันแทน confirm() ของเบราว์เซอร์
   // ใส่ data-confirm="ข้อความ" ที่ <form> หรือปุ่ม submit
   //   data-confirm-title, data-confirm-ok (ข้อความปุ่ม), data-confirm-tone (danger / send / warn)
   //   data-confirm-preview (selector ช่องข้อความที่จะแสดงตัวอย่าง), data-confirm-count (selector ที่นับแทน {n})
