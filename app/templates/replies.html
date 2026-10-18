@@ -33,12 +33,15 @@
 </div>
 {% endif %}
 
+{# หน้ากล่องรออนุมัติไม่แสดงแถบแท็บ (ให้กล่องสูงขึ้น) · ลิงก์ไปประวัติอยู่ท้ายแผงคิวแทน · หน้าประวัติยังมีแท็บไว้สลับสถานะและกลับมา #}
+{% if status != 'pending' %}
 <nav class="rv-tabs" aria-label="กรองตามสถานะ">
   {% for key, label in tabs %}
     {% set n = status_counts.get(key, 0) %}
     <a class="rv-tab {{ 'on' if status == key }}" href="{{ base }}?status={{ key }}" {{ 'aria-current=page' if status == key }}>{{ label }}<b class="{{ 'hot' if key == 'pending' and n }}">{{ n }}</b></a>
   {% endfor %}
 </nav>
+{% endif %}
 
 {% if status == 'pending' %}
 {% set items = dev_queue if box == 'dev' else replies %}
@@ -91,6 +94,10 @@
         {% endfor %}
       {% endif %}
     </ul>
+    <nav class="rv-hist" aria-label="ประวัติข้อความ">
+      <span class="rv-hist-t">ประวัติ</span>
+      {% for key, label in tabs if key != 'pending' %}<a href="{{ base }}?status={{ key }}">{{ label }}<b>{{ status_counts.get(key, 0) }}</b></a>{% endfor %}
+    </nav>
   </aside>
 
   {# ---------------- รายละเอียดทางขวา ---------------- #}

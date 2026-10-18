@@ -2578,7 +2578,7 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 
 /* =====================================================================
    หน้ารออนุมัติ — ชุดหรูหรา รอบ 3 (เขียวป่าเข้ม + งาช้าง + ทองเหลืองบาง)
-   คิวทางซ้ายเป็นแผงเขียวป่าเข้มตัวอักษรงาช้าง · เส้น/จุดเน้นเป็นสีทองเหลืองอ่อน (ใช้เฉพาะรายละเอียดเล็กๆ)
+   คิวทางซ้ายกลับเป็นพื้นสว่างตามเดิม (รอบ 5) · เส้น/จุดเน้นเป็นสีทองเหลืองอ่อน (ใช้เฉพาะรายละเอียดเล็กๆ)
    พื้นที่อ่านและเขียนทางขวายังเป็นกระดาษงาช้างสว่าง เพื่ออ่านง่ายทั้งวัน · ปุ่มหลักเขียวป่าเข้มขอบทองบาง
    ===================================================================== */
 .rv {
@@ -2602,45 +2602,6 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 /* เส้นหัวจดหมาย: ทองเหลืองบาง */
 .rv::before { background: var(--brass); height: 2px; }
 
-/* คิวทางซ้าย: แผงเขียวป่าเข้ม */
-.rv-queue { background: var(--lux-ink); border-right: 0; color: var(--lux-text); }
-.rv-seg { background: transparent; border-bottom: 1px solid var(--lux-line); }
-.rv-seg a { color: var(--lux-mute); }
-.rv-seg a:hover { color: var(--lux-text); }
-.rv-seg a.on { background: none; color: var(--lux-text); border-bottom-color: var(--brass); }
-.rv-seg b { background: rgba(243, 238, 226, .08); color: var(--lux-mute); }
-.rv-seg b.hot { background: var(--brass); color: #1d1709; }
-.rv-list { scrollbar-color: rgba(243, 238, 226, .22) transparent; }
-.rv-item { border-bottom: 1px solid var(--lux-line); color: var(--lux-text); }
-.rv-item:hover { background: rgba(243, 238, 226, .045); }
-.rv-item.on { background: var(--lux-ink-2); }
-.rv-item.on::before { background: var(--brass); }
-.rv-item:focus-visible { box-shadow: inset 0 0 0 2px var(--brass); }
-.rv-it-top strong { color: var(--lux-text); }
-.rv-it-top time { color: var(--lux-mute); }
-.rv-it-snip { color: #b6c6bb; }
-.rv-item.unread .rv-it-top strong { color: #fff; }
-.rv-item.unread .rv-it-snip { color: #fff; }
-.rv-item.unread .rv-it-top time { color: var(--brass); }
-.rv-un { background: var(--brass); color: #1d1709; }
-.rv-queue .rv-tid { color: var(--brass); }
-.rv-queue .rv-chip:not(.line):not(.ok):not(.info):not(.bad):not([class*="sev-"]) { color: var(--lux-mute); }
-.rv-queue .rv-chip.line { background: rgba(6, 199, 85, .16); color: #78e7a2; }
-.rv-queue .rv-chip.ok { background: rgba(56, 226, 145, .14); color: #86e6bd; }
-.rv-queue .rv-chip.info { background: rgba(134, 168, 255, .16); color: #b0c5ff; }
-.rv-queue .rv-chip.bad, .rv-queue .rv-chip.sev-high, .rv-queue .rv-chip.sev-critical { background: rgba(242, 107, 91, .17); color: #f7a498; }
-.rv-queue .rv-chip.sev-medium { background: rgba(231, 169, 72, .17); color: #f0c77c; }
-.rv-queue .rv-chip.sev-low { background: rgba(56, 226, 145, .13); color: #86e6bd; }
-
-/* คิวว่าง: กลับเป็นพื้นสว่าง */
-.rv.empty .rv-queue { color: var(--ink); }
-.rv.empty .rv-seg { background: none; border-bottom-color: var(--line); }
-.rv.empty .rv-seg a { color: var(--muted); }
-.rv.empty .rv-seg a:hover { color: var(--ink); }
-.rv.empty .rv-seg a.on { color: var(--ink); border-bottom-color: var(--lux-ink); }
-.rv.empty .rv-seg b { background: var(--grey-tint); color: var(--muted); }
-.rv.empty .rv-seg b.hot { background: var(--red-tint); color: var(--red); }
-
 /* พื้นที่อ่าน/เขียนทางขวา */
 .rv-convo { background: var(--rv-in); }
 .rv-note { border-left-color: var(--brass); }
@@ -2659,12 +2620,6 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 [data-theme="dark"] .rv-compose textarea:focus, [data-theme="dark"] .rv-say-row:focus-within { border-color: var(--brass); }
 .rv .rv-tg .tg-bubble { border-left-color: var(--brass); }
 
-/* มือถือ: รายการเป็นการ์ดเขียวป่าเข้ม */
-@media (max-width: 900px) {
-  .rv-seg { background: var(--lux-ink); border: 0; border-radius: 12px 12px 0 0; margin-bottom: 0; }
-  .rv-list { background: var(--lux-ink); border: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
-  .rv.empty .rv-seg { background: none; border: 0; border-radius: 0; }
-}
 
 /* =====================================================================
    หน้ารออนุมัติ — รอบ 4: เปลี่ยนโทนเป็นน้ำเงินกรมท่าเข้ม + ทองเหลือง + งาช้าง (ไม่มีสีเขียวในหน้านี้) และขยายขนาดทั้งหน้า
@@ -2720,10 +2675,6 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 [data-theme="dark"] .rvpage .rv-live i { animation-name: rv-pulse-dark; }
 @keyframes rv-pulse-dark { 0% { box-shadow: 0 0 0 0 rgba(157, 185, 230, .5); } 70%, 100% { box-shadow: 0 0 0 7px rgba(157, 185, 230, 0); } }
 .rvpage .rv-chip.line { background: var(--grey-tint); color: var(--ink-2); }
-.rvpage .rv-queue .rv-chip.line { background: rgba(241, 237, 227, .1); color: #e4dfd2; }
-.rvpage .rv-queue .rv-chip.ok { background: rgba(196, 160, 98, .2); color: #e8d3a4; }
-.rvpage .rv-queue .rv-chip.sev-low { background: rgba(163, 176, 198, .17); color: #c8d3e6; }
-.rvpage .rv-queue .rv-chip.info { background: rgba(134, 168, 255, .17); color: #b8caff; }
 .rvpage .rv-compose textarea:focus, .rvpage .rv-say-row:focus-within { border-color: var(--lux-ink); box-shadow: 0 0 0 3px rgba(196, 160, 98, .3); }
 [data-theme="dark"] .rvpage .rv-compose textarea:focus, [data-theme="dark"] .rvpage .rv-say-row:focus-within { border-color: var(--brass); }
 
@@ -2820,4 +2771,18 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 /* หน้ารออนุมัติใช้ความกว้างหน้าจอเต็มที่ (เดิมจำกัดที่ 1600px) — ช่องแชทจึงกว้างขึ้นบนจอใหญ่ */
 @media (min-width: 901px) {
   .content.content-wide { max-width: none; padding-left: 28px; padding-right: 28px; }
+}
+
+/* ลิงก์ไปประวัติ (ส่งแล้ว/ปฏิเสธ/ส่งไม่สำเร็จ/ทั้งหมด) ท้ายแผงคิว แทนแถบแท็บด้านบนในหน้ากล่องรออนุมัติ */
+.rv-hist { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 11px 18px; border-top: 1px solid var(--line); background: var(--surface); font-size: .82rem; }
+.rv-hist-t { color: var(--muted); font-weight: 700; letter-spacing: .02em; }
+.rv-hist a { display: inline-flex; align-items: baseline; gap: 6px; color: var(--ink-2); font-weight: 600; }
+.rv-hist a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.rv-hist b { color: var(--muted); font-size: .78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rv.empty .rv-hist { margin: 18px auto 0; max-width: 420px; justify-content: center; border: 0; background: none; }
+@media (min-width: 901px) {
+  .content.content-wide { padding-top: 20px; }
+}
+@media (max-width: 900px) {
+  .rv-hist { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; }
 }
