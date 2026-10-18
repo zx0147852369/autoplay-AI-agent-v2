@@ -2945,13 +2945,29 @@ button.rv-copy:not(.n1):not(.n2):not(.n3):not(.n4):not(.n5), button.rv-say-file-
 /* =====================================================================
    หน้า โทรตามอนุมัติ (ตั้งค่า + ประวัติ)
    ===================================================================== */
-.ch-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 6px; }
+.ch-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 6px; }
 .ch-nums .field { margin: 0; }
 .ch-nums input { max-width: 160px; font-variant-numeric: tabular-nums; }
 .ch-history { margin-top: 22px; }
-.ch-err { color: var(--red); max-width: 420px; line-height: 1.5; }
+.ch-err { color: var(--ink-2); max-width: 420px; line-height: 1.5; }
+.ch-err.bad { color: var(--red); }
 .ch-st-ok { background: var(--grey-tint); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); }
 .ch-st-failed { background: var(--red-tint); color: var(--red); }
 .ch-st-skipped { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.ch-st-answered { background: var(--ink); color: var(--surface); }
 #chPhase { font-weight: 600; }
+.ch-sounds { margin-top: 22px; }
+.ch-upload { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 14px; align-items: end; margin: 14px 0 8px; }
+.ch-upload .field { margin: 0; }
+.ch-upload button { height: 42px; display: inline-flex; align-items: center; gap: 8px; }
+.ch-sound-list { list-style: none; margin: 14px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ch-sound { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 320px) auto auto; gap: 12px 16px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.ch-sound:last-child { border-bottom: 0; }
+.ch-sound.on { background: var(--surface-2); box-shadow: inset 3px 0 0 #c4a062; }
+.ch-sound-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ch-sound-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-sound audio { width: 100%; height: 36px; }
+.ch-sound form { margin: 0; }
+.ch-sound > .tag { justify-self: start; }
+@media (max-width: 900px) { .ch-sound { grid-template-columns: minmax(0, 1fr) auto; } .ch-sound audio { grid-column: 1 / -1; grid-row: 2; } .ch-upload { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) { .ch-nums { grid-template-columns: minmax(0, 1fr); } .ch-nums input { max-width: none; } }

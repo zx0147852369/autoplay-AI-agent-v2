@@ -355,6 +355,19 @@ class ChaseLog(Base):
     msg_error: Mapped[str] = mapped_column(Text, default="")
 
 
+class ChaseSound(Base):
+    """ไฟล์เสียงที่เล่นให้แอดมินฟังเมื่อรับสายโทรตามอนุมัติ (ไฟล์ WAV โมโน 48 kHz เก็บใน DATA_DIR/chase_audio)"""
+
+    __tablename__ = "chase_sounds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), default="")  # ชื่อไฟล์เดิมที่อัปโหลด
+    file: Mapped[str] = mapped_column(String(64), default="")   # ชื่อไฟล์ที่เก็บจริง
+    millis: Mapped[int] = mapped_column(Integer, default=0)     # ความยาว (มิลลิวินาที)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AiNote(Base):
     """โน้ตความจำของ AI: บทเรียนที่ได้จากการทำงานจริง (AI จดเอง หรือแอดมินเขียน) แล้วนำกลับไปใช้ตอนวิเคราะห์"""
     __tablename__ = "ai_notes"
@@ -448,6 +461,9 @@ DEFAULT_SETTINGS = {
     "chase_call": "1",          # โทรให้โทรศัพท์ปลายทางดัง
     "chase_message": "1",       # ส่งข้อความสรุปรายการที่ค้างด้วย
     "chase_state": "",          # JSON {"round", "last"} รอบที่โทรไปแล้วของเหตุการณ์ปัจจุบัน
+    "chase_play_audio": "1",    # เมื่อแอดมินกดรับสาย เล่นไฟล์เสียงให้ฟัง (ไม่เปิด/เล่นไม่ได้ = โทรให้ดังอย่างเดียว)
+    "chase_sound_id": "",       # ไฟล์เสียงที่ใช้ (id ใน chase_sounds) ว่าง = เสียงเตือนมาตรฐานของระบบ
+    "chase_audio_repeat": "2",  # เล่นไฟล์เสียงซ้ำกี่ครั้งต่อสาย
     # สมอง AI: ให้ AI เรียนรู้จากการทำงานจริงแล้วจดโน้ตไว้ใช้ครั้งต่อไป
     "auto_learn": "1",                       # เรียนรู้และจดโน้ตอัตโนมัติเป็นรอบๆ
     "learn_use_notes": "1",                   # นำโน้ตไปใช้ตอนวิเคราะห์/ร่างคำตอบ

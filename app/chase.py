@@ -4,7 +4,8 @@
   - เริ่มโทรเมื่อมีรายการค้างนานกว่า chase_after_min นาที และยังไม่มีใครกดอนุมัติ/ปฏิเสธอะไรเลยในช่วงนั้น
   - ไม่มีใครรับ -> โทรซ้ำทุก chase_repeat_min นาที สูงสุด chase_max รอบ (แต่ละรอบเรียกคนถัดไปในรายชื่อ)
   - มีคนเริ่มอนุมัติ หรือคิวว่าง -> เริ่มนับรอบใหม่ทั้งหมด
-การโทรเป็นสายเตือน (ให้โทรศัพท์ดังแล้ววางสายเอง ไม่มีเสียงคุย) ส่งข้อความสรุปแนบไปด้วยเสมอเมื่อเปิดไว้
+เมื่อแอดมินกดรับสาย ระบบเล่นไฟล์เสียงที่เลือกไว้ให้ฟัง (chase_audio) แล้ววางสาย · ไม่รับสายจะดังจนครบเวลาแล้ววางเอง
+ส่งข้อความสรุปแนบไปด้วยเมื่อเปิดไว้ · เล่นเสียงไม่ได้ (ไลบรารีไม่พร้อม) ก็ถอยไปโทรให้ดังอย่างเดียว
 """
 import asyncio
 import json
@@ -14,8 +15,8 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select
 
-from . import line_service
-from .database import ChaseLog, Reply, SessionLocal, Setting, Ticket, get_settings, int_setting, utcnow
+from . import chase_audio, line_service
+from .database import ChaseLog, ChaseSound, Reply, SessionLocal, Setting, Ticket, get_settings, int_setting, utcnow
 from .telegram_service import telegram
 
 log = logging.getLogger(__name__)
@@ -51,7 +52,22 @@ def config(settings: dict[str, str]) -> dict:
         "max": int_setting(settings, "chase_max", 1, 10),
         "call": settings.get("chase_call") == "1",
         "message": settings.get("chase_message") == "1",
+        "audio": settings.get("chase_play_audio") == "1",
+        "audio_repeat": int_setting(settings, "chase_audio_repeat", 1, 5),
+        "sound_id": (settings.get("chase_sound_id") or "").strip(),
     }
+
+
+def active_sound(db, sound_id: str) -> tuple[bytes, str]:
+    """เสียงที่จะเล่นตอนรับสาย: ไฟล์ที่เลือกไว้ (หายไป/เสียหาย -> เสียงเตือนมาตรฐาน) · คืน (PCM, ชื่อที่แสดง)"""
+    if sound_id.isdigit():
+        row = db.get(ChaseSound, int(sound_id))
+        if row is not None:
+            try:
+                return chase_audio.load_pcm(chase_audio.AUDIO_DIR / row.file), row.name
+            except Exception:  # noqa: BLE001 - ไฟล์หาย/เสียหาย ใช้เสียงมาตรฐานแทน ไม่ให้โทรตามพัง
+                log.warning("ไฟล์เสียงโทรตามอนุมัติ #%s เปิดไม่ได้ ใช้เสียงมาตรฐานแทน", sound_id)
+    return chase_audio.load_pcm(chase_audio.builtin_wav()), "เสียงเตือนมาตรฐาน"
 
 
 def waiting(db, now: datetime, after: int) -> dict:
@@ -131,9 +147,11 @@ async def tick(now: datetime | None = None) -> dict | None:
             return None
     if not telegram.connected:
         return None
+    with SessionLocal() as db:  # โหลดไฟล์เสียงเฉพาะตอนจะโทรจริง
+        audio = active_sound(db, cfg["sound_id"])[0] if cfg["audio"] and cfg["call"] else None
     rnd = state["round"] + 1
     target = cfg["targets"][(rnd - 1) % len(cfg["targets"])]
-    res = await telegram.alert_user(target, message_text(info, rnd, cfg["max"]), cfg["call"], cfg["message"], RING_SECONDS)
+    res = await telegram.alert_user(target, message_text(info, rnd, cfg["max"]), cfg["call"], cfg["message"], RING_SECONDS, audio, cfg["audio_repeat"])
     log.warning("โทรตามอนุมัติรอบ %s/%s -> %s: โทร=%s ข้อความ=%s (ค้าง %s รายการ นานสุด %s นาที)",
                 rnd, cfg["max"], target, res["call"], res["msg"], info["total"], info["oldest_min"])
     with SessionLocal() as db:
@@ -148,12 +166,29 @@ async def test_all() -> list[dict]:
     with SessionLocal() as db:
         cfg = config(get_settings(db))
         info = waiting(db, now, cfg["after"])
+        audio = active_sound(db, cfg["sound_id"])[0] if cfg["audio"] and cfg["call"] else None
     out = []
     for target in cfg["targets"]:
-        res = await telegram.alert_user(target, TEST_TEXT, cfg["call"], cfg["message"] or not cfg["call"], RING_SECONDS)
+        res = await telegram.alert_user(target, TEST_TEXT, cfg["call"], cfg["message"] or not cfg["call"], RING_SECONDS, audio, cfg["audio_repeat"])
         with SessionLocal() as db:
             out.append(_record(db, "test", 0, target, res, info))
     return out
+
+
+_test_task: asyncio.Task | None = None
+
+
+def testing() -> bool:
+    return _test_task is not None and not _test_task.done()
+
+
+def start_test() -> bool:
+    """เริ่มโทรทดสอบเบื้องหลัง (สายที่เล่นเสียงใช้เวลานาน ไม่รอในคำขอหน้าเว็บ) · มีรอบที่กำลังทดสอบอยู่แล้วคืน False"""
+    global _test_task
+    if testing():
+        return False
+    _test_task = asyncio.get_running_loop().create_task(test_all())
+    return True
 
 
 def status(db, now: datetime | None = None) -> dict:
@@ -175,7 +210,7 @@ def status(db, now: datetime | None = None) -> dict:
         phase = "maxed"
     elif info["total"]:
         phase, next_at = "due", (max(now, st["last"] + timedelta(minutes=cfg["repeat"])) if st["last"] else now)
-    return {"cfg": cfg, "info": info, "round": st["round"], "last": st["last"], "phase": phase, "next_at": next_at}
+    return {"cfg": cfg, "info": info, "round": st["round"], "last": st["last"], "phase": phase, "next_at": next_at, "testing": testing()}
 
 
 async def watcher() -> None:

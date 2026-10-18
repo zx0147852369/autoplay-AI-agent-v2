@@ -1,8 +1,10 @@
 """เชื่อมต่อบัญชี Telegram ของผู้ใช้ (userbot) ด้วย Telethon"""
 
 import asyncio
+import inspect
 import logging
 import os
+from array import array
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -20,6 +22,7 @@ from telethon.sessions import StringSession
 from telethon.tl import functions, types
 
 from . import chatbus
+from .chase_audio import RATE as AUDIO_RATE
 from .config import MEDIA_DIR
 from .database import Chat, Message, SessionLocal, TelegramAccount, utcnow
 from .security import decrypt, encrypt
@@ -33,6 +36,19 @@ IMAGE_MIME_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".web
 class TelegramLoginError(Exception):
     pass
 
+
+class AudioCallUnavailable(Exception):
+    """เครื่องมือโทรพร้อมเสียง (py-tgcalls) ใช้ไม่ได้ ยังไม่ได้โทรออกเลย -> ไปใช้สายเตือนแบบไม่มีเสียงแทนได้"""
+
+
+FRAME_PACE = 0.01  # ส่งเสียงเข้าสายทีละ 10 มิลลิวินาที (ปรับตอนทดสอบ)
+CONNECT_GRACE = 25  # หลังสายดังครบเวลา รอการเชื่อมต่อต่ออีกกี่วินาทีก่อนยอมแพ้
+CALL_STATES = {
+    "unanswered": "ไม่มีคนรับสาย (ดังครบเวลาแล้ววางสายเอง)",
+    "declined": "ปลายทางกดปฏิเสธสาย",
+    "busy": "สายของปลายทางไม่ว่าง",
+    "discarded": "สายถูกตัดก่อนเริ่มเล่นเสียง",
+}
 
 # สาเหตุที่โทรไม่ติดบ่อยๆ -> อธิบายเป็นภาษาไทยให้แอดมินแก้ถูกจุด
 CALL_ERRORS = {
@@ -73,7 +89,9 @@ class TelegramService:
         # พนักงานที่กดส่ง (ชื่อผู้ใช้เว็บ/LINE) ของข้อความที่เพิ่งส่ง รอให้ข้อความถูกบันทึกจากอีเวนต์ Telegram แล้วค่อยใส่ชื่อ
         self._sent_by_hints: dict[tuple[int, int], str] = {}
         self._bg: set[asyncio.Task] = set()  # งานเบื้องหลัง (วางสายหลังโทรเตือน) กันถูกเก็บขยะก่อนเสร็จ
-
+        self._calls = None        # PyTgCalls ที่ผูกกับ client ปัจจุบัน (สร้างตอนต้องโทรพร้อมเสียงครั้งแรก)
+        self._calls_for = None
+        self._call_lock = asyncio.Lock()  # โทรทีละสาย
     # ------------------------------------------------------------------ state
     @property
     def connected(self) -> bool:
@@ -503,8 +521,101 @@ class TelegramService:
         except Exception as e:  # noqa: BLE001 - ปลายทางวาง/สายหมดเวลาไปก่อนแล้วก็ได้
             log.debug("hang up call %s: %s", call_id, e)
 
-    async def alert_user(self, ref: str, text: str, call: bool = True, message: bool = True, ring_seconds: float = 30) -> dict:
-        """เตือนแอดมิน 1 คน: โทรให้ดัง และ/หรือส่งข้อความ · ไม่ raise (คืนผลแต่ละอย่างเป็น ok / failed / skipped)"""
+    async def _tgcalls(self):
+        """PyTgCalls ที่ผูกกับ client ตัวปัจจุบัน (client เปลี่ยนเพราะเชื่อมต่อใหม่ -> สร้างใหม่) · นำเข้าไลบรารีตอนใช้จริง ไม่พร้อมก็ไม่กระทบส่วนอื่น"""
+        if self._calls is not None and self._calls_for is self.client:
+            return self._calls
+        try:
+            from pytgcalls import PyTgCalls
+            calls = PyTgCalls(self.client)
+            started = calls.start()
+            if inspect.isawaitable(started):
+                await started
+        except Exception as e:  # noqa: BLE001 - ไม่ได้ติดตั้ง/เวอร์ชันไม่เข้ากัน/เริ่มไม่สำเร็จ
+            raise AudioCallUnavailable(f"{type(e).__name__}: {e}"[:200]) from e
+        self._calls, self._calls_for = calls, self.client
+        return calls
+
+    async def call_with_audio(self, user, pcm: bytes, repeat: int = 1, ring_seconds: float = 30) -> str:
+        """โทรหาผู้ใช้ (สายจริง) แล้วเล่นเสียง pcm (16 บิตโมโน 48 kHz) ให้ฟังเมื่อรับสาย เล่นซ้ำ repeat ครั้งแล้ววางสาย
+        คืน: answered (รับสายและเล่นเสียงแล้ว) / unanswered / declined / busy / discarded
+        เครื่องมือโทรเสียงใช้ไม่ได้ (ยังไม่ได้โทร) -> AudioCallUnavailable · Telegram ปฏิเสธ -> RPCError"""
+        async with self._call_lock:
+            calls = await self._tgcalls()
+            try:
+                from pytgcalls.exceptions import CallBusy, CallDeclined, CallDiscarded, NotInCallError, TimedOutAnswer
+                from pytgcalls.types import CallConfig, Device, ExternalMedia, MediaStream
+                from pytgcalls.types.raw import AudioParameters
+            except ImportError as e:
+                raise AudioCallUnavailable(f"{type(e).__name__}: {e}"[:200]) from e
+            uid = user.id
+            try:
+                await asyncio.wait_for(calls.play(
+                    uid, MediaStream(ExternalMedia.AUDIO, AudioParameters(bitrate=AUDIO_RATE, channels=2)),
+                    config=CallConfig(timeout=int(ring_seconds))), timeout=ring_seconds + CONNECT_GRACE)
+            except TimedOutAnswer:
+                return "unanswered"
+            except CallDeclined:
+                return "declined"
+            except CallBusy:
+                return "busy"
+            except CallDiscarded:
+                return "discarded"
+            except asyncio.TimeoutError:
+                await self._leave_quietly(calls, uid)
+                return "unanswered"
+            except (AttributeError, TypeError) as e:  # เรียกไลบรารีผิดแบบ (เวอร์ชันไม่ตรง) = ยังไม่ได้โทรออก
+                raise AudioCallUnavailable(f"{type(e).__name__}: {e}"[:200]) from e
+            try:
+                await self._feed_audio(calls, uid, pcm, repeat, Device.MICROPHONE, NotInCallError)
+            finally:
+                await self._leave_quietly(calls, uid)
+            return "answered"
+
+    @staticmethod
+    async def _leave_quietly(calls, uid: int) -> None:
+        try:
+            await calls.leave_call(uid)
+        except Exception as e:  # noqa: BLE001 - ปลายสายวางไปแล้วก็ได้
+            log.debug("leave call %s: %s", uid, e)
+
+    @staticmethod
+    async def _feed_audio(calls, uid: int, pcm: bytes, repeat: int, device, not_in_call) -> None:
+        """ส่งเสียงเข้าสายทีละ 10 มิลลิวินาที (สเตอริโอ 16 บิต) · เว้นเงียบ 1 วินาทีก่อนเริ่มและระหว่างรอบ · ปลายสายวางก่อนก็หยุดเงียบๆ"""
+        step = AUDIO_RATE // 100 * 2
+        silence = bytes(step)
+
+        def chunks():
+            for _ in range(100):
+                yield silence
+            for _ in range(max(1, repeat)):
+                for i in range(0, len(pcm), step):
+                    c = pcm[i:i + step]
+                    yield c if len(c) == step else c.ljust(step, b"\0")
+                for _ in range(100):
+                    yield silence
+
+        loop = asyncio.get_running_loop()
+        due = loop.time()
+        for mono in chunks():
+            a = array("h")
+            a.frombytes(mono)
+            st = array("h", [0]) * (2 * len(a))
+            st[0::2] = a
+            st[1::2] = a
+            try:
+                await calls.send_frame(uid, device, st.tobytes())
+            except not_in_call:
+                return
+            due += FRAME_PACE
+            wait = due - loop.time()
+            if wait > 0:
+                await asyncio.sleep(wait)
+
+    async def alert_user(self, ref: str, text: str, call: bool = True, message: bool = True, ring_seconds: float = 30,
+                         audio: bytes | None = None, repeat: int = 1) -> dict:
+        """เตือนแอดมิน 1 คน: ส่งข้อความ และ/หรือโทร (มี audio = เล่นเสียงให้ฟังเมื่อรับสาย) · ไม่ raise
+        คืนผล call: answered (รับสายและได้ฟังเสียง) / ok (โทรให้ดังแล้ว) / failed / skipped · msg: ok / failed / skipped"""
         out = {"name": "", "call": "skipped", "call_error": "", "msg": "skipped", "msg_error": ""}
 
         def fail(what: str, err: str) -> None:
@@ -524,20 +635,35 @@ class TelegramService:
                 if wanted:
                     fail(what, "ปลายทางเป็นบัญชีเดียวกับที่ระบบใช้อยู่ โทรหาตัวเองไม่ได้ · ใส่บัญชีของแอดมินคนอื่น")
             return out
-        if call:
-            try:
-                await self.ring_user(user, ring_seconds)
-                out["call"] = "ok"
-            except (RPCError, ValueError) as e:
-                fail("call", describe_call_error(e))
-        if message:
+        if message:  # ส่งข้อความก่อน: สายที่เล่นเสียงใช้เวลาหลายสิบวินาที แต่ข้อความควรถึงทันที
             try:
                 await self.client.send_message(user, text, link_preview=False)
                 out["msg"] = "ok"
             except (RPCError, ValueError) as e:
                 fail("msg", describe_call_error(e))
+        if call:
+            note = ""
+            if audio:
+                try:
+                    state = await self.call_with_audio(user, audio, repeat, ring_seconds)
+                except AudioCallUnavailable as e:
+                    note = f"เล่นเสียงไม่ได้ ({e}) จึงโทรแบบสายเตือนแทน"
+                except (RPCError, ValueError) as e:
+                    fail("call", describe_call_error(e))
+                    return out
+                except Exception as e:  # noqa: BLE001 - ติดต่อ/ส่งเสียงระหว่างสายพลาด (สายอาจโทรออกไปแล้ว จึงไม่โทรซ้ำ)
+                    fail("call", f"{type(e).__name__}: {e}"[:300])
+                    return out
+                else:
+                    out["call"] = "answered" if state == "answered" else "ok"
+                    out["call_error"] = CALL_STATES.get(state, "")
+                    return out
+            try:
+                await self.ring_user(user, ring_seconds)
+                out["call"], out["call_error"] = "ok", note
+            except (RPCError, ValueError) as e:
+                fail("call", describe_call_error(e))
         return out
-
     async def _handle_dev_message(self, event: events.NewMessage.Event) -> None:
         msg = event.message
         if msg.out or not self.on_dev_message:

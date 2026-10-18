@@ -23,6 +23,7 @@
       {% elif st.phase == 'maxed' %}โทรครบ {{ cfg.max }} รอบแล้วยังไม่มีใครอนุมัติ · หยุดโทรจนกว่าจะมีคนอนุมัติหรือคิวว่าง
       {% else %}มีรายการค้างและไม่มีใครอนุมัติ · {% if st.next_at and st.next_at > now_utc %}รอบถัดไปประมาณ {{ st.next_at | localtime }}{% else %}จะโทรตามในอีกไม่เกิน 1 นาที{% endif %}{% endif %}</span>
     <span><span class="dot {{ 'wait' if info.total else 'live' }}"></span> รออนุมัติทั้งหมด {{ info.pending_all }} รายการ{% if info.total %} · ค้างเกิน {{ cfg.after }} นาที {{ info.total }} รายการ (นานสุด {{ info.oldest_min }} นาที){% endif %}</span>
+    {% if st.testing %}<span><span class="dot wait"></span> <strong>กำลังโทรทดสอบอยู่</strong> · หน้านี้จะรีเฟรชเองเมื่อเสร็จ</span>{% endif %}
     {% if st.round %}<span><span class="dot wait"></span> รอบที่โทรแล้ว {{ st.round }}/{{ cfg.max }}{% if st.last %} · ล่าสุด {{ st.last | localtime }}{% endif %}</span>{% endif %}
   </div>
 </section>
@@ -42,10 +43,14 @@
         <input type="number" name="chase_repeat_min" min="2" max="240" value="{{ settings.chase_repeat_min }}"></label>
       <label class="field">โทรสูงสุด (รอบ)
         <input type="number" name="chase_max" min="1" max="10" value="{{ settings.chase_max }}"></label>
+      <label class="field">เล่นเสียงซ้ำ (ครั้ง)
+        <input type="number" name="chase_audio_repeat" min="1" max="5" value="{{ settings.chase_audio_repeat }}"></label>
     </div>
     <p class="hint">ระบบนับว่า "ไม่มีใครอนุมัติ" เมื่อมีรายการค้างเกินเวลาที่ตั้ง และไม่มีใครกดอนุมัติหรือไม่ส่งอะไรเลยในช่วงเวลานั้น · พอมีคนเริ่มอนุมัติหรือคิวว่าง ระบบเริ่มนับรอบใหม่</p>
     <label class="check-row"><input type="checkbox" name="chase_call" {{ 'checked' if cfg.call }}>
-      <span>โทรให้โทรศัพท์ดัง<span class="hint">โทรผ่านบัญชี Telegram ที่เชื่อมไว้ ให้ดัง {{ ring_seconds }} วินาทีแล้ววางสายเอง · เป็นสายเตือน ต่อสายคุยไม่ได้ · ปลายทางต้องไม่ได้ตั้งความเป็นส่วนตัวห้ามบัญชีนี้โทร</span></span></label>
+      <span>โทรให้โทรศัพท์ดัง<span class="hint">โทรผ่านบัญชี Telegram ที่เชื่อมไว้ ให้ดัง {{ ring_seconds }} วินาที ไม่มีคนรับก็วางสายเอง · ปลายทางต้องไม่ได้ตั้งความเป็นส่วนตัวห้ามบัญชีนี้โทร</span></span></label>
+    <label class="check-row"><input type="checkbox" name="chase_play_audio" {{ 'checked' if cfg.audio }}>
+      <span>เมื่อแอดมินกดรับสาย ให้เล่นไฟล์เสียง<span class="hint">เล่นไฟล์ที่เลือกไว้ในหัวข้อ "เสียงที่เล่นเมื่อรับสาย" ด้านล่าง ตามจำนวนครั้งที่ตั้ง แล้ววางสาย · ปิดไว้หรือเล่นไม่ได้ = โทรให้ดังอย่างเดียว</span></span></label>
     <label class="check-row"><input type="checkbox" name="chase_message" {{ 'checked' if cfg.message }}>
       <span>ส่งข้อความสรุปด้วย<span class="hint">บอกจำนวนรายการที่ค้าง ค้างนานสุดกี่นาที พร้อมลิงก์เข้าหน้ารออนุมัติ · ถ้าโทรไม่ติด ข้อความนี้ยังไปถึง</span></span></label>
   </section>
@@ -57,12 +62,48 @@
   </div>
 </form>
 
+<section class="card ch-sounds" id="sounds">
+  <div class="card-head"><h2>เสียงที่เล่นเมื่อรับสาย</h2></div>
+  <div class="key-status">
+    <span><span class="dot {{ 'live' if engine_ready else 'wait' }}"></span> ตัวโทรพร้อมเสียง {{ 'พร้อมใช้งาน' if engine_ready else 'ยังไม่ได้ติดตั้งในเครื่องนี้ · ตอนนี้โทรให้ดังอย่างเดียว ยังไม่เล่นเสียง' }}</span>
+    <span><span class="dot {{ 'live' if decoder_ready else 'wait' }}"></span> ตัวอ่านไฟล์เสียง {{ 'รองรับ WAV / MP3 / M4A / OGG / FLAC' if decoder_ready else 'รองรับเฉพาะไฟล์ WAV' }}</span>
+  </div>
+  <form method="post" action="/chase/sounds" enctype="multipart/form-data" class="ch-upload">
+    <label class="field">ไฟล์เสียง
+      <input type="file" name="audio" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" required></label>
+    <label class="field">ชื่อที่แสดง (ไม่ใส่ก็ได้)
+      <input name="name" maxlength="120" placeholder="เช่น แจ้งงานรออนุมัติค้าง"></label>
+    <button class="primary">{{ icon('plus', 15) }} เพิ่มไฟล์เสียง</button>
+  </form>
+  <p class="hint">ยาวไม่เกิน {{ max_seconds }} วินาที · ไฟล์ไม่เกิน {{ max_mb }} MB · เก็บได้ {{ max_sounds }} ไฟล์ · ระบบแปลงเป็นเสียงโมโนให้เอง · ไฟล์ที่เพิ่มใหม่จะถูกเลือกใช้ทันที · แนะนำอัดข้อความสั้นๆ เช่น "มีงานรออนุมัติค้างอยู่ รบกวนเข้าไปอนุมัติด้วยค่ะ"</p>
+  {% set active_id = settings.chase_sound_id %}
+  <ul class="ch-sound-list">
+    <li class="ch-sound {{ 'on' if not active_id }}">
+      <div class="ch-sound-main"><strong>เสียงเตือนมาตรฐาน</strong><span class="muted small">เสียงปี๊บสูง-ต่ำ 3 ชุด · ระบบสร้างเอง ใช้เมื่อไม่ได้เลือกไฟล์</span></div>
+      <audio controls preload="none" src="/chase/sounds/0/file"></audio>
+      {% if not active_id %}<span class="tag ch-st-answered">ใช้อยู่</span>
+      {% else %}<form method="post" action="/chase/sounds/0/use"><button class="ghost sm">ใช้เสียงนี้</button></form>{% endif %}
+    </li>
+    {% for sd in sounds %}
+    <li class="ch-sound {{ 'on' if active_id == (sd.id | string) }}">
+      <div class="ch-sound-main"><strong>{{ sd.name }}</strong><span class="muted small">{{ '%.1f' | format(sd.millis / 1000) }} วินาที · เพิ่มโดย {{ sd.created_by or '—' }} · {{ sd.created_at | localtime }}</span></div>
+      <audio controls preload="none" src="/chase/sounds/{{ sd.id }}/file"></audio>
+      {% if active_id == (sd.id | string) %}<span class="tag ch-st-answered">ใช้อยู่</span>
+      {% else %}<form method="post" action="/chase/sounds/{{ sd.id }}/use"><button class="ghost sm">ใช้เสียงนี้</button></form>{% endif %}
+      <form method="post" action="/chase/sounds/{{ sd.id }}/delete">
+        <button class="ghost sm danger" data-confirm-title="ลบไฟล์เสียงนี้?" data-confirm="ลบ “{{ sd.name }}” ออกจากระบบ ถ้ากำลังใช้อยู่ จะกลับไปใช้เสียงเตือนมาตรฐาน" data-confirm-ok="ลบ" data-confirm-tone="danger">{{ icon('trash', 14) }} ลบ</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
 <section class="panel ch-history">
   <div class="panel-head"><h2>ประวัติการโทรตาม</h2><span class="count">{{ logs | length }} รายการล่าสุด</span></div>
   {% if logs %}
   <div class="table-wrap">
   <table class="grid-table">
-    <thead><tr><th class="shrink">เวลา</th><th class="shrink">ประเภท</th><th class="shrink center">รอบ</th><th>ปลายทาง</th><th class="shrink">ที่ค้างตอนนั้น</th><th class="shrink">โทร</th><th class="shrink">ข้อความ</th><th>สาเหตุที่ไม่สำเร็จ</th></tr></thead>
+    <thead><tr><th class="shrink">เวลา</th><th class="shrink">ประเภท</th><th class="shrink center">รอบ</th><th>ปลายทาง</th><th class="shrink">ที่ค้างตอนนั้น</th><th class="shrink">โทร</th><th class="shrink">ข้อความ</th><th>รายละเอียด</th></tr></thead>
     <tbody>
     {% for l in logs %}
       <tr>
@@ -71,9 +112,9 @@
         <td class="shrink center num">{{ l.round or '—' }}</td>
         <td>{{ l.target_name or '—' }} <span class="muted small">@{{ l.target }}</span></td>
         <td class="shrink small">{{ l.waiting }} รายการ · {{ l.oldest_min }} นาที</td>
-        <td class="shrink"><span class="tag ch-st-{{ l.call_status }}">{{ {'ok': 'โทรแล้ว', 'failed': 'ไม่สำเร็จ', 'skipped': 'ไม่ได้ตั้งไว้'}[l.call_status] }}</span></td>
+        <td class="shrink"><span class="tag ch-st-{{ l.call_status }}">{{ {'answered': 'รับสายแล้ว', 'ok': 'โทรแล้ว', 'failed': 'ไม่สำเร็จ', 'skipped': 'ไม่ได้ตั้งไว้'}[l.call_status] }}</span></td>
         <td class="shrink"><span class="tag ch-st-{{ l.msg_status }}">{{ {'ok': 'ส่งแล้ว', 'failed': 'ไม่สำเร็จ', 'skipped': 'ไม่ได้ตั้งไว้'}[l.msg_status] }}</span></td>
-        <td class="small ch-err">{{ l.call_error or l.msg_error }}{% if l.call_error and l.msg_error and l.call_error != l.msg_error %}<br>{{ l.msg_error }}{% endif %}</td>
+        <td class="small ch-err {{ 'bad' if l.call_status == 'failed' or l.msg_status == 'failed' }}">{{ l.call_error or l.msg_error }}{% if l.call_error and l.msg_error and l.call_error != l.msg_error %}<br>{{ l.msg_error }}{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
@@ -83,4 +124,8 @@
   <div class="empty"><strong>ยังไม่เคยโทรตาม</strong>เมื่อระบบโทรหรือกดโทรทดสอบ ผลจะแสดงที่นี่ พร้อมสาเหตุถ้าโทรไม่ติด</div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+{% if st.testing %}<script>setTimeout(() => location.reload(), 4000);</script>{% endif %}
 {% endblock %}
