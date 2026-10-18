@@ -1,6 +1,8 @@
 """เชื่อมต่อบัญชี Telegram ของผู้ใช้ (userbot) ด้วย Telethon"""
 
+import asyncio
 import logging
+import os
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -15,6 +17,7 @@ from telethon.errors import (
     SessionPasswordNeededError,
 )
 from telethon.sessions import StringSession
+from telethon.tl import functions, types
 
 from . import chatbus
 from .config import MEDIA_DIR
@@ -29,6 +32,26 @@ IMAGE_MIME_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".web
 
 class TelegramLoginError(Exception):
     pass
+
+
+# สาเหตุที่โทรไม่ติดบ่อยๆ -> อธิบายเป็นภาษาไทยให้แอดมินแก้ถูกจุด
+CALL_ERRORS = {
+    "USER_PRIVACY_RESTRICTED": "ปลายทางตั้งความเป็นส่วนตัวไม่ให้บัญชีนี้โทรหา (Telegram > ความเป็นส่วนตัว > การโทร ให้เลือกทุกคน หรือเพิ่มบัญชีนี้เป็นข้อยกเว้น)",
+    "USER_IS_BLOCKED": "ปลายทางบล็อกบัญชีนี้ไว้ จึงโทรและส่งข้อความหาไม่ได้",
+    "PARTICIPANT_VERSION_OUTDATED": "Telegram ของปลายทางเป็นเวอร์ชันเก่า ไม่รองรับสายโทรนี้",
+    "USER_DEACTIVATED": "บัญชีปลายทางถูกปิดใช้งานแล้ว",
+    "PEER_ID_INVALID": "หาบัญชีปลายทางไม่พบ",
+}
+
+
+def describe_call_error(e: Exception) -> str:
+    if isinstance(e, FloodWaitError):
+        return f"Telegram จำกัดความถี่การโทร รอประมาณ {getattr(e, 'seconds', 0)} วินาที"
+    raw = f"{getattr(e, 'message', '')} {e}".upper()
+    for code, text in CALL_ERRORS.items():
+        if code in raw:
+            return text
+    return f"{type(e).__name__}: {e}"[:300]
 
 
 class TelegramService:
@@ -49,6 +72,7 @@ class TelegramService:
         self.on_connected = None  # async callback หลังเชื่อมต่อสำเร็จ
         # พนักงานที่กดส่ง (ชื่อผู้ใช้เว็บ/LINE) ของข้อความที่เพิ่งส่ง รอให้ข้อความถูกบันทึกจากอีเวนต์ Telegram แล้วค่อยใส่ชื่อ
         self._sent_by_hints: dict[tuple[int, int], str] = {}
+        self._bg: set[asyncio.Task] = set()  # งานเบื้องหลัง (วางสายหลังโทรเตือน) กันถูกเก็บขยะก่อนเสร็จ
 
     # ------------------------------------------------------------------ state
     @property
@@ -439,6 +463,79 @@ class TelegramService:
                         data = chatbus.to_dict(row)
             if data:
                 out.append(data)
+        return out
+
+    # ------------------------------------------------------------------ โทร/ส่งข้อความเตือนแอดมิน (โทรตามอนุมัติ)
+    async def lookup_user(self, ref: str):
+        """หาบัญชี Telegram ของคนจาก username (หรือไอดีตัวเลข) · ไม่ใช่บัญชีคน/หาไม่เจอ -> TelegramLoginError"""
+        if not self.connected:
+            raise TelegramLoginError("ยังไม่ได้เชื่อมต่อ Telegram")
+        ref = (ref or "").strip().lstrip("@")
+        try:
+            user = await self.client.get_entity(int(ref) if ref.lstrip("-").isdigit() else ref)
+        except (ValueError, RPCError) as e:
+            raise TelegramLoginError(f"หาบัญชี Telegram '{ref}' ไม่พบ (ตรวจชื่อผู้ใช้อีกครั้ง)") from e
+        if not isinstance(user, types.User) or user.bot:
+            raise TelegramLoginError(f"'{ref}' ไม่ใช่บัญชีของคน (โทรหาบอท/กลุ่ม/แชนแนลไม่ได้)")
+        return user
+
+    async def ring_user(self, user, ring_seconds: float = 30) -> None:
+        """โทรหาผู้ใช้ผ่าน Telegram ให้โทรศัพท์ปลายทางดัง แล้ววางสายเองหลัง ring_seconds วินาที
+        ระบบไม่มีสัญญาณเสียง (ต่อสายคุยไม่ได้) ใช้เป็นสายเตือนให้เปิดดู · ผิดพลาดจะ raise RPCError"""
+        inp = await self.client.get_input_entity(user)
+        proto = types.PhoneCallProtocol(
+            min_layer=65, max_layer=92, udp_p2p=True, udp_reflector=True,
+            library_versions=["11.0.0", "10.0.0", "9.0.0", "8.0.0", "7.0.0", "6.0.0", "5.0.0", "4.0.0", "3.0.0", "2.7.7", "2.4.4"])
+        res = await self.client(functions.phone.RequestCallRequest(
+            user_id=inp, g_a_hash=os.urandom(32), protocol=proto, random_id=int.from_bytes(os.urandom(4), "big", signed=True)))
+        call = getattr(res, "phone_call", None)
+        if call is not None and getattr(call, "access_hash", None) is not None:
+            task = asyncio.create_task(self._hang_up(call.id, call.access_hash, ring_seconds))
+            self._bg.add(task)
+            task.add_done_callback(self._bg.discard)
+
+    async def _hang_up(self, call_id: int, access_hash: int, after: float) -> None:
+        await asyncio.sleep(after)
+        try:
+            await self.client(functions.phone.DiscardCallRequest(
+                peer=types.InputPhoneCall(id=call_id, access_hash=access_hash), duration=0,
+                reason=types.PhoneCallDiscardReasonMissed(), connection_id=0))
+        except Exception as e:  # noqa: BLE001 - ปลายทางวาง/สายหมดเวลาไปก่อนแล้วก็ได้
+            log.debug("hang up call %s: %s", call_id, e)
+
+    async def alert_user(self, ref: str, text: str, call: bool = True, message: bool = True, ring_seconds: float = 30) -> dict:
+        """เตือนแอดมิน 1 คน: โทรให้ดัง และ/หรือส่งข้อความ · ไม่ raise (คืนผลแต่ละอย่างเป็น ok / failed / skipped)"""
+        out = {"name": "", "call": "skipped", "call_error": "", "msg": "skipped", "msg_error": ""}
+
+        def fail(what: str, err: str) -> None:
+            out[what], out["call_error" if what == "call" else "msg_error"] = "failed", err
+
+        try:
+            user = await self.lookup_user(ref)
+            me = await self.client.get_me()
+        except (TelegramLoginError, RPCError) as e:
+            for what, wanted in (("call", call), ("msg", message)):
+                if wanted:
+                    fail(what, str(e) if isinstance(e, TelegramLoginError) else describe_call_error(e))
+            return out
+        out["name"] = " ".join(filter(None, [user.first_name, user.last_name])) or (user.username or str(user.id))
+        if me is not None and user.id == me.id:
+            for what, wanted in (("call", call), ("msg", message)):
+                if wanted:
+                    fail(what, "ปลายทางเป็นบัญชีเดียวกับที่ระบบใช้อยู่ โทรหาตัวเองไม่ได้ · ใส่บัญชีของแอดมินคนอื่น")
+            return out
+        if call:
+            try:
+                await self.ring_user(user, ring_seconds)
+                out["call"] = "ok"
+            except (RPCError, ValueError) as e:
+                fail("call", describe_call_error(e))
+        if message:
+            try:
+                await self.client.send_message(user, text, link_preview=False)
+                out["msg"] = "ok"
+            except (RPCError, ValueError) as e:
+                fail("msg", describe_call_error(e))
         return out
 
     async def _handle_dev_message(self, event: events.NewMessage.Event) -> None:

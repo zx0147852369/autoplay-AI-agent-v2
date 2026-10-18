@@ -334,6 +334,27 @@ class AnnouncementTarget(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+
+class ChaseLog(Base):
+    """ประวัติการโทรตามทีมงานอนุมัติ (1 แถว = โทร/ส่งข้อความหาแอดมิน 1 คน 1 ครั้ง)"""
+
+    __tablename__ = "chase_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    kind: Mapped[str] = mapped_column(String(8), default="auto", server_default="auto")  # auto = ระบบโทรตามเอง / test = แอดมินกดทดสอบ
+    round: Mapped[int] = mapped_column(Integer, default=0)
+    target: Mapped[str] = mapped_column(String(64), default="")
+    target_name: Mapped[str] = mapped_column(String(128), default="")
+    waiting: Mapped[int] = mapped_column(Integer, default=0)      # จำนวนรายการที่ค้างอยู่ตอนนั้น
+    oldest_min: Mapped[int] = mapped_column(Integer, default=0)   # รายการที่ค้างนานสุด (นาที)
+    # ok = สำเร็จ / failed = ไม่สำเร็จ (ดู error) / skipped = ตั้งค่าไว้ไม่ทำ
+    call_status: Mapped[str] = mapped_column(String(8), default="skipped")
+    call_error: Mapped[str] = mapped_column(Text, default="")
+    msg_status: Mapped[str] = mapped_column(String(8), default="skipped")
+    msg_error: Mapped[str] = mapped_column(Text, default="")
+
+
 class AiNote(Base):
     """โน้ตความจำของ AI: บทเรียนที่ได้จากการทำงานจริง (AI จดเอง หรือแอดมินเขียน) แล้วนำกลับไปใช้ตอนวิเคราะห์"""
     __tablename__ = "ai_notes"
@@ -418,8 +439,17 @@ DEFAULT_SETTINGS = {
     "line_approve": "1",   # อนุญาตให้กดอนุมัติจากปุ่มใน LINE
     "line_allowed": "[]",  # JSON รายชื่อผู้ที่กดอนุมัติ/ไม่ส่งจาก LINE ได้ [{"id": LINE userId, "name": ..., "added": ...}]
     "line_pair": "",       # รหัสเชื่อมผู้อนุมัติที่รอใช้งาน "รหัส|หมดอายุ|จำนวนครั้งที่ใส่ผิด" (ว่าง = ไม่มี)
+    # โทรตามทีมงานอนุมัติ: ร่างรออนุมัติค้างนานเกินกำหนดแล้วไม่มีใครอนุมัติ -> ระบบโทร/ส่งข้อความหาแอดมินซัพพอร์ตผ่าน Telegram
+    "chase_enabled": "0",       # ปิดไว้จนกว่าแอดมินจะตั้งปลายทางและเปิดเอง (เพราะระบบจะโทรหาคนจริง)
+    "chase_targets": "",        # username (หรือไอดีตัวเลข) Telegram ของแอดมินซัพพอร์ต คั่นด้วยจุลภาค · โทรหาทีละคนเรียงตามรอบ
+    "chase_after_min": "10",    # รายการรออนุมัติค้างกี่นาทีถึงเริ่มโทรตาม
+    "chase_repeat_min": "10",   # ถ้ายังไม่มีใครอนุมัติ โทรตามซ้ำทุกกี่นาที
+    "chase_max": "3",           # โทรตามสูงสุดกี่รอบต่อเหตุการณ์ (กันโทรไม่หยุด)
+    "chase_call": "1",          # โทรให้โทรศัพท์ปลายทางดัง
+    "chase_message": "1",       # ส่งข้อความสรุปรายการที่ค้างด้วย
+    "chase_state": "",          # JSON {"round", "last"} รอบที่โทรไปแล้วของเหตุการณ์ปัจจุบัน
     # สมอง AI: ให้ AI เรียนรู้จากการทำงานจริงแล้วจดโน้ตไว้ใช้ครั้งต่อไป
-    "auto_learn": "1",                        # เรียนรู้และจดโน้ตอัตโนมัติเป็นรอบๆ
+    "auto_learn": "1",                       # เรียนรู้และจดโน้ตอัตโนมัติเป็นรอบๆ
     "learn_use_notes": "1",                   # นำโน้ตไปใช้ตอนวิเคราะห์/ร่างคำตอบ
     "learn_ticket_notes": "1",                # เขียนโน้ต "สรุปการแก้ไข" ใส่ ticket ที่แก้เสร็จแล้วอัตโนมัติ
     "learn_model": "gemini-3.5-flash-lite",   # โมเดลที่ใช้เรียนรู้ (แยกจากโมเดลตอบลูกค้า จะได้ไม่แย่งโควตา)

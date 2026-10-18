@@ -22,12 +22,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, announce, chatbus, dev_bridge, learning, line_service, linebot, quota, sysinfo, unread
+from . import ai_service, analyzer, announce, chase, chatbus, dev_bridge, learning, line_service, linebot, quota, sysinfo, unread
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
     Announcement,
     AnnouncementTarget,
+    ChaseLog,
     AiNote,
     AiUsage,
     Chat,
@@ -119,11 +120,13 @@ async def lifespan(app: FastAPI):
     sweeper = asyncio.create_task(analyzer.sweeper())
     learner = asyncio.create_task(learning.learner())  # สมอง AI: เรียนรู้เป็นรอบๆ เบื้องหลัง
     lag_watch = asyncio.create_task(_watch_loop_lag())
+    chaser = asyncio.create_task(chase.watcher())  # โทรตามทีมงานเมื่อรออนุมัติค้างแล้วไม่มีใครอนุมัติ
     yield
     startup.cancel()
     sweeper.cancel()
     learner.cancel()
     lag_watch.cancel()
+    chaser.cancel()
     await telegram.stop()
 
 
@@ -1067,6 +1070,68 @@ async def announce_retry(request: Request, aid: int):
     if n:
         log.info("%s สั่งส่งต่อประกาศ #%s (%s แชท)", user.username, aid, n)
     return back(f"/announce/{aid}")
+
+# ---------------------------------------------------------------- โทรตามทีมงานอนุมัติ (แอดมินเท่านั้น)
+@app.get("/chase")
+async def chase_page(request: Request):
+    user = current_user(request, "admin")
+    with SessionLocal() as db:
+        st = chase.status(db)
+        settings = get_settings(db)
+        logs = list(db.scalars(select(ChaseLog).order_by(ChaseLog.id.desc()).limit(30)))
+    return render(request, "chase.html", user, st=st, settings=settings, logs=logs, connected=telegram.connected,
+                  ring_seconds=chase.RING_SECONDS, max_targets=chase.MAX_TARGETS, now_utc=utcnow())
+
+
+@app.post("/chase")
+async def chase_save(request: Request):
+    current_user(request, "admin")
+    form = await request.form()
+    good, bad = chase.parse_targets(str(form.get("chase_targets", "")))
+    enabled, call, message = (bool(form.get(k)) for k in ("chase_enabled", "chase_call", "chase_message"))
+    errors = []
+    if bad:
+        errors.append("ชื่อผู้ใช้ Telegram ไม่ถูกต้อง: " + ", ".join(bad[:5]))
+    if not (call or message):
+        errors.append("เลือกอย่างน้อย 1 อย่าง: โทร หรือ ส่งข้อความ")
+    if enabled and not good:
+        errors.append("ใส่ชื่อผู้ใช้ Telegram ของแอดมินอย่างน้อย 1 คนก่อนเปิดระบบ")
+    if errors:
+        flash(request, " · ".join(errors) + " (ยังไม่ได้บันทึก)", "error")
+        return back("/chase")
+    values = {"chase_enabled": "1" if enabled else "0", "chase_targets": ", ".join(good), "chase_call": "1" if call else "0",
+              "chase_message": "1" if message else "0", "chase_state": ""}  # แก้ตั้งค่า = เริ่มนับรอบใหม่
+    for key, low, high in (("chase_after_min", 2, 240), ("chase_repeat_min", 2, 240), ("chase_max", 1, 10)):
+        values[key] = str(int_setting({key: str(form.get(key, ""))}, key, low, high))
+    with SessionLocal() as db:
+        for key, value in values.items():
+            row = db.get(Setting, key) or Setting(key=key)
+            row.value = value
+            db.merge(row)
+        db.commit()
+    flash(request, "บันทึกการโทรตามอนุมัติแล้ว" + ("" if enabled else " (ยังปิดอยู่ ระบบจะไม่โทรจนกว่าจะเปิด)"))
+    return back("/chase")
+
+
+@app.post("/chase/test")
+async def chase_test(request: Request):
+    user = current_user(request, "admin")
+    with SessionLocal() as db:
+        targets = chase.config(get_settings(db))["targets"]
+    if not targets:
+        flash(request, "ยังไม่ได้ตั้งชื่อผู้ใช้ Telegram ของแอดมินที่จะโทรหา (กดบันทึกก่อน)", "error")
+    elif not telegram.connected:
+        flash(request, "ยังไม่ได้เชื่อมต่อ Telegram จึงโทรทดสอบไม่ได้", "error")
+    else:
+        results = await chase.test_all()
+        log.info("%s ทดสอบโทรตามอนุมัติถึง %s คน", user.username, len(results))
+        label = {"ok": "สำเร็จ", "failed": "ไม่สำเร็จ", "skipped": "ไม่ได้ตั้งไว้"}
+        parts = [f"@{r['target']} โทร{label[r['call']]} ข้อความ{label[r['msg']]}" for r in results]
+        any_fail = any("failed" in (r["call"], r["msg"]) for r in results)
+        any_ok = any("ok" in (r["call"], r["msg"]) for r in results)
+        flash(request, "ทดสอบแล้ว: " + " | ".join(parts) + (" · ดูสาเหตุในประวัติด้านล่าง" if any_fail else ""), "ok" if any_ok else "error")
+    return back("/chase")
+
 
 # ---------------------------------------------------------------- replies (approval queue)
 @app.get("/replies")
@@ -2590,7 +2655,7 @@ async def settings_save(request: Request):
                 value = str(form.get(key, ""))
                 if value not in known_models:
                     continue
-            elif key.startswith(("learn_", "line_", "linebot_")):
+            elif key.startswith(("learn_", "line_", "linebot_", "chase_")):
                 continue  # ตั้งที่หน้าของตัวเอง (สมอง AI / แจ้งเตือน LINE) ไม่รับผ่านฟอร์มนี้
             elif key in ("debounce_seconds", "context_messages"):
                 low, high = (0, 600) if key == "debounce_seconds" else (5, 100)

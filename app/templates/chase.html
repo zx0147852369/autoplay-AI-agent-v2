@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}โทรตามอนุมัติ{% endblock %}
+{% block content %}
+{% set cfg = st.cfg %}{% set info = st.info %}
+<div class="page-head">
+  <div>
+    <h1>โทรตามอนุมัติ</h1>
+    <p class="sub">มีรายการรออนุมัติค้างแล้วไม่มีใครกดอนุมัติ ระบบจะโทรและส่งข้อความหาแอดมินซัพพอร์ตผ่าน Telegram</p>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ cicon('warning', 20) }} สถานะตอนนี้</h2></div>
+  <div class="key-status">
+    <span><span class="dot {{ 'live' if connected else 'off' }}"></span> Telegram {{ 'เชื่อมต่อแล้ว (ใช้บัญชีนี้โทรออก)' if connected else 'ยังไม่เชื่อมต่อ · โทรไม่ได้' }}</span>
+    <span id="chPhase"><span class="dot {{ {'idle': 'live', 'active': 'live', 'due': 'wait', 'maxed': 'wait'}.get(st.phase, 'off') }}"></span>
+      {% if st.phase == 'off' %}ระบบปิดอยู่ ไม่โทรตาม
+      {% elif st.phase == 'no_targets' %}ยังไม่ได้ใส่ชื่อผู้ใช้ Telegram ของแอดมินที่จะโทรหา
+      {% elif st.phase == 'disconnected' %}พร้อมโทร แต่ Telegram ยังไม่เชื่อมต่อ
+      {% elif st.phase == 'idle' %}ปกติ ไม่มีรายการค้างเกิน {{ cfg.after }} นาที
+      {% elif st.phase == 'active' %}มีรายการค้าง แต่มีคนกำลังอนุมัติอยู่ จึงยังไม่โทร
+      {% elif st.phase == 'maxed' %}โทรครบ {{ cfg.max }} รอบแล้วยังไม่มีใครอนุมัติ · หยุดโทรจนกว่าจะมีคนอนุมัติหรือคิวว่าง
+      {% else %}มีรายการค้างและไม่มีใครอนุมัติ · {% if st.next_at and st.next_at > now_utc %}รอบถัดไปประมาณ {{ st.next_at | localtime }}{% else %}จะโทรตามในอีกไม่เกิน 1 นาที{% endif %}{% endif %}</span>
+    <span><span class="dot {{ 'wait' if info.total else 'live' }}"></span> รออนุมัติทั้งหมด {{ info.pending_all }} รายการ{% if info.total %} · ค้างเกิน {{ cfg.after }} นาที {{ info.total }} รายการ (นานสุด {{ info.oldest_min }} นาที){% endif %}</span>
+    {% if st.round %}<span><span class="dot wait"></span> รอบที่โทรแล้ว {{ st.round }}/{{ cfg.max }}{% if st.last %} · ล่าสุด {{ st.last | localtime }}{% endif %}</span>{% endif %}
+  </div>
+</section>
+
+<form method="post" action="/chase">
+  <section class="card">
+    <div class="card-head"><h2>ตั้งค่าการโทรตาม</h2></div>
+    <label class="check-row"><input type="checkbox" name="chase_enabled" {{ 'checked' if cfg.enabled }}>
+      <span>เปิดระบบโทรตามอนุมัติ<span class="hint">ปิดไว้ตั้งแต่ต้น เพราะระบบจะโทรหาคนจริง · ใส่ชื่อแอดมินและกด "โทรทดสอบ" ให้เรียบร้อยก่อนค่อยเปิด</span></span></label>
+    <label class="field">แอดมินซัพพอร์ตที่จะโทรหา (Telegram)
+      <textarea name="chase_targets" rows="2" placeholder="เช่น support_admin, boss_name" maxlength="400">{{ settings.chase_targets }}</textarea>
+      <span class="hint">ชื่อผู้ใช้ Telegram ไม่ต้องมี @ (วางลิงก์ t.me ได้) คั่นด้วยจุลภาค ไม่เกิน {{ max_targets }} คน · ถ้ามีหลายคน แต่ละรอบจะโทรหาคนถัดไปตามลำดับ · ต้องเป็นคนละบัญชีกับ Telegram ที่ระบบเชื่อมอยู่</span></label>
+    <div class="ch-nums">
+      <label class="field">เริ่มโทรเมื่อค้างเกิน (นาที)
+        <input type="number" name="chase_after_min" min="2" max="240" value="{{ settings.chase_after_min }}"></label>
+      <label class="field">โทรซ้ำทุก (นาที)
+        <input type="number" name="chase_repeat_min" min="2" max="240" value="{{ settings.chase_repeat_min }}"></label>
+      <label class="field">โทรสูงสุด (รอบ)
+        <input type="number" name="chase_max" min="1" max="10" value="{{ settings.chase_max }}"></label>
+    </div>
+    <p class="hint">ระบบนับว่า "ไม่มีใครอนุมัติ" เมื่อมีรายการค้างเกินเวลาที่ตั้ง และไม่มีใครกดอนุมัติหรือไม่ส่งอะไรเลยในช่วงเวลานั้น · พอมีคนเริ่มอนุมัติหรือคิวว่าง ระบบเริ่มนับรอบใหม่</p>
+    <label class="check-row"><input type="checkbox" name="chase_call" {{ 'checked' if cfg.call }}>
+      <span>โทรให้โทรศัพท์ดัง<span class="hint">โทรผ่านบัญชี Telegram ที่เชื่อมไว้ ให้ดัง {{ ring_seconds }} วินาทีแล้ววางสายเอง · เป็นสายเตือน ต่อสายคุยไม่ได้ · ปลายทางต้องไม่ได้ตั้งความเป็นส่วนตัวห้ามบัญชีนี้โทร</span></span></label>
+    <label class="check-row"><input type="checkbox" name="chase_message" {{ 'checked' if cfg.message }}>
+      <span>ส่งข้อความสรุปด้วย<span class="hint">บอกจำนวนรายการที่ค้าง ค้างนานสุดกี่นาที พร้อมลิงก์เข้าหน้ารออนุมัติ · ถ้าโทรไม่ติด ข้อความนี้ยังไปถึง</span></span></label>
+  </section>
+  <div class="save-bar">
+    <span class="muted small">การทดสอบใช้ค่าที่บันทึกไว้แล้ว · ระบบตรวจคิวทุก 30 วินาที</span>
+    <button type="submit" formaction="/chase/test" class="ghost" {{ '' if connected and cfg.targets else 'disabled' }}
+      data-confirm-title="โทรทดสอบตอนนี้?" data-confirm="ระบบจะโทรและส่งข้อความทดสอบหาแอดมินที่บันทึกไว้ทันที ({{ cfg.targets | join(', ') or '-' }})" data-confirm-ok="โทรทดสอบ" data-confirm-tone="warn">{{ icon('phone', 15) }} โทรทดสอบ</button>
+    <button class="primary">{{ icon('check', 15) }} บันทึก</button>
+  </div>
+</form>
+
+<section class="panel ch-history">
+  <div class="panel-head"><h2>ประวัติการโทรตาม</h2><span class="count">{{ logs | length }} รายการล่าสุด</span></div>
+  {% if logs %}
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr><th class="shrink">เวลา</th><th class="shrink">ประเภท</th><th class="shrink center">รอบ</th><th>ปลายทาง</th><th class="shrink">ที่ค้างตอนนั้น</th><th class="shrink">โทร</th><th class="shrink">ข้อความ</th><th>สาเหตุที่ไม่สำเร็จ</th></tr></thead>
+    <tbody>
+    {% for l in logs %}
+      <tr>
+        <td class="when">{{ l.created_at | localtime }}</td>
+        <td class="shrink small">{{ 'ทดสอบ' if l.kind == 'test' else 'อัตโนมัติ' }}</td>
+        <td class="shrink center num">{{ l.round or '—' }}</td>
+        <td>{{ l.target_name or '—' }} <span class="muted small">@{{ l.target }}</span></td>
+        <td class="shrink small">{{ l.waiting }} รายการ · {{ l.oldest_min }} นาที</td>
+        <td class="shrink"><span class="tag ch-st-{{ l.call_status }}">{{ {'ok': 'โทรแล้ว', 'failed': 'ไม่สำเร็จ', 'skipped': 'ไม่ได้ตั้งไว้'}[l.call_status] }}</span></td>
+        <td class="shrink"><span class="tag ch-st-{{ l.msg_status }}">{{ {'ok': 'ส่งแล้ว', 'failed': 'ไม่สำเร็จ', 'skipped': 'ไม่ได้ตั้งไว้'}[l.msg_status] }}</span></td>
+        <td class="small ch-err">{{ l.call_error or l.msg_error }}{% if l.call_error and l.msg_error and l.call_error != l.msg_error %}<br>{{ l.msg_error }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>ยังไม่เคยโทรตาม</strong>เมื่อระบบโทรหรือกดโทรทดสอบ ผลจะแสดงที่นี่ พร้อมสาเหตุถ้าโทรไม่ติด</div>
+  {% endif %}
+</section>
+{% endblock %}
