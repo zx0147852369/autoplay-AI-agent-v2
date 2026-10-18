@@ -2608,13 +2608,7 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .rv-note b { color: var(--brass-d); }
 .rv-replying { border-left-color: var(--brass); }
 .rv-replying { color: var(--ink-2); }
-.rv .rv-btn.primary { border-color: #0a1d16; background: var(--lux-ink); box-shadow: inset 0 0 0 1px rgba(196, 160, 98, .42); }
-.rv .rv-btn.primary:hover { border-color: #0a1d16; background: var(--lux-ink-2); }
-.rv .rv-say-btn { background: var(--lux-ink); box-shadow: inset 0 0 0 1px rgba(196, 160, 98, .42); }
-.rv .rv-say-btn:hover { background: var(--lux-ink-2); }
-[data-theme="dark"] .rv .rv-btn.primary { border-color: #127350; background: #178a5d; box-shadow: none; }
 [data-theme="dark"] .rv .rv-btn.primary:hover { background: #1c9d6a; }
-[data-theme="dark"] .rv .rv-say-btn { background: #178a5d; box-shadow: none; }
 .rv-compose textarea:focus { border-color: var(--lux-ink); box-shadow: 0 0 0 3px rgba(196, 160, 98, .28); }
 .rv-say-row:focus-within { border-color: var(--lux-ink); box-shadow: 0 0 0 3px rgba(196, 160, 98, .28); }
 [data-theme="dark"] .rv-compose textarea:focus, [data-theme="dark"] .rv-say-row:focus-within { border-color: var(--brass); }
@@ -2627,10 +2621,10 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
    (--pine/--pine-2/--pine-tint/--ring/--focus ถูกกำหนดใหม่เฉพาะในหน้านี้ จึงไม่กระทบหน้าอื่น)
    ===================================================================== */
 .rvpage {
-  --pine: #1e3a5f;
-  --pine-2: #142a47;
-  --pine-tint: #e8edf5;
-  --ring: rgba(30, 58, 95, .16);
+  --pine: #2f2e2a;
+  --pine-2: #1c1b19;
+  --pine-tint: #efede8;
+  --ring: rgba(28, 27, 25, .14);
   --focus: 0 0 0 3px rgba(196, 160, 98, .38);
   --lux-ink: #121f36;
   --lux-ink-2: #1b2d4e;
@@ -2639,41 +2633,33 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   --lux-mute: #a3b0c6;
   --brass: #c4a062;
   --brass-d: #8f7236;
-  --rv-in: #f5f3ee;
-  --rv-out-bg: #e9edf4;
-  --rv-out-line: #ccd5e3;
+  --rv-in: #faf9f6;
+  --rv-out-bg: #efede6;
+  --rv-out-line: #dcd8cb;
 }
 [data-theme="dark"] .rvpage {
-  --pine: #9db9e6;
-  --pine-2: #b9cdee;
-  --pine-tint: #16233a;
-  --ring: rgba(157, 185, 230, .22);
+  --pine: #dcd9cf;
+  --pine-2: #ebe8de;
+  --pine-tint: #262824;
+  --ring: rgba(235, 232, 222, .18);
   --lux-ink: #0b1424;
   --lux-ink-2: #131f37;
   --brass-d: #d1b274;
   --rv-in: #171815;
-  --rv-out-bg: #17233a;
-  --rv-out-line: #2a3d5e;
+  --rv-out-bg: #20221e;
+  --rv-out-line: #34372f;
 }
 /* ตัวแปรของชุดรอบ 3 ถูกกำหนดที่ .rv — ให้ค่าของ .rvpage ชนะ */
-.rvpage .rv { --lux-ink: #121f36; --lux-ink-2: #1b2d4e; --lux-text: #f1ede3; --lux-mute: #a3b0c6; --rv-in: #f5f3ee; --rv-out-bg: #e9edf4; --rv-out-line: #ccd5e3; }
-[data-theme="dark"] .rvpage .rv { --lux-ink: #0b1424; --lux-ink-2: #131f37; --rv-in: #171815; --rv-out-bg: #17233a; --rv-out-line: #2a3d5e; }
+.rvpage .rv { --lux-ink: #121f36; --lux-ink-2: #1b2d4e; --lux-text: #f1ede3; --lux-mute: #a3b0c6; --rv-in: #faf9f6; --rv-out-bg: #efede6; --rv-out-line: #dcd8cb; }
+[data-theme="dark"] .rvpage .rv { --lux-ink: #0b1424; --lux-ink-2: #131f37; --rv-in: #171815; --rv-out-bg: #20221e; --rv-out-line: #34372f; }
 
 /* สีที่เคยฝังเป็นเขียวไว้ในชุดก่อนหน้า */
 .rvpage .rv-tab.on { border-bottom-color: var(--lux-ink); }
 [data-theme="dark"] .rvpage .rv-tab.on { border-bottom-color: var(--brass); }
-.rvpage .rv .rv-btn.primary { border-color: #0a1220; background: var(--lux-ink); box-shadow: inset 0 0 0 1px rgba(196, 160, 98, .45); }
-.rvpage .rv .rv-btn.primary:hover { border-color: #0a1220; background: var(--lux-ink-2); }
-.rvpage .rv .rv-say-btn { background: var(--lux-ink); box-shadow: inset 0 0 0 1px rgba(196, 160, 98, .45); }
-.rvpage .rv .rv-say-btn:hover { background: var(--lux-ink-2); }
-[data-theme="dark"] .rvpage .rv .rv-btn.primary { border-color: #35598f; background: #2a4a7c; box-shadow: none; }
-[data-theme="dark"] .rvpage .rv .rv-btn.primary:hover { background: #335a96; }
-[data-theme="dark"] .rvpage .rv .rv-say-btn { background: #2a4a7c; box-shadow: none; }
-[data-theme="dark"] .rvpage .rv .rv-say-btn:hover { background: #335a96; }
 [data-theme="dark"] .rvpage .rv-un { background: var(--brass); color: #1d1709; }
-@keyframes rv-pulse { 0% { box-shadow: 0 0 0 0 rgba(30, 58, 95, .5); } 70%, 100% { box-shadow: 0 0 0 7px rgba(30, 58, 95, 0); } }
+@keyframes rv-pulse { 0% { box-shadow: 0 0 0 0 rgba(28, 27, 25, .4); } 70%, 100% { box-shadow: 0 0 0 7px rgba(28, 27, 25, 0); } }
 [data-theme="dark"] .rvpage .rv-live i { animation-name: rv-pulse-dark; }
-@keyframes rv-pulse-dark { 0% { box-shadow: 0 0 0 0 rgba(157, 185, 230, .5); } 70%, 100% { box-shadow: 0 0 0 7px rgba(157, 185, 230, 0); } }
+@keyframes rv-pulse-dark { 0% { box-shadow: 0 0 0 0 rgba(235, 232, 222, .4); } 70%, 100% { box-shadow: 0 0 0 7px rgba(235, 232, 222, 0); } }
 .rvpage .rv-chip.line { background: var(--grey-tint); color: var(--ink-2); }
 .rvpage .rv-compose textarea:focus, .rvpage .rv-say-row:focus-within { border-color: var(--lux-ink); box-shadow: 0 0 0 3px rgba(196, 160, 98, .3); }
 [data-theme="dark"] .rvpage .rv-compose textarea:focus, [data-theme="dark"] .rvpage .rv-say-row:focus-within { border-color: var(--brass); }
@@ -2786,3 +2772,18 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 @media (max-width: 900px) {
   .rv-hist { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; }
 }
+
+/* =====================================================================
+   หน้ารออนุมัติ — รอบ 6: ตัวหนังสือสีน้ำเงินกลับเป็นดำ/เทา · พื้นช่องแชทและฟองข้อความเป็นขาว/ขาวนวล · ปุ่มหลักสีอ่อน
+   (ค่าสีของตัวหนังสือ/ลิงก์/พื้นฟองอยู่ที่ตัวแปรของ .rvpage ในรอบ 4) — ปุ่มอนุมัติและปุ่มส่งในแชท = พื้นขาวนวล ขอบหมึกบาง เส้นทองเหลืองใต้ปุ่ม
+   ===================================================================== */
+.rvpage .rv .rv-btn.primary { border: 1.5px solid var(--ink); background: var(--surface); color: var(--ink); box-shadow: 0 2px 0 var(--brass); }
+.rvpage .rv .rv-btn.primary:hover { border-color: var(--ink); background: #f6f3ea; }
+.rvpage .rv .rv-btn.primary:active { box-shadow: 0 1px 0 var(--brass); }
+.rvpage .rv .rv-say-btn { border: 1.5px solid var(--ink); background: var(--surface); color: var(--ink); box-shadow: 0 2px 0 var(--brass); }
+.rvpage .rv .rv-say-btn:hover { background: #f6f3ea; }
+[data-theme="dark"] .rvpage .rv .rv-btn.primary, [data-theme="dark"] .rvpage .rv .rv-say-btn { border-color: #ebe8de; background: #ebe8de; color: #14130f; box-shadow: 0 2px 0 var(--brass); }
+[data-theme="dark"] .rvpage .rv .rv-btn.primary:hover, [data-theme="dark"] .rvpage .rv .rv-say-btn:hover { background: #ffffff; }
+.rvpage .rv-text a { text-decoration: underline; text-underline-offset: 3px; }
+.rvpage .rv-tid { color: var(--ink-2); }
+.rvpage .rv-chip.info { background: var(--grey-tint); color: var(--ink-2); }
