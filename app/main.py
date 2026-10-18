@@ -1331,34 +1331,79 @@ def _reopen_for_reanalysis(chat_id: int) -> int:
         return len(msgs)
 
 
+async def _run_reanalysis(user, chat_id: int, focus_ticket_id: int = 0) -> dict:
+    """ให้ AI วิเคราะห์แชทนี้ใหม่ (ทั้งร่างคำตอบลูกค้า และร่างข้อความปัญหาของ ticket ที่ยังไม่ได้ส่งเข้ากลุ่ม)
+    คืนค่า dict: error | summary, seconds, new_reply_id, new_status, redrafted (id ticket ที่ร่างข้อความปัญหาใหม่)"""
+    with SessionLocal() as db:
+        before = db.scalar(select(func.max(Reply.id)).where(Reply.chat_id == chat_id)) or 0
+    n = _reopen_for_reanalysis(chat_id)
+    started_at = utcnow()
+    started = time.perf_counter()
+    summary = await analyzer.analyze(chat_id, reanalysis=True, focus_ticket_id=focus_ticket_id)
+    seconds = round(time.perf_counter() - started, 1)
+    if summary.startswith("ผิดพลาด"):
+        return {"error": summary}
+    with SessionLocal() as db:
+        new = db.scalar(select(Reply).where(Reply.chat_id == chat_id, Reply.id > before).order_by(Reply.id.desc()).limit(1))
+        new_id, new_status = (new.id, new.status) if new else (None, "")
+        redrafted = sorted({e.ticket_id for e in db.scalars(
+            select(TicketEvent).join(Ticket, Ticket.id == TicketEvent.ticket_id)
+            .where(Ticket.chat_id == chat_id, TicketEvent.kind == "ai_summary", TicketEvent.created_at >= started_at,
+                   TicketEvent.body.like(analyzer.REANALYSIS_EVENT + "%" + analyzer.REANALYSIS_REDRAFTED)))})
+    log.info("%s สั่งวิเคราะห์แชท %s ใหม่ (%s ข้อความ): %s", user.username, chat_id, n, summary)
+    return {"summary": summary, "seconds": seconds, "new_reply_id": new_id, "new_status": new_status, "redrafted": redrafted}
+
+
+def _redraft_text(redrafted: list[int]) -> str:
+    return (" · ร่างข้อความปัญหา " + ", ".join(f"ticket #{i}" for i in redrafted) + " ใหม่แล้ว (ดูที่แท็บ ส่งเข้ากลุ่ม)") if redrafted else ""
+
+
 @app.post("/api/replies/{reply_id}/reanalyze")
 async def api_reply_reanalyze(request: Request, reply_id: int):
     """วิเคราะห์แชทนี้ใหม่ (กรณี AI เข้าใจผิด): ให้ AI อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างเดิม
-    (นับโควตา AI 1 ครั้ง) · AI ผิดพลาด/เห็นว่าไม่ต้องตอบ = ร่างเดิมยังอยู่"""
+    และร่างข้อความปัญหาของ ticket ที่ยังไม่ได้ส่งเข้ากลุ่มโปรแกรมเมอร์ใหม่ด้วย (นับโควตา AI 1 ครั้ง)
+    AI ผิดพลาด/เห็นว่าไม่ต้องตอบ = ร่างเดิมยังอยู่"""
     user = current_user(request, "agent")
     reply = _load_pending(reply_id)
     if not reply or reply.kind != "ai":
         return JSONResponse({"ok": False, "error": "ร่างนี้ถูกดำเนินการไปแล้ว หรือไม่ใช่ร่างตอบลูกค้า"}, status_code=409)
-    chat_id = reply.chat_id
-    with SessionLocal() as db:
-        before = db.scalar(select(func.max(Reply.id)).where(Reply.chat_id == chat_id)) or 0
-    n = _reopen_for_reanalysis(chat_id)
-    started = time.perf_counter()
-    summary = await analyzer.analyze(chat_id)
-    seconds = round(time.perf_counter() - started, 1)
-    if summary.startswith("ผิดพลาด"):
-        return JSONResponse({"ok": False, "error": f"AI วิเคราะห์ไม่สำเร็จ ร่างเดิมยังอยู่ · {summary}"}, status_code=502)
-    with SessionLocal() as db:
-        new = db.scalar(select(Reply).where(Reply.chat_id == chat_id, Reply.id > before).order_by(Reply.id.desc()).limit(1))
-        new_id, new_status = (new.id, new.status) if new else (None, "")
-    log.info("%s สั่งวิเคราะห์แชท %s ใหม่ (%s ข้อความ): %s", user.username, chat_id, n, summary)
-    if new_id is None:
-        return JSONResponse({"ok": True, "new_reply_id": None, "seconds": seconds,
-                             "message": f"AI วิเคราะห์ใหม่แล้ว ({summary}) · ไม่มีร่างใหม่ ร่างเดิมยังอยู่"})
-    msg = ("AI วิเคราะห์ใหม่แล้ว และส่งคำตอบถึงลูกค้าอัตโนมัติแล้ว (โหมดตอบทันที)" if new_status == "sent"
-           else "AI วิเคราะห์ใหม่แล้ว ได้ร่างคำตอบใหม่ ตรวจก่อนกดอนุมัติ")
+    out = await _run_reanalysis(user, reply.chat_id, focus_ticket_id=reply.ticket_id or 0)
+    if "error" in out:
+        return JSONResponse({"ok": False, "error": f"AI วิเคราะห์ไม่สำเร็จ ร่างเดิมยังอยู่ · {out['error']}"}, status_code=502)
+    extra = _redraft_text(out["redrafted"])
+    if out["new_reply_id"] is None:
+        msg = f"AI วิเคราะห์ใหม่แล้ว ({out['summary']}) · ไม่มีร่างคำตอบใหม่ ร่างเดิมยังอยู่" + extra
+        if out["redrafted"]:
+            flash(request, msg)
+        return JSONResponse({"ok": True, "new_reply_id": None, "redrafted": out["redrafted"], "seconds": out["seconds"],
+                             "message": msg, "reload": bool(out["redrafted"])})
+    msg = ("AI วิเคราะห์ใหม่แล้ว และส่งคำตอบถึงลูกค้าอัตโนมัติแล้ว (โหมดตอบทันที)" if out["new_status"] == "sent"
+           else "AI วิเคราะห์ใหม่แล้ว ได้ร่างคำตอบใหม่ ตรวจก่อนกดอนุมัติ") + extra
     flash(request, msg)
-    return JSONResponse({"ok": True, "new_reply_id": new_id, "status": new_status, "seconds": seconds, "message": msg})
+    return JSONResponse({"ok": True, "new_reply_id": out["new_reply_id"], "status": out["new_status"], "redrafted": out["redrafted"],
+                         "seconds": out["seconds"], "message": msg, "reload": True})
+
+
+@app.post("/api/tickets/{ticket_id}/reanalyze")
+async def api_ticket_reanalyze(request: Request, ticket_id: int):
+    """จากแท็บ "ส่งเข้ากลุ่ม": วิเคราะห์แชทของ ticket นี้ใหม่ แล้วร่างข้อความปัญหาที่จะโพสต์เข้ากลุ่มใหม่ (ticket ต้องยังรออนุมัติ)"""
+    user = current_user(request, "agent")
+    with SessionLocal() as db:
+        ticket = db.get(Ticket, ticket_id)
+        chat_id = ticket.chat_id if ticket and ticket.dev_status == "pending" else None
+    if chat_id is None:
+        return JSONResponse({"ok": False, "error": "ticket นี้ไม่ได้รออนุมัติส่งเข้ากลุ่มแล้ว"}, status_code=409)
+    out = await _run_reanalysis(user, chat_id, focus_ticket_id=ticket_id)
+    if "error" in out:
+        return JSONResponse({"ok": False, "error": f"AI วิเคราะห์ไม่สำเร็จ ข้อความเดิมยังอยู่ · {out['error']}"}, status_code=502)
+    done = ticket_id in out["redrafted"]
+    msg = (f"AI วิเคราะห์ใหม่แล้ว ร่างข้อความปัญหา ticket #{ticket_id} ใหม่แล้ว ตรวจก่อนกดอนุมัติส่งเข้ากลุ่ม" if done
+           else f"AI วิเคราะห์ใหม่แล้ว แต่ไม่ได้ร่างข้อความ ticket #{ticket_id} ใหม่ ({out['summary']}) · ข้อความเดิมยังอยู่")
+    if out["new_reply_id"] and out["new_status"] != "sent":
+        msg += " · มีร่างคำตอบลูกค้าใหม่ที่แท็บ ตอบลูกค้า"
+    if done:
+        flash(request, msg)
+    return JSONResponse({"ok": True, "redrafted": done, "ticket_id": ticket_id, "seconds": out["seconds"], "message": msg})
 
 
 @app.post("/replies/{reply_id}/regenerate")

@@ -131,8 +131,12 @@
         <div class="dt-msg rv-tg">
           <div class="rv-label-row">
             <span class="rv-label" style="margin:0">ข้อความที่จะโพสต์ในกลุ่ม</span>
-            <button type="button" class="rv-mini" onclick="toggleEdit(this)">{{ icon('edit', 13) }} <span>แก้ไขข้อความ</span></button>
+            <span class="rv-mini-row">
+              <button type="button" class="rv-mini" data-reanalyze-ticket="{{ t.id }}" title="ให้ AI วิเคราะห์แชทนี้ใหม่ แล้วร่างข้อความปัญหาที่จะส่งเข้ากลุ่มใหม่ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 13) }} <span>วิเคราะห์ใหม่</span></button>
+              <button type="button" class="rv-mini" onclick="toggleEdit(this)">{{ icon('edit', 13) }} <span>แก้ไขข้อความ</span></button>
+            </span>
           </div>
+          <p class="rv-ai-status" role="status" aria-live="polite" hidden></p>
           <div class="tg-bubble">{{ item.text }}</div>
           <textarea name="text" form="post-{{ t.id }}" rows="12" hidden>{{ item.text }}</textarea>
         </div>
@@ -251,7 +255,7 @@
           {% if r.kind == 'ai' %}
           <div class="rv-reanalyze">
             <button type="button" class="rv-btn soft" data-reanalyze="{{ r.id }}" title="ให้ AI อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างนี้ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 15) }} วิเคราะห์แชทนี้ใหม่</button>
-            <span class="rv-muted">AI เข้าใจผิด? ให้อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างนี้</span>
+            <span class="rv-muted">AI เข้าใจผิด? ให้อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างนี้ · {{ 'ถ้ามี ticket ที่เกี่ยวข้อง จะร่างข้อความปัญหาใหม่ให้ด้วย' if scope == 'line' else 'ถ้ามีข้อความปัญหาที่รอส่งเข้ากลุ่ม จะร่างใหม่ให้ด้วย' }}</span>
           </div>
           {% endif %}
         </div>
@@ -539,6 +543,10 @@
           say('<span>✓ ' + (d.message || 'ได้ร่างใหม่แล้ว') + ' · กำลังโหลดร่างใหม่…</span>', 'ok');
           location.href = location.pathname + location.search + '#r' + d.new_reply_id;
           location.reload();
+        } else if (d.reload) {   // ไม่มีร่างคำตอบใหม่ แต่ร่างข้อความปัญหา (ticket) ใหม่แล้ว -> โหลดหน้าใหม่ให้เห็นข้อความที่แท็บ ส่งเข้ากลุ่ม
+          reload = true;
+          say('<span>✓ ' + (d.message || '') + ' · กำลังโหลดหน้าใหม่…</span>', 'ok');
+          location.reload();
         } else {
           say('<span>' + (d.message || 'AI ไม่มีร่างใหม่') + '</span>', 'ok');
         }
@@ -547,6 +555,52 @@
       } finally {
         clearInterval(timer);
         if (!reload) { box.classList.remove('busy'); ta.readOnly = false; buttons.forEach(b => { b.disabled = false; }); }
+      }
+    });
+  })();
+
+  // แท็บ "ส่งเข้ากลุ่ม": วิเคราะห์แชทของ ticket นี้ใหม่ แล้วร่างข้อความปัญหาที่จะโพสต์เข้ากลุ่มใหม่
+  (() => {
+    const rv = document.getElementById('rv');
+    if (!rv) return;
+    rv.addEventListener('click', async e => {
+      const btn = e.target.closest('[data-reanalyze-ticket]');
+      if (!btn) return;
+      const id = btn.dataset.reanalyzeTicket;
+      const wrap = btn.closest('.dt-msg');
+      if (!wrap || wrap.classList.contains('busy')) return;
+      const ta = wrap.querySelector('textarea');
+      if (ta && ta.value.trim() !== ta.defaultValue.trim() && typeof askConfirm === 'function') {
+        const yes = await askConfirm({ title: 'วิเคราะห์ใหม่และร่างข้อความปัญหาใหม่?', message: 'ข้อความที่คุณแก้ไว้จะถูกแทนที่ด้วยข้อความใหม่จาก AI', ok: 'วิเคราะห์ใหม่', tone: 'warn' });
+        if (!yes) return;
+      }
+      const status = wrap.querySelector('.rv-ai-status');
+      const buttons = [...wrap.querySelectorAll('button')];
+      const say = (html, cls) => { status.className = 'rv-ai-status ' + (cls || ''); status.innerHTML = html; status.hidden = false; };
+      wrap.classList.add('busy'); buttons.forEach(b => { b.disabled = true; });
+      const t0 = Date.now();
+      const tick = () => say('<i class="rv-spin"></i><span>AI กำลังวิเคราะห์แชทนี้ใหม่และร่างข้อความปัญหา… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
+      tick();
+      const timer = setInterval(tick, 1000);
+      let reload = false;
+      try {
+        const r = await fetch('/api/tickets/' + id + '/reanalyze', { method: 'POST', credentials: 'same-origin' });
+        let d = {};
+        try { d = await r.json(); } catch (x) {}
+        if (!r.ok || !d.ok) throw new Error(d.error || ('วิเคราะห์ใหม่ไม่สำเร็จ (' + r.status + ')'));
+        if (d.redrafted) {
+          reload = true;
+          say('<span>✓ ' + (d.message || 'ร่างข้อความใหม่แล้ว') + ' · กำลังโหลดใหม่…</span>', 'ok');
+          location.href = location.pathname + location.search + '#t' + id;
+          location.reload();
+        } else {
+          say('<span>' + (d.message || 'AI ไม่ได้ร่างข้อความใหม่') + '</span>', 'ok');
+        }
+      } catch (err) {
+        say('<span>' + (err.message || 'วิเคราะห์ใหม่ไม่สำเร็จ') + ' · ข้อความเดิมยังอยู่ ลองกดอีกครั้งได้</span>', 'err');
+      } finally {
+        clearInterval(timer);
+        if (!reload) { wrap.classList.remove('busy'); buttons.forEach(b => { b.disabled = false; }); }
       }
     });
   })();

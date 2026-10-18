@@ -49,6 +49,8 @@ last_error: dict[int, str] = {}  # chat_id -> ข้อผิดพลาดล�
 on_draft = None  # async callback(reply_id) หลังสร้างร่างตอบลูกค้า (ใช้กับโหมดตอบอัตโนมัติของ LINE Chat Bot)
 
 # ข้อความที่ระบบใส่ในโน้ตของร่างคำตอบ (โหมดตอบอัตโนมัติของ LINE ใช้แยกว่าตอบจากเนื้อหาของบอทหรือไม่)
+REANALYSIS_EVENT = "วิเคราะห์ใหม่: "  # บันทึกเหตุการณ์ ticket เมื่อแอดมินกด "วิเคราะห์แชทนี้ใหม่"
+REANALYSIS_REDRAFTED = " (ร่างข้อความปัญหาที่จะส่งเข้ากลุ่มใหม่แล้ว)"
 GUIDE_NOTE = "ตอบจากคู่มือ #"          # แชท Telegram: คู่มือตอบคำถาม
 LINE_NOTE = "ตอบจากเนื้อหาบอท #"       # แชท LINE: เนื้อหาบอท LINE (แยกจากคู่มือของ Telegram)
 QUESTION_NOTE = "คำถามการใช้งาน:"
@@ -120,7 +122,7 @@ async def sweeper() -> None:
             log.exception("sweeper failed")
 
 
-async def analyze(chat_id: int) -> str:
+async def analyze(chat_id: int, reanalysis: bool = False, focus_ticket_id: int = 0) -> str:
     """วิเคราะห์ข้อความที่ยังไม่ได้วิเคราะห์ของแชทนี้ คืนค่าข้อความสรุปผล"""
     _last_attempt[chat_id] = time.monotonic()
     lock = _locks.setdefault(chat_id, asyncio.Lock())
@@ -196,7 +198,8 @@ async def analyze(chat_id: int) -> str:
 
         ticket_id = None
         if result.is_issue and settings.get("auto_ticket") == "1":
-            ticket_id = await _save_ticket(chat_id, result, new_messages, settings)
+            ticket_id = await _save_ticket(chat_id, result, new_messages, settings, reanalysis=reanalysis,
+                                           focus_ticket_id=focus_ticket_id)
         ask_link = bool(ticket_id) and settings.get("ask_link") == "1" and needs_link_request(ticket_id)
         if ask_link:
             if result.needs_reply and result.reply_text.strip():
@@ -423,7 +426,11 @@ def pick_website(chat_website: str, ai_url: str, customer_msgs: list[Message], c
     return chat_website
 
 
-async def _save_ticket(chat_id: int, result: ai_service.Analysis, new_messages: list[Message], settings) -> int:
+async def _save_ticket(chat_id: int, result: ai_service.Analysis, new_messages: list[Message], settings,
+                       reanalysis: bool = False, focus_ticket_id: int = 0) -> int:
+    """reanalysis=True: แอดมินกด "วิเคราะห์แชทนี้ใหม่" -> ข้อความเหล่านี้เคยบันทึกกับ ticket แล้ว จึงไม่บันทึกซ้ำ/ไม่ส่งซ้ำเข้ากลุ่ม
+    และ ticket ที่ยังไม่ได้โพสต์เข้ากลุ่มจะถูกร่างข้อความปัญหา (หัวข้อ/สรุป/หมวด/ความรุนแรง) ใหม่ตามผลวิเคราะห์รอบนี้
+    focus_ticket_id = ticket ที่แอดมินกดวิเคราะห์ใหม่จากหน้ารออนุมัติ (ใช้ใบนี้ ไม่ให้ AI เลือกใบอื่น)"""
     customer_msgs = [m for m in new_messages if not m.is_outgoing]
     with SessionLocal() as db:
         chat = db.get(Chat, chat_id)
@@ -433,7 +440,11 @@ async def _save_ticket(chat_id: int, result: ai_service.Analysis, new_messages: 
                                         .order_by(Message.date.desc()).limit(300)))
         ticket = None
         created = False
-        if result.existing_ticket_id:
+        if reanalysis and focus_ticket_id:
+            focus = db.get(Ticket, focus_ticket_id)
+            if focus and focus.chat_id == chat_id and focus.status in OPEN_STATUSES:
+                ticket = focus
+        if ticket is None and result.existing_ticket_id:
             ticket = db.get(Ticket, result.existing_ticket_id)
             if not ticket or ticket.chat_id != chat_id or ticket.status not in OPEN_STATUSES:
                 ticket = None
@@ -456,6 +467,20 @@ async def _save_ticket(chat_id: int, result: ai_service.Analysis, new_messages: 
             db.flush()
             created = True
             db.add(TicketEvent(ticket_id=ticket.id, kind="ai_summary", author="AI", body=result.issue_summary))
+        elif reanalysis:
+            refreshed = ticket.dev_status != "sent"
+            if refreshed:  # ยังไม่ได้โพสต์เข้ากลุ่มโปรแกรมเมอร์ -> ร่างข้อความปัญหาใหม่ตามการวิเคราะห์รอบนี้
+                ticket.category = result.issue_category
+                ticket.title = result.issue_title or ai_service.CATEGORIES.get(result.issue_category, "ปัญหา")
+                ticket.summary = result.issue_summary
+                ticket.severity = result.severity
+                if result.customer_name:
+                    ticket.customer_name = result.customer_name
+                picked = pick_website(chat_website, result.website_url, customer_msgs, chat_text)
+                if picked:
+                    ticket.website_url = picked
+            db.add(TicketEvent(ticket_id=ticket.id, kind="ai_summary", author="AI",
+                               body=REANALYSIS_EVENT + result.issue_summary + (REANALYSIS_REDRAFTED if refreshed else "")))
         else:
             db.add(TicketEvent(ticket_id=ticket.id, kind="ai_summary", author="AI",
                                body="ข้อมูลเพิ่มเติม: " + result.issue_summary))
@@ -464,10 +489,15 @@ async def _save_ticket(chat_id: int, result: ai_service.Analysis, new_messages: 
             if ai_service.SEVERITIES.index(result.severity) > ai_service.SEVERITIES.index(ticket.severity):
                 ticket.severity = result.severity
 
+        have_dates = {d for d in db.scalars(select(TicketEvent.created_at).where(
+            TicketEvent.ticket_id == ticket.id, TicketEvent.kind == "customer_message"))} if reanalysis and not created else set()
+        have_media = {p for p in db.scalars(select(TicketAttachment.media_path).where(
+            TicketAttachment.ticket_id == ticket.id))} if reanalysis and not created else set()
         for m in customer_msgs:
-            db.add(TicketEvent(ticket_id=ticket.id, kind="customer_message", author=m.sender_name,
-                               body=m.text or "", media_path=m.media_path or "", created_at=m.date))
-            if m.media_path:
+            if m.date not in have_dates:
+                db.add(TicketEvent(ticket_id=ticket.id, kind="customer_message", author=m.sender_name,
+                                   body=m.text or "", media_path=m.media_path or "", created_at=m.date))
+            if m.media_path and m.media_path not in have_media:
                 db.add(TicketAttachment(ticket_id=ticket.id, media_path=m.media_path, caption=m.text))
         db.commit()
         ticket_id, url = ticket.id, ticket.website_url
@@ -481,7 +511,7 @@ async def _save_ticket(chat_id: int, result: ai_service.Analysis, new_messages: 
     try:
         if created:
             await dev_bridge.queue_ticket(ticket_id)
-        else:
+        elif not reanalysis:  # วิเคราะห์ใหม่: ข้อความลูกค้าเหล่านี้ส่งเข้ากลุ่มไปแล้วตอนวิเคราะห์ครั้งแรก ไม่ส่งซ้ำ
             await dev_bridge.post_customer_update(ticket_id, customer_msgs)
     except Exception:  # noqa: BLE001
         log.exception("notify dev group failed for ticket %s", ticket_id)

@@ -2275,3 +2275,6 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 /* ---- ปุ่ม "วิเคราะห์แชทนี้ใหม่" ในหน้ารออนุมัติ ---- */
 .rv-reanalyze { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-2); }
 .rv-reanalyze .rv-muted { flex: 1 1 200px; font-size: .84rem; line-height: 1.5; }
+
+.rv-mini-row { display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.dt-msg .rv-ai-status { margin: 0 0 10px; }
