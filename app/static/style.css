@@ -2839,3 +2839,17 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .rv-copy.copied, .rv .rv-mini.copied, .pick-copy.copied { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 .rv-copy.copied .ic, .rv .rv-mini.copied .ic { stroke: currentColor; }
 .rv-facts dd .mono { word-break: break-all; }
+
+/* ช่องพิมพ์ตอบในหน้ารออนุมัติ: วางรูป (Ctrl+V) / แนบรูป / ลากรูปมาวาง */
+.rv-say-files { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 8px; padding: 10px; border: 1px dashed var(--line-2); border-radius: 10px; background: var(--surface-2); }
+.rv-say-files[hidden] { display: none; }
+.rv-say-file { position: relative; width: 84px; height: 64px; border: 2px solid var(--brass); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.rv-say-file img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rv .rv-say-file-x { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgba(28, 27, 25, .82); color: #fff; font-size: .95rem; line-height: 1; cursor: pointer; box-shadow: none; }
+.rv .rv-say-file-x:hover { background: var(--red); }
+.rv .rv-say-attach { flex-shrink: 0; width: 40px; height: 40px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); box-shadow: none; cursor: pointer; }
+.rv .rv-say-attach:hover { background: var(--surface-2); color: var(--ink); }
+.rv-chat.dropping .rv-convo { outline: 2px dashed var(--brass); outline-offset: -6px; }
+/* ปุ่มเล็กที่ซ้อนบนรูป/ข้างลิงก์: ไม่รับ min-height 42px ของปุ่มบนมือถือ (ไม่งั้นกลายเป็นวงรี) */
+button.pick-del:not(.n1):not(.n2):not(.n3):not(.n4):not(.n5), button.pick-copy:not(.n1):not(.n2):not(.n3):not(.n4):not(.n5),
+button.rv-copy:not(.n1):not(.n2):not(.n3):not(.n4):not(.n5), button.rv-say-file-x:not(.n1):not(.n2):not(.n3):not(.n4):not(.n5) { min-height: 0; min-width: 0; }

@@ -399,6 +399,48 @@ class TelegramService:
                     "id": 0, "tg": msg.id, "chat": chat_id, "name": "", "out": True, "text": text, "media": "", "hm": "", "at": ""}
         return data
 
+    async def send_manual_images(self, chat_id: int, items: list[tuple[str, str]], caption: str = "",
+                                 reply_to: int | None = None, by: str = "") -> list[dict]:
+        """ทีมงานวางรูปในหน้าเว็บ -> ส่งรูป (พร้อมคำอธิบายถ้ามี) เข้าแชทลูกค้า แล้วบันทึก/กระจายให้ทุกหน้าที่เปิดอยู่
+        items = [(พาธไฟล์เต็ม, ชื่อไฟล์ใน MEDIA_DIR)] · หลายรูปส่งเป็นอัลบั้ม (คำอธิบายอยู่ที่รูปแรก) · คืนค่า dict ของข้อความที่ส่ง"""
+        if not items:
+            return []
+        entity = await self._entity(chat_id)
+        paths = [p for p, _ in items]
+        target = paths if len(paths) > 1 else paths[0]
+        try:
+            sent = await self.client.send_file(entity, target, caption=caption or None, reply_to=reply_to or None)
+        except RPCError as e:
+            # ข้อความที่จะตอบกลับถูกลบไปแล้ว -> ส่งเป็นข้อความปกติแทน
+            if not reply_to or "REPLY" not in str(e).upper():
+                raise
+            sent = await self.client.send_file(entity, target, caption=caption or None)
+        sent = sent if isinstance(sent, list) else [sent]
+        out = []
+        for i, msg in enumerate(sent):
+            name = items[i][1] if i < len(items) else ""
+            try:
+                sender = await msg.get_sender()
+            except (RPCError, ValueError, AttributeError):
+                sender = None
+            if by:
+                self._sent_by_hints[(chat_id, msg.id)] = by.strip()[:64]
+            data = self._store(chat_id, msg, sender, name, analyzed=True, staff=True)
+            if data is None:  # อีเวนต์ NewMessage บันทึกไปก่อน (ไม่มีรูป/ชื่อผู้ส่ง) -> เติมให้แถวที่มีอยู่
+                self._sent_by_hints.pop((chat_id, msg.id), None)
+                with SessionLocal() as db:
+                    row = db.scalar(select(Message).where(Message.chat_id == chat_id, Message.tg_message_id == msg.id))
+                    if row is not None:
+                        if name and not row.media_path:
+                            row.media_path = name
+                        if by and not row.sent_by:
+                            row.sent_by = by.strip()[:64]
+                        db.commit()
+                        data = chatbus.to_dict(row)
+            if data:
+                out.append(data)
+        return out
+
     async def _handle_dev_message(self, event: events.NewMessage.Event) -> None:
         msg = event.message
         if msg.out or not self.on_dev_message:

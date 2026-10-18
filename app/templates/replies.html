@@ -221,8 +221,11 @@
           <button type="button" class="rv-newmsg" hidden>ข้อความใหม่ ↓</button>
           <div class="rv-say">
             <div class="rv-replying" hidden><span>ตอบถึง</span><q></q><button type="button" aria-label="ยกเลิกการตอบถึงข้อความนี้">{{ icon('x', 13) }}</button></div>
+            <div class="rv-say-files" hidden aria-label="รูปที่จะส่ง"></div>
             <div class="rv-say-row">
-              <textarea rows="1" maxlength="4000" placeholder="พิมพ์ตอบลูกค้าเองในแชทนี้…" title="Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ · แตะข้อความลูกค้าเพื่อตอบถึงข้อความนั้น" aria-label="พิมพ์ข้อความถึงลูกค้าในแชทนี้"></textarea>
+              <textarea rows="1" maxlength="4000" placeholder="พิมพ์ตอบลูกค้าเองในแชทนี้… (วางรูปด้วย Ctrl+V ได้)" title="Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ · Ctrl+V = วางรูปที่คัดลอกไว้ · แตะข้อความลูกค้าเพื่อตอบถึงข้อความนั้น" aria-label="พิมพ์ข้อความถึงลูกค้าในแชทนี้ หรือวางรูปภาพ"></textarea>
+              <button type="button" class="rv-say-attach" aria-label="แนบรูป" title="แนบรูป (หรือวางรูปด้วย Ctrl+V / ลากรูปมาวาง)">{{ icon('image', 20) }}</button>
+              <input type="file" class="rv-say-input" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden>
               <button type="button" class="rv-say-btn" aria-label="ส่งข้อความถึงลูกค้า" title="ส่ง (Enter)">{{ cicon('send', 24) }}</button>
             </div>
             <p class="rv-say-err" role="alert" hidden></p>
@@ -888,23 +891,96 @@
       if (ta.matches && ta.matches('.rv-say textarea')) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; }
     });
 
+    // ---- แนบ/วางรูปในช่องพิมพ์ตอบ (Ctrl+V · ปุ่มแนบรูป · ลากรูปมาวาง) แล้วส่งถึงลูกค้าพร้อมข้อความที่พิมพ์ไว้
+    const IMG_OK = /^image\/(jpeg|png|gif|webp)$/, IMG_MAX = 8 * 1024 * 1024, IMG_COUNT = 5;
+    function showFiles(box) {
+      const wrap = box.querySelector('.rv-say-files');
+      (box._urls || []).forEach(u => URL.revokeObjectURL(u));
+      box._urls = [];
+      wrap.textContent = '';
+      (box._files || []).forEach((f, i) => {
+        const u = URL.createObjectURL(f); box._urls.push(u);
+        const el = document.createElement('div');
+        el.className = 'rv-say-file'; el.title = f.name || 'รูปที่วาง';
+        el.innerHTML = '<img alt="รูปที่จะส่ง" src="' + u + '"><button type="button" class="rv-say-file-x" data-i="' + i + '" aria-label="เอารูปนี้ออก">×</button>';
+        wrap.appendChild(el);
+      });
+      wrap.hidden = !(box._files && box._files.length);
+    }
+    function addFiles(box, list) {
+      const err = box.querySelector('.rv-say-err');
+      box._files = box._files || [];
+      let note = '';
+      [...list].forEach(f => {
+        if (!IMG_OK.test(f.type)) { note = 'ส่งได้เฉพาะรูป JPG / PNG / GIF / WEBP'; return; }
+        if (f.size > IMG_MAX) { note = 'รูปใหญ่เกิน 8 MB: ' + (f.name || 'รูปที่วาง'); return; }
+        if (box._files.length >= IMG_COUNT) { note = 'ส่งรูปได้ครั้งละไม่เกิน ' + IMG_COUNT + ' รูป'; return; }
+        box._files.push(f);
+      });
+      err.textContent = note; err.hidden = !note;
+      showFiles(box);
+      box.querySelector('.rv-say textarea').focus();
+    }
+    rv.addEventListener('paste', e => {
+      const ta = e.target;
+      if (!(ta.matches && ta.matches('.rv-say textarea'))) return;
+      const imgs = [...((e.clipboardData && e.clipboardData.items) || [])]
+        .filter(i => i.kind === 'file' && /^image\//.test(i.type)).map(i => i.getAsFile()).filter(Boolean);
+      if (!imgs.length) return;   // วางข้อความธรรมดาเหมือนเดิม
+      e.preventDefault();
+      addFiles(ta.closest('.rv-chat'), imgs);
+    });
+    rv.addEventListener('dragover', e => {
+      const box = e.target.closest && e.target.closest('.rv-chat');
+      if (box && e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); box.classList.add('dropping'); }
+    });
+    rv.addEventListener('dragleave', e => { const box = e.target.closest && e.target.closest('.rv-chat'); if (box && !box.contains(e.relatedTarget)) box.classList.remove('dropping'); });
+    rv.addEventListener('drop', e => {
+      const box = e.target.closest && e.target.closest('.rv-chat');
+      if (!box || !e.dataTransfer || !e.dataTransfer.files.length) return;
+      e.preventDefault(); box.classList.remove('dropping');
+      addFiles(box, e.dataTransfer.files);
+    });
+    rv.addEventListener('click', e => {
+      const at = e.target.closest('.rv-say-attach');
+      if (at) { at.closest('.rv-say-row').querySelector('.rv-say-input').click(); return; }
+      const x = e.target.closest('.rv-say-file-x');
+      if (x) { const box = x.closest('.rv-chat'); box._files.splice(+x.dataset.i, 1); showFiles(box); }
+    });
+    rv.addEventListener('change', e => {
+      const inp = e.target;
+      if (inp.matches && inp.matches('.rv-say-input')) { addFiles(inp.closest('.rv-chat'), inp.files); inp.value = ''; }
+    });
+
     async function say(box) {
       const ta = box.querySelector('.rv-say textarea'), btn = box.querySelector('.rv-say-btn'), err = box.querySelector('.rv-say-err');
       const text = ta.value.trim();
-      if (!text || ta.disabled) return;
+      const files = box._files || [];
+      if ((!text && !files.length) || ta.disabled) return;
       err.hidden = true; ta.disabled = true; btn.disabled = true;
       try {
-        const r = await fetch('/api/chats/' + box.dataset.chat + '/say', {
-          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, reply_to: box.dataset.reply ? +box.dataset.reply : null }),
-        });
+        let r;
+        if (files.length) {   // มีรูป: ส่งเป็น multipart (ข้อความที่พิมพ์ไว้ = คำอธิบายรูป) · ต้องมี header นี้ กันฟอร์มข้ามเว็บ
+          const fd = new FormData();
+          files.forEach((f, i) => fd.append('images', f, f.name || ('paste-' + (i + 1) + '.png')));
+          fd.append('text', text);
+          if (box.dataset.reply) fd.append('reply_to', box.dataset.reply);
+          r = await fetch('/api/chats/' + box.dataset.chat + '/say-image', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'rv-say' }, body: fd });
+        } else {
+          r = await fetch('/api/chats/' + box.dataset.chat + '/say', {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, reply_to: box.dataset.reply ? +box.dataset.reply : null }),
+          });
+        }
         let d = {};
         try { d = await r.json(); } catch (e) {}
         if (!r.ok || !d.ok) throw new Error(d.error || ('ส่งไม่สำเร็จ (' + r.status + ')'));
         ta.value = ''; ta.style.height = 'auto';
+        box._files = []; showFiles(box);
         box.querySelectorAll('.rv-msg.picked').forEach(m => m.classList.remove('picked'));
         box.querySelector('.rv-replying').hidden = true; delete box.dataset.reply;
-        add(d.message);
+        (d.messages || (d.message ? [d.message] : [])).forEach(add);
+        if (d.skipped && d.skipped.length) { err.textContent = 'ส่งแล้ว · ข้ามบางรูป: ' + d.skipped.join('; '); err.hidden = false; }
       } catch (e) {
         err.textContent = e.message || 'ส่งไม่สำเร็จ'; err.hidden = false;
       } finally {
@@ -918,6 +994,7 @@
   setInterval(async () => {
     if (document.activeElement && ['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName)) return;
     if ([...document.querySelectorAll('.rv-say textarea, .rv-compose textarea')].some(t => t.value !== t.defaultValue)) return;
+    if ([...document.querySelectorAll('.rv-chat')].some(b => b._files && b._files.length)) return;
     const r = await fetch('/api/badge'); if (!r.ok) return;
     const d = await r.json();
     if (known === null) known = d.pending;

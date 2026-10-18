@@ -887,6 +887,61 @@ async def api_chat_say(request: Request, chat_id: int, body: SayIn):
     return JSONResponse({"ok": True, "message": data})
 
 
+SAY_MAX_IMAGES = 5
+SAY_CAPTION_MAX = 1000
+
+
+@app.post("/api/chats/{chat_id}/say-image")
+async def api_chat_say_image(request: Request, chat_id: int, images: list[UploadFile] = File([]),
+                             text: str = Form(""), reply_to: int = Form(0)):
+    """ทีมงานวางรูป (Ctrl+V) / แนบรูปในช่องพิมพ์ตอบ -> ส่งรูป (+คำอธิบายที่พิมพ์ไว้) ถึงลูกค้าทันที
+    ต้องเรียกจากหน้าเว็บของระบบเองเท่านั้น (ใส่ header X-Requested-With: rv-say) · ตรวจชนิดรูปจากเนื้อไฟล์ ไม่เกิน 8MB ต่อรูป"""
+    user = current_user(request, "agent")
+    if request.headers.get("x-requested-with") != "rv-say":
+        return JSONResponse({"ok": False, "error": "คำขอไม่ถูกต้อง"}, status_code=400)
+    text = (text or "").strip()
+    if len(text) > SAY_CAPTION_MAX:
+        return JSONResponse({"ok": False, "error": f"คำอธิบายรูปยาวเกิน {SAY_CAPTION_MAX:,} ตัวอักษร"}, status_code=400)
+    with SessionLocal() as db:
+        chat = db.get(Chat, chat_id)
+        channel = ((chat.channel if chat else "") or "telegram")
+    if not chat:
+        return JSONResponse({"ok": False, "error": "ไม่พบแชทนี้"}, status_code=404)
+    saved, errors = await _save_guide_images(images, SAY_MAX_IMAGES, prefix="say", max_total=SAY_MAX_IMAGES)
+    if not saved:
+        return JSONResponse({"ok": False, "error": "; ".join(errors) or "ไม่พบรูปที่จะส่ง"}, status_code=400)
+
+    def _drop() -> None:
+        for n in saved:
+            (MEDIA_DIR / n).unlink(missing_ok=True)
+
+    try:
+        if channel == "line":
+            if not all(line_service._image_url(n) for n in saved):
+                _drop()
+                return JSONResponse({"ok": False, "error": "ส่งรูปทาง LINE ไม่ได้: ยังไม่มีที่อยู่เว็บสาธารณะ (PUBLIC_URL) ให้ LINE ดึงรูป"},
+                                    status_code=503)
+            await linebot.send_reply(chat_id, text, saved, by=user.username)
+            with SessionLocal() as db:  # ข้อความที่เพิ่งส่ง (ข้อความอธิบาย + รูป) = ข้อความฝั่งทีมงานล่าสุด
+                rows = list(db.scalars(select(Message).where(Message.chat_id == chat_id, Message.is_outgoing.is_(True))
+                                       .order_by(Message.id.desc()).limit(len(saved) + (1 if text else 0))))[::-1]
+                messages = [chatbus.to_dict(m) for m in rows]
+        else:
+            items = [(str(MEDIA_DIR / n), n) for n in saved]
+            messages = await telegram.send_manual_images(chat_id, items, text, reply_to or None, by=user.username)
+    except (TelegramLoginError, linebot.LineBotError) as e:
+        _drop()
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
+    except Exception as e:  # noqa: BLE001
+        log.exception("manual image to chat %s failed", chat_id)
+        _drop()
+        return JSONResponse({"ok": False, "error": f"ส่งรูปไม่สำเร็จ: {e}"}, status_code=502)
+    log.info("%s ส่งรูป %s รูปในแชท %s จากหน้าเว็บ", user.username, len(saved), chat_id)
+    with SessionLocal() as db:
+        unread.mark_read(db, user.id, chat_id)  # ตอบแล้ว = อ่านแล้ว
+    return JSONResponse({"ok": True, "messages": messages, "skipped": errors})
+
+
 class ReadIn(BaseModel):
     upto: int | None = None
 
