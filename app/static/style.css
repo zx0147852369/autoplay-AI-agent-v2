@@ -2794,3 +2794,14 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .rvpage .rv .rv-btn:hover .cicon, .rvpage .rv .rv-chipbtn:hover .cicon, .rvpage .rv .rv-mini:hover .cicon, .rvpage .rv-link:hover .cicon, .rvpage .rv .rv-collapse:hover .cicon, .rvpage .rv .rv-say-btn:hover .cicon { transform: translateY(-1px) scale(1.08); }
 .rvpage .rv .rv-btn:disabled .cicon, .rvpage .rv .rv-chipbtn:disabled .cicon { filter: grayscale(1); }
 @media (prefers-reduced-motion: reduce) { .rvpage .rv .cicon { transition: none; transform: none !important; } }
+
+/* หน้าประวัติของ รออนุมัติ: ดูแชทย้อนหลังได้ (รายการซ้าย + บทสนทนาขวา) */
+.rv-sent-text { margin: 0 0 14px; padding: 16px 20px; border: 1px solid var(--line); border-left: 3px solid var(--brass); border-radius: 8px; background: var(--surface-2); font-size: 1.08rem; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
+.rv-hist-facts { margin: 16px 0 0; grid-template-columns: 1fr 1fr; }
+.rv-note.rv-err { border-left-color: var(--red); }
+.rv-note.rv-err b { color: var(--red); }
+.rv-loading { margin: 8px 4px; }
+.rv-history .rv-it-snip { -webkit-line-clamp: 2; }
+.rv-history .rv-seg a { cursor: default; }
+.rv-history .rv-photos { margin-top: 0; }
+@media (max-width: 640px) { .rv-hist-facts { grid-template-columns: 1fr; } }

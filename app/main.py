@@ -835,13 +835,19 @@ async def ws_live(ws: WebSocket):
 
 
 @app.get("/api/chats/{chat_id}/messages")
-async def api_chat_messages(request: Request, chat_id: int, after: int = 0, limit: int = 100):
-    """ข้อความของแชทที่ใหม่กว่า id ที่ระบุ (ใช้ดึงส่วนที่ขาดตอนเชื่อมต่อใหม่ / สำรองเมื่อ WebSocket ใช้ไม่ได้)"""
+async def api_chat_messages(request: Request, chat_id: int, after: int = 0, limit: int = 100, tail: int = 0):
+    """ข้อความของแชทที่ใหม่กว่า id ที่ระบุ (ใช้ดึงส่วนที่ขาดตอนเชื่อมต่อใหม่ / สำรองเมื่อ WebSocket ใช้ไม่ได้)
+    · tail=N: ข้อความล่าสุด N ข้อความ (เรียงเก่า -> ใหม่) ใช้เปิดดูแชทย้อนหลังในหน้าประวัติของ รออนุมัติ"""
     current_user(request, "agent")
     with SessionLocal() as db:
-        rows = list(db.scalars(
-            select(Message).where(Message.chat_id == chat_id, Message.id > max(after, 0))
-            .order_by(Message.id).limit(min(max(limit, 1), 200))))
+        if tail > 0:
+            rows = list(db.scalars(
+                select(Message).where(Message.chat_id == chat_id)
+                .order_by(Message.id.desc()).limit(min(tail, 200))))[::-1]
+        else:
+            rows = list(db.scalars(
+                select(Message).where(Message.chat_id == chat_id, Message.id > max(after, 0))
+                .order_by(Message.id).limit(min(max(limit, 1), 200))))
     return JSONResponse({"messages": [chatbus.to_dict(m) for m in rows]})
 
 
@@ -910,7 +916,9 @@ def _replies_view(request: Request, user: User, scope: str, status: str, box: st
     is_line = scope == "line"
     in_scope = _in_scope(Reply.chat_id, scope)
     with SessionLocal() as db:
-        query = select(Reply).where(in_scope).order_by(Reply.created_at.desc()).limit(100)
+        # ประวัติเรียงตามเวลาที่ดำเนินการ (ส่ง/ปฏิเสธ) ล่าสุดก่อน · คิวรออนุมัติเรียงตามเวลาที่ร่าง
+        sort_at = Reply.created_at if status == "pending" else func.coalesce(Reply.decided_at, Reply.created_at)
+        query = select(Reply).where(in_scope).order_by(sort_at.desc()).limit(100)
         if status != "all":
             query = query.where(Reply.status == status)
         replies = list(db.scalars(query))

@@ -291,39 +291,85 @@
 </div>
 
 {% else %}
-  <section class="panel">
-    <div class="panel-head">
-      <h2>{{ cicon('history', 20) }} {% for key, label in tabs if key == status %}{{ label }}{% endfor %}</h2>
-      <span class="count">{{ replies | length }} รายการ{% if replies | length == 100 %} (แสดงล่าสุด 100){% endif %}</span>
+{# ประวัติ (ส่งแล้ว/ปฏิเสธ/ส่งไม่สำเร็จ/ทั้งหมด): รายการทางซ้าย + เปิดดูบทสนทนาของแชทนั้นย้อนหลังทางขวา (โหลดเมื่อกดเลือก) #}
+{% set st_label = namespace(v='') %}{% for key, label in tabs if key == status %}{% set st_label.v = label %}{% endfor %}
+<div class="rv rv-history {{ 'empty' if not replies }}" id="rv" data-hist="1">
+  <aside class="rv-queue" aria-label="ประวัติ{{ st_label.v }}">
+    <div class="rv-seg">
+      <a class="on" href="{{ base }}?status={{ status }}"><span>{{ st_label.v }}</span><b>{{ replies | length }}{% if replies | length == 100 %}+{% endif %}</b></a>
     </div>
-    <div class="table-wrap">
-    <table class="grid-table">
-      <thead><tr>
-        <th class="shrink">เวลา</th><th>แชท</th><th>ข้อความ</th><th class="shrink">สถานะ</th><th class="shrink">ดำเนินการโดย</th><th class="shrink">Ticket</th>
-      </tr></thead>
-      <tbody>
+    <ul class="rv-list">
       {% for r in replies %}
-        <tr>
-          <td class="when">{{ r.created_at | localtime }}</td>
-          <td class="nowrap">{{ chat_titles.get(r.chat_id, r.chat_id) }}</td>
-          <td class="fill">
-            <span class="truncate" title="{{ r.final_text }}">{{ r.final_text }}</span>
-            {% if r.reject_reason %}<div class="small muted">เหตุผล: {{ r.reject_reason }}</div>{% endif %}
-            {% if r.error %}<div class="small error-text">{{ r.error }}</div>{% endif %}
-          </td>
-          <td class="shrink"><span class="tag rs-{{ r.status }}">{{ REPLY_STATUSES.get(r.status, r.status) }}</span>
-            {% if r.kind == 'resolved' %}<div class="small ok-text">แจ้งแก้ไขเสร็จ</div>{% endif %}
-            {% if r.kind == 'dev_update' %}<div class="small" style="color:var(--blue)">จากโปรแกรมเมอร์</div>{% endif %}</td>
-          <td class="shrink small">{% if r.decided_by %}{{ r.decided_by }}<div class="when">{{ r.decided_at | localtime }}</div>{% else %}<span class="zero">—</span>{% endif %}</td>
-          <td class="shrink">{% if r.ticket_id %}<a class="tag" href="/tickets/{{ r.ticket_id }}">#{{ r.ticket_id }}</a>{% else %}<span class="zero">—</span>{% endif %}</td>
-        </tr>
-      {% else %}
-        <tr class="empty-row"><td colspan="6">{{ icon('inbox', 24) }}<strong>ไม่มีข้อความในหมวดนี้</strong></td></tr>
+        {% set title = chat_titles.get(r.chat_id, r.chat_id) | string %}
+        {% set when = r.decided_at or r.created_at %}
+        <li><a class="rv-item" href="#h{{ r.id }}" data-id="h{{ r.id }}" data-chat="{{ r.chat_id }}">
+          <span class="rv-it-main">
+            <span class="rv-it-top"><strong>{{ title }}</strong><time title="{{ when | localtime }}">{{ when | ago }}</time></span>
+            <span class="rv-it-row"><span class="rv-it-snip">{{ r.final_text }}</span></span>
+            <span class="rv-it-tags">
+              <i class="rv-chip {{ {'sent': 'ok', 'failed': 'bad', 'rejected': 'bad'}.get(r.status, '') }}">{{ REPLY_STATUSES.get(r.status, r.status) }}</i>
+              {% if chat_channels.get(r.chat_id) == 'line' %}<i class="rv-chip line">LINE</i>{% endif %}
+              {% if r.ticket_id %}<i class="rv-chip">ticket #{{ r.ticket_id }}</i>{% endif %}
+              {% if r.kind == 'resolved' %}<i class="rv-chip ok">แจ้งแก้ไขเสร็จ</i>{% endif %}
+              {% if r.kind == 'dev_update' %}<i class="rv-chip info">จากโปรแกรมเมอร์</i>{% endif %}
+            </span>
+          </span>
+        </a></li>
       {% endfor %}
-      </tbody>
-    </table>
+    </ul>
+  </aside>
+
+  <div class="rv-detail">
+    {% for r in replies %}
+    {% set title = chat_titles.get(r.chat_id, r.chat_id) | string %}
+    {% set when = r.decided_at or r.created_at %}
+    {% set pics = (r.media | fromjson) or [] %}
+    <section class="rv-pane" id="pane-h{{ r.id }}" data-id="h{{ r.id }}" data-chat="{{ r.chat_id }}" data-tg="{{ r.reply_to_tg_id or '' }}">
+      <header class="rv-ph">
+        <button type="button" class="rv-back" aria-label="กลับไปรายการ">{{ icon('arrow-left', 20) }}</button>
+        <div class="rv-ph-text">
+          <h2>{{ title }}</h2>
+          <p>{{ REPLY_STATUSES.get(r.status, r.status) }} · {{ when | localtime }}{% if r.decided_by %} · โดย {{ r.decided_by }}{% endif %}
+            {% if r.ticket_id %}· <a href="/tickets/{{ r.ticket_id }}">ticket #{{ r.ticket_id }}</a>{% endif %}</p>
+        </div>
+        <button type="button" class="rv-collapse" aria-pressed="false" title="ซ่อน/แสดงรายการทางซ้าย เพื่อให้แชทกว้างขึ้น">{{ cicon('chat-multiple', 20) }}<span>ขยายแชท</span></button>
+        <a class="rv-link" href="/chats/{{ r.chat_id }}">{{ cicon('chat', 20) }} เปิดแชท</a>
+      </header>
+
+      <div class="rv-body rv-cols">
+        <p class="rv-label">บทสนทนากับลูกค้า <span class="rv-muted">ย้อนหลัง 60 ข้อความล่าสุด</span>
+          <span class="rv-legend"><span class="l">← ลูกค้า</span><span class="r">ทีมงาน →</span></span></p>
+        <div class="rv-chat" data-chat="{{ r.chat_id }}">
+          <div class="rv-convo" data-hist-convo="1"><p class="rv-muted rv-loading">กำลังโหลดบทสนทนา…</p></div>
+        </div>
+
+        <div class="rv-side">
+          <div class="rv-label-row">
+            <span class="rv-label">ข้อความ{{ 'ที่ส่งถึงลูกค้า' if r.status == 'sent' else 'ที่ร่างไว้' }}</span>
+            <span class="rv-aitag">{{ REPLY_STATUSES.get(r.status, r.status) }}</span>
+          </div>
+          <div class="rv-sent-text">{{ r.final_text }}</div>
+          {% if pics %}<div class="rv-photos">{% for p in pics %}<a href="/media/{{ p }}" target="_blank"><img src="/media/{{ p }}" alt="รูปที่แนบ" loading="lazy"></a>{% endfor %}</div>{% endif %}
+          {% if r.reject_reason %}<p class="rv-note"><b>เหตุผลที่ไม่ส่ง</b><span>{{ r.reject_reason }}</span></p>{% endif %}
+          {% if r.error %}<p class="rv-note rv-err"><b>ข้อผิดพลาดตอนส่ง</b><span>{{ r.error }}</span></p>{% endif %}
+          <dl class="rv-facts rv-hist-facts">
+            <div><dt>สถานะ</dt><dd>{{ REPLY_STATUSES.get(r.status, r.status) }}{% if r.kind == 'resolved' %} · แจ้งแก้ไขเสร็จ{% elif r.kind == 'dev_update' %} · จากโปรแกรมเมอร์{% endif %}</dd></div>
+            <div><dt>ดำเนินการโดย</dt><dd>{{ r.decided_by or '—' }}</dd></div>
+            <div><dt>เวลาที่ดำเนินการ</dt><dd>{{ r.decided_at | localtime if r.decided_at else '—' }}</dd></div>
+            <div><dt>ร่างเมื่อ</dt><dd>{{ r.created_at | localtime }}</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+    {% endfor %}
+
+    <div class="rv-hero">
+      <img src="/static/brand/mark-360.png" width="132" height="132" alt="">
+      <h3>ไม่มีข้อความในหมวดนี้</h3>
+      <p>ข้อความที่ดำเนินการแล้วจะมาอยู่ที่นี่ และเปิดดูแชทย้อนหลังได้</p>
     </div>
-  </section>
+  </div>
+</div>
 {% endif %}
 </div>
 {% endblock %}
@@ -810,6 +856,152 @@
     if (known === null) known = d.pending;
     else if (d.pending !== known) location.reload();
   }, 10000);
+</script>
+{% else %}
+<script>
+  // ประวัติ: เลือกรายการทางซ้าย -> เปิดบทสนทนาของแชทนั้นย้อนหลังทางขวา (ดึงเมื่อกดเลือก ครั้งเดียวต่อแชท/แผง) · มือถือ: เต็มจอ มีปุ่มกลับ
+  (() => {
+    const rv = document.getElementById('rv');
+    if (!rv) return;
+    rv.classList.add('js');
+    const items = [...rv.querySelectorAll('.rv-item')];
+    const panes = [...rv.querySelectorAll('.rv-pane')];
+    const small = () => window.matchMedia && matchMedia('(max-width: 900px)').matches;
+    let cur = '';
+
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const linkify = raw => String(raw).split(/(https?:\/\/[^\s<>"']+)/).map((p, i) => {
+      if (!(i % 2)) return esc(p);
+      const u = p.replace(/[.,;)]+$/, '');
+      return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u) + '</a>' + esc(p.slice(u.length));
+    }).join('');
+
+    function bubble(m, prev, target) {
+      const d = document.createElement('div');
+      const who = m.label || (m.out ? 'ทีมงาน' : 'ลูกค้า');
+      const cont = prev && prev.dataset.name === who && prev.classList.contains('out') === !!m.out;
+      d.className = 'rv-msg' + (m.out ? ' out' : '') + (cont ? ' cont' : '') + (target ? ' target' : '');
+      d.dataset.id = m.id; d.dataset.tg = m.tg; d.dataset.name = who;
+      d.innerHTML = '<div class="rv-meta"><b title="' + esc((m.name || '') + (m.by ? ' · ส่งโดย ' + m.by : '')) + '">' + esc(who) + '</b>'
+        + (target ? '<em>ข้อความที่ตอบถึง</em>' : '') + '</div>'
+        + (m.text ? '<div class="rv-text">' + linkify(m.text) + '</div>' : '')
+        + (m.media ? '<a href="/media/' + encodeURIComponent(m.media) + '" target="_blank"><img src="/media/' + encodeURIComponent(m.media) + '" class="rv-img" alt="รูปจากลูกค้า" loading="lazy"></a>' : '')
+        + '<time title="' + esc(m.at || '') + '">' + esc(m.hm || '') + '</time>';
+      return d;
+    }
+
+    async function load(pane) {
+      const cv = pane.querySelector('.rv-convo');
+      if (!cv || cv.dataset.state) return;
+      cv.dataset.state = 'loading';
+      try {
+        const r = await fetch('/api/chats/' + pane.dataset.chat + '/messages?tail=60', { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        cv.textContent = '';
+        const list = d.messages || [];
+        if (!list.length) { cv.innerHTML = '<p class="rv-muted">ไม่มีข้อความในแชทนี้</p>'; cv.dataset.state = 'done'; return; }
+        const tg = pane.dataset.tg;
+        let prev = null, targetEl = null;
+        list.forEach(m => {
+          const el = bubble(m, prev, !!tg && String(m.tg) === tg && !m.out);
+          if (el.classList.contains('target')) targetEl = el;
+          cv.appendChild(el); prev = el;
+        });
+        cv.dataset.state = 'done';
+        if (pane.classList.contains('on') || !cur) {
+          if (targetEl) { const delta = targetEl.getBoundingClientRect().top - cv.getBoundingClientRect().top; cv.scrollTop = Math.max(0, cv.scrollTop + delta - cv.clientHeight / 3); }
+          else cv.scrollTop = cv.scrollHeight;
+        }
+      } catch (e) {
+        cv.innerHTML = '<p class="rv-muted">โหลดบทสนทนาไม่สำเร็จ · กดรายการนี้อีกครั้งเพื่อลองใหม่</p>';
+        delete cv.dataset.state;
+      }
+    }
+
+    function show(id, opts) {
+      opts = opts || {};
+      cur = id;
+      items.forEach(a => {
+        const on = a.dataset.id === id;
+        a.classList.toggle('on', on);
+        if (on) { a.setAttribute('aria-current', 'true'); if (opts.reveal !== false) a.scrollIntoView({ block: 'nearest' }); }
+        else a.removeAttribute('aria-current');
+      });
+      panes.forEach(p => p.classList.toggle('on', p.dataset.id === id));
+      if (small()) { rv.classList.add('open'); document.body.classList.add('rv-lock'); }
+      const pane = panes.find(p => p.dataset.id === id);
+      if (pane) {
+        load(pane);
+        const body = pane.querySelector('.rv-body'); if (body) body.scrollTop = 0;
+      }
+    }
+    function close() { rv.classList.remove('open'); document.body.classList.remove('rv-lock'); }
+
+    items.forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      const id = a.dataset.id;
+      if (small()) history.pushState({ rv: id }, '', '#' + id); else history.replaceState(null, '', '#' + id);
+      show(id);
+    }));
+    rv.querySelectorAll('.rv-back').forEach(b => b.addEventListener('click', () => {
+      if (history.state && history.state.rv) history.back(); else close();
+    }));
+    window.addEventListener('popstate', () => {
+      const id = location.hash.slice(1);
+      if (id && items.some(a => a.dataset.id === id)) show(id); else close();
+    });
+
+    // ลูกศรขึ้น/ลง (หรือ j / k) เลื่อนรายการ
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || small()) return;
+      const t = e.target;
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      const dir = (e.key === 'ArrowDown' || e.key === 'j') ? 1 : (e.key === 'ArrowUp' || e.key === 'k') ? -1 : 0;
+      if (!dir || !items.length) return;
+      e.preventDefault();
+      const i = Math.max(0, items.findIndex(a => a.dataset.id === cur));
+      const next = items[Math.min(items.length - 1, Math.max(0, i + dir))];
+      history.replaceState(null, '', '#' + next.dataset.id);
+      show(next.dataset.id);
+    });
+
+    // กล่องสูงพอดีจอ
+    function fit() {
+      if (small() || rv.classList.contains('empty')) { rv.style.height = ''; return; }
+      const top = rv.getBoundingClientRect().top + window.scrollY;
+      rv.style.height = Math.max(560, window.innerHeight - top - 18) + 'px';
+    }
+    fit();
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+
+    // ขยายแชท = ซ่อนรายการทางซ้ายชั่วคราว (ใช้ค่าเดียวกับหน้ารออนุมัติ)
+    const COLLAPSE_KEY = 'rv:collapsed';
+    function setCollapsed(on) {
+      rv.classList.toggle('collapsed', on);
+      rv.querySelectorAll('.rv-collapse').forEach(b => {
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        const lab = b.querySelector('span'); if (lab) lab.textContent = on ? 'แสดงรายการ' : 'ขยายแชท';
+      });
+      try { localStorage.setItem(COLLAPSE_KEY, on ? '1' : '0'); } catch (e) {}
+    }
+    try { if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true); } catch (e) {}
+    rv.addEventListener('click', e => {
+      const b = e.target.closest('.rv-collapse');
+      if (b) setCollapsed(!rv.classList.contains('collapsed'));
+    });
+
+    // เลือกรายการเริ่มต้น: จาก #hash หรือรายการแรก (มือถือ: ต้องแตะเองก่อน)
+    const hash = location.hash.slice(1);
+    let start = (hash && items.some(a => a.dataset.id === hash)) ? hash : '';
+    if (!start && !small() && items.length) start = items[0].dataset.id;
+    if (start) {
+      if (small() && !hash) { cur = start; items.forEach(a => a.classList.toggle('on', a.dataset.id === start)); panes.forEach(p => p.classList.toggle('on', p.dataset.id === start)); }
+      else show(start, { reveal: true });
+    }
+  })();
 </script>
 {% endif %}
 {% endblock %}
