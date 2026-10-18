@@ -51,6 +51,8 @@
       <span>โทรให้โทรศัพท์ดัง<span class="hint">โทรผ่านบัญชี Telegram ที่เชื่อมไว้ ให้ดัง {{ ring_seconds }} วินาที ไม่มีคนรับก็วางสายเอง · ปลายทางต้องไม่ได้ตั้งความเป็นส่วนตัวห้ามบัญชีนี้โทร</span></span></label>
     <label class="check-row"><input type="checkbox" name="chase_play_audio" {{ 'checked' if cfg.audio }}>
       <span>เมื่อแอดมินกดรับสาย ให้เล่นไฟล์เสียง<span class="hint">เล่นไฟล์ที่เลือกไว้ในหัวข้อ "เสียงที่เล่นเมื่อรับสาย" ด้านล่าง ตามจำนวนครั้งที่ตั้ง แล้ววางสาย · ปิดไว้หรือเล่นไม่ได้ = โทรให้ดังอย่างเดียว</span></span></label>
+    <label class="check-row"><input type="checkbox" name="chase_add_contact" {{ 'checked' if cfg.add_contact }}>
+      <span>ถ้ายังไม่ได้เป็นเพื่อนกัน ให้เพิ่มแอดมินเป็นรายชื่อติดต่ออัตโนมัติ<span class="hint">ระบบเพิ่มแอดมินเข้ารายชื่อติดต่อของบัญชี Telegram ที่เชื่อมไว้ก่อนโทร/ส่งข้อความ (ทำครั้งเดียวต่อคน) · หมายเหตุ: ถ้าโทรไม่ติดเพราะ "ความเป็นส่วนตัว" ต้องให้แอดมินเปิดรับสายจากบัญชีนี้ที่ฝั่งของเขาด้วย ระบบจะส่งข้อความอธิบายวิธีให้เอง</span></span></label>
     <label class="check-row"><input type="checkbox" name="chase_message" {{ 'checked' if cfg.message }}>
       <span>ส่งข้อความสรุปด้วย<span class="hint">บอกจำนวนรายการที่ค้าง ค้างนานสุดกี่นาที พร้อมลิงก์เข้าหน้ารออนุมัติ · ถ้าโทรไม่ติด ข้อความนี้ยังไปถึง</span></span></label>
   </section>
@@ -68,6 +70,7 @@
     <span><span class="dot {{ 'live' if engine_ready else 'wait' }}"></span> ตัวโทรพร้อมเสียง {{ 'พร้อมใช้งาน' if engine_ready else 'ยังไม่ได้ติดตั้งในเครื่องนี้ · ตอนนี้โทรให้ดังอย่างเดียว ยังไม่เล่นเสียง' }}</span>
     <span><span class="dot {{ 'live' if decoder_ready else 'wait' }}"></span> ตัวอ่านไฟล์เสียง {{ 'รองรับ WAV / MP3 / M4A / OGG / FLAC' if decoder_ready else 'รองรับเฉพาะไฟล์ WAV' }}</span>
   </div>
+  {% if sound_note %}<div class="note {{ 'error' if sound_note.kind == 'error' else '' }}" role="alert">{{ sound_note.message }}</div>{% endif %}
   <form method="post" action="/chase/sounds" enctype="multipart/form-data" class="ch-upload">
     <label class="field">ไฟล์เสียง
       <input type="file" name="audio" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" required></label>
@@ -75,7 +78,7 @@
       <input name="name" maxlength="120" placeholder="เช่น แจ้งงานรออนุมัติค้าง"></label>
     <button class="primary">{{ icon('plus', 15) }} เพิ่มไฟล์เสียง</button>
   </form>
-  <p class="hint">ยาวไม่เกิน {{ max_seconds }} วินาที · ไฟล์ไม่เกิน {{ max_mb }} MB · เก็บได้ {{ max_sounds }} ไฟล์ · ระบบแปลงเป็นเสียงโมโนให้เอง · ไฟล์ที่เพิ่มใหม่จะถูกเลือกใช้ทันที · แนะนำอัดข้อความสั้นๆ เช่น "มีงานรออนุมัติค้างอยู่ รบกวนเข้าไปอนุมัติด้วยค่ะ"</p>
+  <p class="hint">เล่นได้ยาวสุด {{ max_seconds }} วินาที (ไฟล์ที่ยาวกว่านั้นระบบตัดเหลือส่วนแรกให้) · ไฟล์ไม่เกิน {{ max_mb }} MB · เก็บได้ {{ max_sounds }} ไฟล์ · ระบบแปลงเป็นเสียงโมโนให้เอง · ไฟล์ที่เพิ่มใหม่จะถูกเลือกใช้ทันที · แนะนำอัดข้อความสั้นๆ เช่น "มีงานรออนุมัติค้างอยู่ รบกวนเข้าไปอนุมัติด้วยค่ะ"</p>
   {% set active_id = settings.chase_sound_id %}
   <ul class="ch-sound-list">
     <li class="ch-sound {{ 'on' if not active_id }}">
@@ -114,7 +117,7 @@
         <td class="shrink small">{{ l.waiting }} รายการ · {{ l.oldest_min }} นาที</td>
         <td class="shrink"><span class="tag ch-st-{{ l.call_status }}">{{ {'answered': 'รับสายแล้ว', 'ok': 'โทรแล้ว', 'failed': 'ไม่สำเร็จ', 'skipped': 'ไม่ได้ตั้งไว้'}[l.call_status] }}</span></td>
         <td class="shrink"><span class="tag ch-st-{{ l.msg_status }}">{{ {'ok': 'ส่งแล้ว', 'failed': 'ไม่สำเร็จ', 'skipped': 'ไม่ได้ตั้งไว้'}[l.msg_status] }}</span></td>
-        <td class="small ch-err {{ 'bad' if l.call_status == 'failed' or l.msg_status == 'failed' }}">{{ l.call_error or l.msg_error }}{% if l.call_error and l.msg_error and l.call_error != l.msg_error %}<br>{{ l.msg_error }}{% endif %}</td>
+        <td class="small ch-err {{ 'bad' if l.call_status == 'failed' or l.msg_status == 'failed' }}">{{ l.call_error or l.msg_error }}{% if l.call_error and l.msg_error and l.call_error != l.msg_error %}<br>{{ l.msg_error }}{% endif %}{% if l.note %}<span class="ch-note">{{ l.note }}</span>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

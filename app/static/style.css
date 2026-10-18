@@ -2951,12 +2951,14 @@ button.rv-copy:not(.n1):not(.n2):not(.n3):not(.n4):not(.n5), button.rv-say-file-
 .ch-history { margin-top: 22px; }
 .ch-err { color: var(--ink-2); max-width: 420px; line-height: 1.5; }
 .ch-err.bad { color: var(--red); }
+.ch-note { display: block; margin-top: 4px; color: var(--muted); font-size: .85rem; }
 .ch-st-ok { background: var(--grey-tint); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); }
 .ch-st-failed { background: var(--red-tint); color: var(--red); }
 .ch-st-skipped { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .ch-st-answered { background: var(--ink); color: var(--surface); }
 #chPhase { font-weight: 600; }
 .ch-sounds { margin-top: 22px; }
+.ch-sounds .note { margin: 14px 0 4px; font-weight: 600; }
 .ch-upload { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 14px; align-items: end; margin: 14px 0 8px; }
 .ch-upload .field { margin: 0; }
 .ch-upload button { height: 42px; display: inline-flex; align-items: center; gap: 8px; }

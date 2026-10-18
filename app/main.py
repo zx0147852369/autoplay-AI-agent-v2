@@ -1081,8 +1081,9 @@ async def chase_page(request: Request):
         settings = get_settings(db)
         logs = list(db.scalars(select(ChaseLog).order_by(ChaseLog.id.desc()).limit(30)))
         sounds = list(db.scalars(select(ChaseSound).order_by(ChaseSound.id.desc())))
+    sound_note = request.session.pop("chase_sound_note", None)
     return render(request, "chase.html", user, st=st, settings=settings, logs=logs, connected=telegram.connected,
-                  ring_seconds=chase.RING_SECONDS, max_targets=chase.MAX_TARGETS, now_utc=utcnow(), sounds=sounds,
+                  ring_seconds=chase.RING_SECONDS, max_targets=chase.MAX_TARGETS, now_utc=utcnow(), sounds=sounds, sound_note=sound_note,
                   engine_ready=chase_audio.engine_ready(), decoder_ready=chase_audio.decoder_ready(),
                   max_sounds=chase_audio.MAX_SOUNDS, max_seconds=chase_audio.MAX_SECONDS, max_mb=chase_audio.MAX_UPLOAD // (1024 * 1024))
 
@@ -1092,7 +1093,7 @@ async def chase_save(request: Request):
     current_user(request, "admin")
     form = await request.form()
     good, bad = chase.parse_targets(str(form.get("chase_targets", "")))
-    enabled, call, message, play_audio = (bool(form.get(k)) for k in ("chase_enabled", "chase_call", "chase_message", "chase_play_audio"))
+    enabled, call, message, play_audio, add_contact = (bool(form.get(k)) for k in ("chase_enabled", "chase_call", "chase_message", "chase_play_audio", "chase_add_contact"))
     errors = []
     if bad:
         errors.append("ชื่อผู้ใช้ Telegram ไม่ถูกต้อง: " + ", ".join(bad[:5]))
@@ -1104,7 +1105,7 @@ async def chase_save(request: Request):
         flash(request, " · ".join(errors) + " (ยังไม่ได้บันทึก)", "error")
         return back("/chase")
     values = {"chase_enabled": "1" if enabled else "0", "chase_targets": ", ".join(good), "chase_call": "1" if call else "0",
-              "chase_message": "1" if message else "0", "chase_play_audio": "1" if play_audio else "0",
+              "chase_message": "1" if message else "0", "chase_play_audio": "1" if play_audio else "0", "chase_add_contact": "1" if add_contact else "0",
               "chase_state": ""}  # แก้ตั้งค่า = เริ่มนับรอบใหม่
     for key, low, high in (("chase_after_min", 2, 240), ("chase_repeat_min", 2, 240), ("chase_max", 1, 10), ("chase_audio_repeat", 1, 5)):
         values[key] = str(int_setting({key: str(form.get(key, ""))}, key, low, high))
@@ -1144,35 +1145,47 @@ def _set_setting(db, key: str, value: str) -> None:
 @app.post("/chase/sounds")
 async def chase_sound_upload(request: Request, audio: UploadFile = File(None), name: str = Form("")):
     user = current_user(request, "admin")
+    shown = (audio.filename if audio is not None else "") or "-"
 
-    def refuse(message: str):
-        flash(request, message, "error")
-        return back("/chase")
+    def done(message: str, kind: str = "error"):
+        # แจ้งผลในการ์ดเสียงเลย (ไม่หายไปเอง) และเลื่อนหน้ากลับมาตรงนั้น · ล้มเหลวทุกครั้งจดลง Log ระบบไว้ตรวจสอบ
+        request.session["chase_sound_note"] = {"message": message, "kind": kind}
+        (log.warning if kind == "error" else log.info)("ไฟล์เสียงโทรตามอนุมัติ (%s): %s", shown, message)
+        return back("/chase#sounds")
 
     if audio is None or not audio.filename:
-        return refuse("เลือกไฟล์เสียงก่อนกดเพิ่ม")
+        return done("เลือกไฟล์เสียงก่อนกดเพิ่ม")
     with SessionLocal() as db:
         if (db.scalar(select(func.count(ChaseSound.id))) or 0) >= chase_audio.MAX_SOUNDS:
-            return refuse(f"เก็บไฟล์เสียงได้ไม่เกิน {chase_audio.MAX_SOUNDS} ไฟล์ ลบไฟล์ที่ไม่ใช้ก่อน")
+            return done(f"เก็บไฟล์เสียงได้ไม่เกิน {chase_audio.MAX_SOUNDS} ไฟล์ ลบไฟล์ที่ไม่ใช้ก่อน")
     data = await audio.read(chase_audio.MAX_UPLOAD + 1)
     if len(data) > chase_audio.MAX_UPLOAD:
-        return refuse(f"ไฟล์ใหญ่เกิน {chase_audio.MAX_UPLOAD // (1024 * 1024)} MB")
+        return done(f"{audio.filename}: ไฟล์ใหญ่เกิน {chase_audio.MAX_UPLOAD // (1024 * 1024)} MB")
     try:
-        pcm = await asyncio.to_thread(chase_audio.decode_pcm, data)
+        pcm, trimmed = await asyncio.to_thread(chase_audio.decode_upload, data)
     except chase_audio.AudioError as e:
-        return refuse(f"{audio.filename}: {e}")
+        return done(f"{audio.filename}: {e}")
+    except Exception as e:  # noqa: BLE001 - ไฟล์แปลกจนตัวอ่านพัง ไม่ให้เป็นหน้า error ว่างๆ
+        log.exception("แปลงไฟล์เสียงโทรตามอนุมัติไม่สำเร็จ (%s)", shown)
+        return done(f"{audio.filename}: อ่านไฟล์เสียงไม่สำเร็จ ({type(e).__name__}) ลองแปลงเป็น WAV หรือ MP3 แล้วอัปโหลดใหม่")
     fname = f"{uuid.uuid4().hex[:16]}.wav"
-    chase_audio.save_wav(pcm, chase_audio.AUDIO_DIR / fname)
     label = (name.strip() or os.path.splitext(audio.filename)[0] or "เสียงที่อัปโหลด")[:120]
-    with SessionLocal() as db:
-        row = ChaseSound(name=label, file=fname, millis=len(pcm) // 2 * 1000 // chase_audio.RATE, created_by=user.username)
-        db.add(row)
-        db.flush()
-        _set_setting(db, "chase_sound_id", str(row.id))
-        db.commit()
-    flash(request, f"เพิ่มเสียง \u201c{label}\u201d แล้ว และเลือกใช้เป็นเสียงตอนแอดมินรับสาย")
-    return back("/chase")
-
+    try:
+        chase_audio.save_wav(pcm, chase_audio.AUDIO_DIR / fname)
+        with SessionLocal() as db:
+            row = ChaseSound(name=label, file=fname, millis=len(pcm) // 2 * 1000 // chase_audio.RATE, created_by=user.username)
+            db.add(row)
+            db.flush()
+            _set_setting(db, "chase_sound_id", str(row.id))
+            db.commit()
+    except Exception as e:  # noqa: BLE001
+        (chase_audio.AUDIO_DIR / fname).unlink(missing_ok=True)
+        log.exception("บันทึกไฟล์เสียงโทรตามอนุมัติไม่สำเร็จ (%s)", shown)
+        return done(f"{audio.filename}: บันทึกไฟล์ไม่สำเร็จ ({type(e).__name__})")
+    note = f"เพิ่มเสียง \u201c{label}\u201d แล้ว ยาว {len(pcm) / 2 / chase_audio.RATE:.1f} วินาที และเลือกใช้เป็นเสียงตอนแอดมินรับสาย"
+    if trimmed:
+        note += f" · ไฟล์ยาวเกิน {chase_audio.MAX_SECONDS} วินาที ระบบตัดเหลือ {chase_audio.MAX_SECONDS} วินาทีแรกให้"
+    return done(note, "ok")
 
 @app.post("/chase/sounds/{sid}/use")
 async def chase_sound_use(request: Request, sid: int):
@@ -1184,7 +1197,7 @@ async def chase_sound_use(request: Request, sid: int):
             _set_setting(db, "chase_sound_id", str(sid) if sid else "")
             db.commit()
             flash(request, "เปลี่ยนเสียงที่เล่นตอนรับสายแล้ว")
-    return back("/chase")
+    return back("/chase#sounds")
 
 
 @app.post("/chase/sounds/{sid}/delete")
@@ -1194,14 +1207,14 @@ async def chase_sound_delete(request: Request, sid: int):
         row = db.get(ChaseSound, sid)
         if row is None:
             flash(request, "ไม่พบไฟล์เสียงนี้", "error")
-            return back("/chase")
+            return back("/chase#sounds")
         (chase_audio.AUDIO_DIR / row.file).unlink(missing_ok=True)
         if get_settings(db).get("chase_sound_id") == str(sid):
             _set_setting(db, "chase_sound_id", "")  # กลับไปใช้เสียงเตือนมาตรฐาน
         db.delete(row)
         db.commit()
     flash(request, "ลบไฟล์เสียงแล้ว")
-    return back("/chase")
+    return back("/chase#sounds")
 
 
 @app.get("/chase/sounds/{sid}/file")

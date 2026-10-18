@@ -22,7 +22,7 @@ AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 RATE = 48000
 MAX_SECONDS = 60
 MIN_SECONDS = 0.3
-MAX_UPLOAD = 15 * 1024 * 1024
+MAX_UPLOAD = 40 * 1024 * 1024
 MAX_SOUNDS = 10
 
 
@@ -41,12 +41,17 @@ def engine_ready() -> bool:
 
 
 # ---------------------------------------------------------------- แปลงไฟล์เป็น PCM โมโน 48 kHz
-def _wav_samples(data: bytes) -> tuple[array, int, int]:
-    """อ่าน WAV แบบ PCM -> (ตัวอย่างเสียง 16 บิตสลับช่อง, จำนวนช่อง, sample rate) · รูปแบบที่ wave อ่านไม่ได้ -> wave.Error"""
+def _wav_samples(data: bytes, trim: bool) -> tuple[array, int, int, bool]:
+    """อ่าน WAV แบบ PCM -> (ตัวอย่างเสียง 16 บิตสลับช่อง, จำนวนช่อง, sample rate, ถูกตัดให้สั้นลงไหม) · รูปแบบที่ wave อ่านไม่ได้ -> wave.Error"""
+    cut = False
     with wave.open(io.BytesIO(data)) as w:
         ch, width, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
-        if rate <= 0 or ch <= 0 or n / rate > MAX_SECONDS + 1:
-            raise AudioError(f"เสียงยาวเกิน {MAX_SECONDS} วินาที ตัดให้สั้นลงก่อนอัปโหลด")
+        if rate <= 0 or ch <= 0:
+            raise AudioError("ไฟล์ WAV เสียหาย")
+        if n / rate > MAX_SECONDS + 1:
+            if not trim:
+                raise AudioError(f"เสียงยาวเกิน {MAX_SECONDS} วินาที ตัดให้สั้นลงก่อนอัปโหลด")
+            n, cut = int(rate * (MAX_SECONDS + 1)), True  # อ่านเฉพาะส่วนต้นที่ใช้
         raw = w.readframes(n)
     if width == 1:
         pcm = array("h", [(b - 128) << 8 for b in raw])
@@ -61,7 +66,7 @@ def _wav_samples(data: bytes) -> tuple[array, int, int]:
         pcm = array("h", [v >> 16 for v in struct.unpack(f"<{len(raw) // 4}i", raw[: len(raw) // 4 * 4])])
     else:
         raise wave.Error(f"sample width {width}")
-    return pcm, ch, rate
+    return pcm, ch, rate, cut
 
 
 def _to_mono_48k(pcm: array, ch: int, rate: int) -> bytes:
@@ -84,13 +89,13 @@ def _to_mono_48k(pcm: array, ch: int, rate: int) -> bytes:
     return pcm.tobytes()
 
 
-def _decode_with_av(data: bytes) -> bytes:
+def _decode_with_av(data: bytes, trim: bool) -> tuple[bytes, bool]:
     try:
         import av
     except ImportError as e:
         raise AudioError("ไฟล์นี้ไม่ใช่ WAV และระบบยังไม่มีตัวอ่าน MP3/M4A/OGG · แปลงเป็นไฟล์ WAV ก่อนแล้วอัปโหลดใหม่") from e
     limit = (MAX_SECONDS + 1) * RATE * 2
-    chunks, total = [], 0
+    chunks, total, cut = [], 0, False
     try:
         with av.open(io.BytesIO(data)) as container:
             stream = next((s for s in container.streams if s.type == "audio"), None)
@@ -104,36 +109,50 @@ def _decode_with_av(data: bytes) -> bytes:
                         chunks.append(b)
                         total += len(b)
                 if total > limit:
-                    raise AudioError(f"เสียงยาวเกิน {MAX_SECONDS} วินาที ตัดให้สั้นลงก่อนอัปโหลด")
-            for out in resampler.resample(None):
-                chunks.append(bytes(out.planes[0])[: out.samples * 2])
+                    if not trim:
+                        raise AudioError(f"เสียงยาวเกิน {MAX_SECONDS} วินาที ตัดให้สั้นลงก่อนอัปโหลด")
+                    cut = True  # ยาวเกินกำหนด: หยุดอ่านแค่ส่วนต้น ไม่ถอดทั้งไฟล์
+                    break
+            if not cut:
+                for out in resampler.resample(None):
+                    chunks.append(bytes(out.planes[0])[: out.samples * 2])
     except AudioError:
         raise
     except Exception as e:  # noqa: BLE001 - ไฟล์เสียหาย/รูปแบบที่ไม่รู้จัก
-        raise AudioError("อ่านไฟล์เสียงนี้ไม่ได้ (ไฟล์อาจเสียหรือเป็นรูปแบบที่ไม่รองรับ)") from e
-    return b"".join(chunks)
+        raise AudioError("อ่านไฟล์เสียงนี้ไม่ได้ (ไฟล์อาจเสียหายหรือเป็นรูปแบบที่ไม่รองรับ)") from e
+    return b"".join(chunks), cut
+
+
+def _decode(data: bytes, trim: bool) -> tuple[bytes, bool]:
+    if not data:
+        raise AudioError("ไฟล์ว่างเปล่า")
+    pcm, cut = None, False
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        try:
+            samples, ch, rate, cut = _wav_samples(data, trim)
+            pcm = _to_mono_48k(samples, ch, rate)
+        except (wave.Error, EOFError, struct.error):
+            pcm, cut = None, False  # WAV ชนิดที่ wave อ่านไม่ได้ (เช่น float) -> ลองตัวอ่านเสริม
+    if pcm is None:
+        pcm, cut = _decode_with_av(data, trim)
+    limit = MAX_SECONDS * RATE * 2
+    if len(pcm) > limit:
+        if not trim:
+            raise AudioError(f"เสียงยาวเกิน {MAX_SECONDS} วินาที ตัดให้สั้นลงก่อนอัปโหลด")
+        pcm, cut = pcm[:limit], True
+    if len(pcm) / 2 / RATE < MIN_SECONDS:
+        raise AudioError("เสียงสั้นเกินไป (ต้องยาวอย่างน้อย 0.3 วินาที)")
+    return pcm, cut
 
 
 def decode_pcm(data: bytes) -> bytes:
     """ไฟล์เสียงอะไรก็ได้ -> PCM 16 บิตโมโน 48 kHz (ผิดรูปแบบ/ยาวเกิน/สั้นเกิน -> AudioError) · ฟังก์ชันหนัก เรียกผ่าน thread"""
-    if not data:
-        raise AudioError("ไฟล์ว่างเปล่า")
-    pcm = None
-    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
-        try:
-            samples, ch, rate = _wav_samples(data)
-            pcm = _to_mono_48k(samples, ch, rate)
-        except (wave.Error, EOFError, struct.error):
-            pcm = None  # WAV ชนิดที่ wave อ่านไม่ได้ (เช่น float) -> ลองตัวอ่านเสริม
-    if pcm is None:
-        pcm = _decode_with_av(data)
-    seconds = len(pcm) / 2 / RATE
-    if seconds > MAX_SECONDS:
-        raise AudioError(f"เสียงยาวเกิน {MAX_SECONDS} วินาที ตัดให้สั้นลงก่อนอัปโหลด")
-    if seconds < MIN_SECONDS:
-        raise AudioError("เสียงสั้นเกินไป (ต้องยาวอย่างน้อย 0.3 วินาที)")
-    return pcm
+    return _decode(data, False)[0]
 
+
+def decode_upload(data: bytes) -> tuple[bytes, bool]:
+    """แบบเดียวกับ decode_pcm แต่ไฟล์ที่ยาวเกินกำหนดไม่ถูกปฏิเสธ · ตัดเหลือส่วนต้น MAX_SECONDS วินาที · คืน (PCM, ถูกตัดไหม)"""
+    return _decode(data, True)
 
 def save_wav(pcm: bytes, path: Path) -> None:
     with wave.open(str(path), "wb") as w:

@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import logging
 import os
+import time
 from array import array
 from datetime import timedelta
 
@@ -43,6 +44,7 @@ class AudioCallUnavailable(Exception):
 
 FRAME_PACE = 0.01  # ส่งเสียงเข้าสายทีละ 10 มิลลิวินาที (ปรับตอนทดสอบ)
 CONNECT_GRACE = 25  # หลังสายดังครบเวลา รอการเชื่อมต่อต่ออีกกี่วินาทีก่อนยอมแพ้
+HINT_GAP = 12 * 3600  # ส่งข้อความอธิบายวิธีตั้งค่าให้คนที่ตั้งความเป็นส่วนตัวห้ามโทร อย่างถี่สุดทุกกี่วินาที
 CALL_STATES = {
     "unanswered": "ไม่มีคนรับสาย (ดังครบเวลาแล้ววางสายเอง)",
     "declined": "ปลายทางกดปฏิเสธสาย",
@@ -50,9 +52,9 @@ CALL_STATES = {
     "discarded": "สายถูกตัดก่อนเริ่มเล่นเสียง",
 }
 
-# สาเหตุที่โทรไม่ติดบ่อยๆ -> อธิบายเป็นภาษาไทยให้แอดมินแก้ถูกจุด
+# สาเหตุที่โทรไม่ติดบ่อยๆ -> อธิบายเป็นภาษาไทยให้แอดมินแก้ถูกจุด (จับจากรหัส Telegram หรือชื่อคลาสข้อผิดพลาดของ Telethon)
 CALL_ERRORS = {
-    "USER_PRIVACY_RESTRICTED": "ปลายทางตั้งความเป็นส่วนตัวไม่ให้บัญชีนี้โทรหา (Telegram > ความเป็นส่วนตัว > การโทร ให้เลือกทุกคน หรือเพิ่มบัญชีนี้เป็นข้อยกเว้น)",
+    "USER_PRIVACY_RESTRICTED": "ปลายทางตั้งความเป็นส่วนตัวไม่ให้บัญชีนี้โทรหา",
     "USER_IS_BLOCKED": "ปลายทางบล็อกบัญชีนี้ไว้ จึงโทรและส่งข้อความหาไม่ได้",
     "PARTICIPANT_VERSION_OUTDATED": "Telegram ของปลายทางเป็นเวอร์ชันเก่า ไม่รองรับสายโทรนี้",
     "USER_DEACTIVATED": "บัญชีปลายทางถูกปิดใช้งานแล้ว",
@@ -60,15 +62,27 @@ CALL_ERRORS = {
 }
 
 
-def describe_call_error(e: Exception) -> str:
+def _error_key(e: Exception) -> str:
+    return "".join(ch for ch in f"{type(e).__name__}{getattr(e, 'message', '')}{e}".upper() if ch.isalnum())
+
+
+def is_privacy_error(e: Exception) -> bool:
+    return "USERPRIVACYRESTRICTED" in _error_key(e)
+
+
+def privacy_howto(me_name: str) -> str:
+    return (f"ให้ปลายทางเปิด Telegram > การตั้งค่า > ความเป็นส่วนตัวและความปลอดภัย > การโทร แล้วเลือก \u201cทุกคน\u201d "
+            f"หรือเพิ่มบัญชี \u201c{me_name or 'ที่ระบบใช้โทร'}\u201d ใน \u201cอนุญาตเสมอ\u201d")
+
+
+def describe_call_error(e: Exception, me_name: str = "", howto: bool = False) -> str:
     if isinstance(e, FloodWaitError):
         return f"Telegram จำกัดความถี่การโทร รอประมาณ {getattr(e, 'seconds', 0)} วินาที"
-    raw = f"{getattr(e, 'message', '')} {e}".upper()
+    key = _error_key(e)
     for code, text in CALL_ERRORS.items():
-        if code in raw:
-            return text
+        if code.replace("_", "") in key:
+            return f"{text} · {privacy_howto(me_name)}" if howto and code == "USER_PRIVACY_RESTRICTED" else text
     return f"{type(e).__name__}: {e}"[:300]
-
 
 class TelegramService:
     def __init__(self) -> None:
@@ -92,6 +106,7 @@ class TelegramService:
         self._calls = None        # PyTgCalls ที่ผูกกับ client ปัจจุบัน (สร้างตอนต้องโทรพร้อมเสียงครั้งแรก)
         self._calls_for = None
         self._call_lock = asyncio.Lock()  # โทรทีละสาย
+        self._hint_at: dict[int, float] = {}  # ผู้ใช้ -> เวลา (monotonic) ที่ส่งข้อความอธิบายวิธีตั้งค่าให้ครั้งล่าสุด
     # ------------------------------------------------------------------ state
     @property
     def connected(self) -> bool:
@@ -612,14 +627,46 @@ class TelegramService:
             if wait > 0:
                 await asyncio.sleep(wait)
 
+    async def ensure_contact(self, user) -> str:
+        """ถ้ายังไม่ได้เป็นรายชื่อติดต่อ (เพื่อน) ของบัญชีที่ระบบใช้ -> เพิ่มให้ · คืนข้อความบันทึก (ว่าง = เป็นอยู่แล้ว/ไม่ต้องทำ) · ไม่ raise"""
+        if getattr(user, "contact", False):
+            return ""
+        name = " ".join(filter(None, [user.first_name, user.last_name])) or user.username or str(user.id)
+        try:
+            await self.client(functions.contacts.AddContactRequest(
+                id=await self.client.get_input_entity(user), first_name=user.first_name or user.username or "Admin",
+                last_name=user.last_name or "", phone="", add_phone_privacy_exception=False))
+            user.contact = True
+            return f"เพิ่ม {name} เป็นรายชื่อติดต่อ (เพื่อน) ให้อัตโนมัติแล้ว"
+        except (RPCError, ValueError) as e:
+            return f"เพิ่ม {name} เป็นรายชื่อติดต่อไม่สำเร็จ: {describe_call_error(e)}"
+
+    async def _privacy_hint(self, user, me_name: str) -> str:
+        """คนที่ตั้งความเป็นส่วนตัวห้ามโทร: ส่งข้อความอธิบายวิธีแก้ให้เขาเอง (ไม่ถี่กว่า HINT_GAP) · คืนข้อความบันทึก"""
+        last = self._hint_at.get(user.id)
+        if last is not None and time.monotonic() - last < HINT_GAP:
+            return ""
+        try:
+            await self.client.send_message(
+                user, f"ℹ️ ระบบโทรเตือนหาคุณไม่ได้ เพราะตั้งค่าความเป็นส่วนตัวของ Telegram ไม่ให้บัญชี \u201c{me_name or 'ของระบบ'}\u201d โทรหา\n"
+                      f"ถ้าอยากให้ระบบโทรเตือนถึงคุณ: {privacy_howto(me_name)}", link_preview=False)
+        except (RPCError, ValueError):
+            return ""
+        self._hint_at[user.id] = time.monotonic()
+        return "ส่งข้อความอธิบายวิธีตั้งค่าให้ปลายทางแล้ว"
+
     async def alert_user(self, ref: str, text: str, call: bool = True, message: bool = True, ring_seconds: float = 30,
-                         audio: bytes | None = None, repeat: int = 1) -> dict:
+                         audio: bytes | None = None, repeat: int = 1, add_contact: bool = False) -> dict:
         """เตือนแอดมิน 1 คน: ส่งข้อความ และ/หรือโทร (มี audio = เล่นเสียงให้ฟังเมื่อรับสาย) · ไม่ raise
-        คืนผล call: answered (รับสายและได้ฟังเสียง) / ok (โทรให้ดังแล้ว) / failed / skipped · msg: ok / failed / skipped"""
-        out = {"name": "", "call": "skipped", "call_error": "", "msg": "skipped", "msg_error": ""}
+        add_contact = ถ้ายังไม่เป็นเพื่อนกัน เพิ่มปลายทางเป็นรายชื่อติดต่อก่อนโทร/ส่ง
+        คืนผล call: answered (รับสายและได้ฟังเสียง) / ok (โทรให้ดังแล้ว) / failed / skipped · msg: ok / failed / skipped · note: ข้อความบันทึกเพิ่มเติม"""
+        out = {"name": "", "call": "skipped", "call_error": "", "msg": "skipped", "msg_error": "", "note": ""}
 
         def fail(what: str, err: str) -> None:
             out[what], out["call_error" if what == "call" else "msg_error"] = "failed", err
+
+        def add_note(extra: str) -> None:
+            out["note"] = " · ".join(x for x in (out["note"], extra) if x)
 
         try:
             user = await self.lookup_user(ref)
@@ -630,11 +677,20 @@ class TelegramService:
                     fail(what, str(e) if isinstance(e, TelegramLoginError) else describe_call_error(e))
             return out
         out["name"] = " ".join(filter(None, [user.first_name, user.last_name])) or (user.username or str(user.id))
+        me_name = " ".join(filter(None, [getattr(me, "first_name", None), getattr(me, "last_name", None)])) or getattr(me, "username", "") or ""
         if me is not None and user.id == me.id:
             for what, wanted in (("call", call), ("msg", message)):
                 if wanted:
                     fail(what, "ปลายทางเป็นบัญชีเดียวกับที่ระบบใช้อยู่ โทรหาตัวเองไม่ได้ · ใส่บัญชีของแอดมินคนอื่น")
             return out
+        if add_contact and (call or message):
+            add_note(await self.ensure_contact(user))
+
+        async def call_failed(e: Exception) -> None:
+            fail("call", describe_call_error(e, me_name, howto=True))
+            if is_privacy_error(e):
+                add_note(await self._privacy_hint(user, me_name))
+
         if message:  # ส่งข้อความก่อน: สายที่เล่นเสียงใช้เวลาหลายสิบวินาที แต่ข้อความควรถึงทันที
             try:
                 await self.client.send_message(user, text, link_preview=False)
@@ -649,7 +705,7 @@ class TelegramService:
                 except AudioCallUnavailable as e:
                     note = f"เล่นเสียงไม่ได้ ({e}) จึงโทรแบบสายเตือนแทน"
                 except (RPCError, ValueError) as e:
-                    fail("call", describe_call_error(e))
+                    await call_failed(e)
                     return out
                 except Exception as e:  # noqa: BLE001 - ติดต่อ/ส่งเสียงระหว่างสายพลาด (สายอาจโทรออกไปแล้ว จึงไม่โทรซ้ำ)
                     fail("call", f"{type(e).__name__}: {e}"[:300])
@@ -662,7 +718,7 @@ class TelegramService:
                 await self.ring_user(user, ring_seconds)
                 out["call"], out["call_error"] = "ok", note
             except (RPCError, ValueError) as e:
-                fail("call", describe_call_error(e))
+                await call_failed(e)
         return out
     async def _handle_dev_message(self, event: events.NewMessage.Event) -> None:
         msg = event.message

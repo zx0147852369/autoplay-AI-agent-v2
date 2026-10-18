@@ -353,6 +353,7 @@ class ChaseLog(Base):
     call_error: Mapped[str] = mapped_column(Text, default="")
     msg_status: Mapped[str] = mapped_column(String(8), default="skipped")
     msg_error: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")  # ข้อมูลเพิ่มเติม เช่น เพิ่มปลายทางเป็นรายชื่อติดต่อให้อัตโนมัติ
 
 
 class ChaseSound(Base):
@@ -460,6 +461,7 @@ DEFAULT_SETTINGS = {
     "chase_max": "3",           # โทรตามสูงสุดกี่รอบต่อเหตุการณ์ (กันโทรไม่หยุด)
     "chase_call": "1",          # โทรให้โทรศัพท์ปลายทางดัง
     "chase_message": "1",       # ส่งข้อความสรุปรายการที่ค้างด้วย
+    "chase_add_contact": "1",   # ถ้าแอดมินที่จะโทรหายังไม่ได้เป็นเพื่อนกัน (รายชื่อติดต่อ) ให้เพิ่มให้อัตโนมัติก่อนโทร
     "chase_state": "",          # JSON {"round", "last"} รอบที่โทรไปแล้วของเหตุการณ์ปัจจุบัน
     "chase_play_audio": "1",    # เมื่อแอดมินกดรับสาย เล่นไฟล์เสียงให้ฟัง (ไม่เปิด/เล่นไม่ได้ = โทรให้ดังอย่างเดียว)
     "chase_sound_id": "",       # ไฟล์เสียงที่ใช้ (id ใน chase_sounds) ว่าง = เสียงเตือนมาตรฐานของระบบ

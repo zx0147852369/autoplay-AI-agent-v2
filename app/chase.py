@@ -52,6 +52,7 @@ def config(settings: dict[str, str]) -> dict:
         "max": int_setting(settings, "chase_max", 1, 10),
         "call": settings.get("chase_call") == "1",
         "message": settings.get("chase_message") == "1",
+        "add_contact": settings.get("chase_add_contact") == "1",
         "audio": settings.get("chase_play_audio") == "1",
         "audio_repeat": int_setting(settings, "chase_audio_repeat", 1, 5),
         "sound_id": (settings.get("chase_sound_id") or "").strip(),
@@ -120,7 +121,7 @@ def message_text(info: dict, rnd: int, rounds: int) -> str:
 
 def _record(db, kind: str, rnd: int, target: str, res: dict, info: dict) -> dict:
     row = ChaseLog(kind=kind, round=rnd, target=target[:64], target_name=res["name"][:128], waiting=info["total"], oldest_min=info["oldest_min"],
-                   call_status=res["call"], call_error=res["call_error"][:500], msg_status=res["msg"], msg_error=res["msg_error"][:500])
+                   call_status=res["call"], call_error=res["call_error"][:500], msg_status=res["msg"], msg_error=res["msg_error"][:500], note=res.get("note", "")[:500])
     db.add(row)
     db.flush()
     keep = db.scalar(select(ChaseLog.id).order_by(ChaseLog.id.desc()).offset(KEEP_LOGS).limit(1))
@@ -151,7 +152,7 @@ async def tick(now: datetime | None = None) -> dict | None:
         audio = active_sound(db, cfg["sound_id"])[0] if cfg["audio"] and cfg["call"] else None
     rnd = state["round"] + 1
     target = cfg["targets"][(rnd - 1) % len(cfg["targets"])]
-    res = await telegram.alert_user(target, message_text(info, rnd, cfg["max"]), cfg["call"], cfg["message"], RING_SECONDS, audio, cfg["audio_repeat"])
+    res = await telegram.alert_user(target, message_text(info, rnd, cfg["max"]), cfg["call"], cfg["message"], RING_SECONDS, audio, cfg["audio_repeat"], cfg["add_contact"])
     log.warning("โทรตามอนุมัติรอบ %s/%s -> %s: โทร=%s ข้อความ=%s (ค้าง %s รายการ นานสุด %s นาที)",
                 rnd, cfg["max"], target, res["call"], res["msg"], info["total"], info["oldest_min"])
     with SessionLocal() as db:
@@ -169,7 +170,7 @@ async def test_all() -> list[dict]:
         audio = active_sound(db, cfg["sound_id"])[0] if cfg["audio"] and cfg["call"] else None
     out = []
     for target in cfg["targets"]:
-        res = await telegram.alert_user(target, TEST_TEXT, cfg["call"], cfg["message"] or not cfg["call"], RING_SECONDS, audio, cfg["audio_repeat"])
+        res = await telegram.alert_user(target, TEST_TEXT, cfg["call"], cfg["message"] or not cfg["call"], RING_SECONDS, audio, cfg["audio_repeat"], cfg["add_contact"])
         with SessionLocal() as db:
             out.append(_record(db, "test", 0, target, res, info))
     return out
