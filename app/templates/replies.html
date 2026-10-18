@@ -6,6 +6,7 @@
 <script>(function () { var c = document.querySelector('.content'); if (c) c.classList.add('content-wide'); })();</script>
 {% set base ='/linebot/replies' if scope == 'line' else '/replies' %}
 <script>window.__pendingKey = '{{ 'line_pending' if scope == 'line' else 'pending' }}';</script>
+{% set chip_icons = {'สั้นลง': 'document-text', 'สุภาพขึ้น': 'heart', 'ขอสลิปด้วย': 'receipt'} %}
 {% set tabs = [('pending', 'รออนุมัติ'), ('sent', 'ส่งแล้ว'), ('rejected', 'ปฏิเสธ'), ('failed', 'ส่งไม่สำเร็จ'), ('all', 'ทั้งหมด')] %}
 {# ไม่แสดงหัวเรื่องบนจอ เพื่อให้กล่องรออนุมัติสูงและใหญ่ขึ้น (เมนูข้างและแท็บบอกอยู่แล้วว่าอยู่หน้าไหน) · คงไว้ให้โปรแกรมอ่านหน้าจอ #}
 <h1 class="rv-sr">{{ ('รออนุมัติ' if status == 'pending' else 'ข้อความตอบกลับ') ~ (' LINE' if scope == 'line' else '') }}</h1>
@@ -113,7 +114,7 @@
           <h2><span class="rv-tid">#{{ t.id }}</span> {{ t.title }}</h2>
           <p><i class="rv-chip sev-{{ t.severity }}">{{ SEVERITY_LABELS[t.severity] }}</i> {{ CATEGORIES.get(t.category, t.category) }} · {{ t.created_at | localtime }}</p>
         </div>
-        <a class="rv-link" href="/tickets/{{ t.id }}">{{ icon('external', 14) }} ดู ticket</a>
+        <a class="rv-link" href="/tickets/{{ t.id }}">{{ cicon('clipboard-task', 20) }} ดู ticket</a>
       </header>
       <div class="rv-body">
         <dl class="rv-facts">
@@ -138,8 +139,8 @@
           <div class="rv-label-row">
             <span class="rv-label" style="margin:0">ข้อความที่จะโพสต์ในกลุ่ม</span>
             <span class="rv-mini-row">
-              <button type="button" class="rv-mini" data-reanalyze-ticket="{{ t.id }}" title="ให้ระบบวิเคราะห์แชทนี้ใหม่ แล้วจัดทำข้อความแจ้งปัญหาที่จะส่งเข้ากลุ่มใหม่ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 13) }} <span>วิเคราะห์ใหม่</span></button>
-              <button type="button" class="rv-mini" onclick="toggleEdit(this)">{{ icon('edit', 13) }} <span>แก้ไขข้อความ</span></button>
+              <button type="button" class="rv-mini" data-reanalyze-ticket="{{ t.id }}" title="ให้ระบบวิเคราะห์แชทนี้ใหม่ แล้วจัดทำข้อความแจ้งปัญหาที่จะส่งเข้ากลุ่มใหม่ (นับโควตา AI 1 ครั้ง)">{{ cicon('arrow-sync', 17) }} <span>วิเคราะห์ใหม่</span></button>
+              <button type="button" class="rv-mini" onclick="toggleEdit(this)">{{ cicon('edit', 17) }} <span>แก้ไขข้อความ</span></button>
             </span>
           </div>
           <p class="rv-ai-status" role="status" aria-live="polite" hidden></p>
@@ -150,14 +151,14 @@
       <footer class="rv-foot">
         <form method="post" action="/tickets/{{ t.id }}/skip-dev">
           <input type="hidden" name="next" value="/replies?box=dev">
-          <button class="rv-btn danger">ไม่ส่งเข้ากลุ่ม</button>
+          <button class="rv-btn danger">{{ cicon('dismiss-circle', 22) }} ไม่ส่งเข้ากลุ่ม</button>
         </form>
         <span class="rv-hint">หลังส่งแล้ว โปรแกรมเมอร์ reply โพสต์นี้เพื่ออัปเดตสถานะได้</span>
         <form method="post" action="/tickets/{{ t.id }}/post-dev" id="post-{{ t.id }}">
           <input type="hidden" name="next" value="/replies?box=dev">
           <button class="rv-btn primary" data-confirm-title="ส่ง Ticket #{{ t.id }} เข้ากลุ่มโปรแกรมเมอร์?"
             data-confirm="ข้อความด้านล่างจะถูกโพสต์ใน {{ dev_group_title }} พร้อมรูปจากลูกค้า" data-confirm-ok="ส่งเข้ากลุ่ม"
-            data-confirm-tone="send" data-confirm-preview="textarea[form=post-{{ t.id }}]">{{ icon('send', 16) }} อนุมัติและส่งเข้ากลุ่ม</button>
+            data-confirm-tone="send" data-confirm-preview="textarea[form=post-{{ t.id }}]">{{ cicon('send', 24) }} อนุมัติและส่งเข้ากลุ่ม</button>
         </form>
       </footer>
     </section>
@@ -177,8 +178,8 @@
             {% if r.kind == 'dev_update' %}<i class="rv-chip info">จากโปรแกรมเมอร์</i>{% endif %}
           </p>
         </div>
-        <button type="button" class="rv-collapse" aria-pressed="false" title="ซ่อน/แสดงรายการทางซ้าย เพื่อให้แชทกว้างขึ้น">{{ icon('arrow-left', 14) }}<span>ขยายแชท</span></button>
-        <a class="rv-link" href="/chats/{{ r.chat_id }}">{{ icon('chat', 14) }} เปิดแชท</a>
+        <button type="button" class="rv-collapse" aria-pressed="false" title="ซ่อน/แสดงรายการทางซ้าย เพื่อให้แชทกว้างขึ้น">{{ cicon('chat-multiple', 20) }}<span>ขยายแชท</span></button>
+        <a class="rv-link" href="/chats/{{ r.chat_id }}">{{ cicon('chat', 20) }} เปิดแชท</a>
       </header>
 
       <div class="rv-body rv-cols">
@@ -204,7 +205,7 @@
             <div class="rv-replying" hidden><span>ตอบถึง</span><q></q><button type="button" aria-label="ยกเลิกการตอบถึงข้อความนี้">{{ icon('x', 13) }}</button></div>
             <div class="rv-say-row">
               <textarea rows="1" maxlength="4000" placeholder="พิมพ์ตอบลูกค้าเองในแชทนี้…" title="Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ · แตะข้อความลูกค้าเพื่อตอบถึงข้อความนั้น" aria-label="พิมพ์ข้อความถึงลูกค้าในแชทนี้"></textarea>
-              <button type="button" class="rv-say-btn" aria-label="ส่งข้อความถึงลูกค้า" title="ส่ง (Enter)">{{ icon('send', 18) }}</button>
+              <button type="button" class="rv-say-btn" aria-label="ส่งข้อความถึงลูกค้า" title="ส่ง (Enter)">{{ cicon('send', 24) }}</button>
             </div>
             <p class="rv-say-err" role="alert" hidden></p>
           </div>
@@ -231,15 +232,15 @@
           </div>
           {% endif %}
           <div class="rv-send">
-            <button type="button" class="rv-btn rv-decline" data-toggle=".rv-rej" aria-controls="rej-{{ r.id }}">ไม่ส่ง</button>
+            <button type="button" class="rv-btn rv-decline" data-toggle=".rv-rej" aria-controls="rej-{{ r.id }}">{{ cicon('dismiss-circle', 22) }} ไม่ส่ง</button>
             <button class="rv-btn primary" data-confirm-title="ส่งข้อความถึงลูกค้า?"
               data-confirm="ข้อความด้านล่างจะถูกส่งในแชท {{ title }} ทันที{{ ' พร้อมรูปที่เลือก' if pics }}" data-confirm-ok="ส่งข้อความ"
-              data-confirm-tone="send" data-confirm-preview="#approve-{{ r.id }} textarea">{{ icon('send', 16) }} อนุมัติและส่ง</button>
+              data-confirm-tone="send" data-confirm-preview="#approve-{{ r.id }} textarea">{{ cicon('send', 24) }} อนุมัติและส่ง</button>
           </div>
         </form>
         <form method="post" action="/replies/{{ r.id }}/reject" class="rv-inline rv-rej" hidden id="rej-{{ r.id }}">
           <input name="reason" placeholder="เหตุผลที่ไม่ส่ง (ไม่บังคับ)" aria-label="เหตุผลที่ไม่ส่งข้อความนี้">
-          <button class="rv-btn danger">ยืนยันไม่ส่ง</button>
+          <button class="rv-btn danger">{{ cicon('dismiss-circle', 20) }} ยืนยันไม่ส่ง</button>
         </form>
 
         <div class="rv-tools">
@@ -247,14 +248,14 @@
           <form method="post" action="/replies/{{ r.id }}/regenerate" class="rv-inline rv-own" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
             <input type="hidden" name="text">
             <input name="instruction" placeholder="ระบุสิ่งที่ต้องการปรับ เช่น ขอชื่อผู้ใช้เพิ่มเติม · ใช้ถ้อยคำเป็นกันเองขึ้น · แจ้งขอเวลาตรวจสอบ" required autocomplete="off" aria-label="คำสั่งปรับปรุงข้อความ">
-            <button class="rv-btn soft">ปรับข้อความ</button>
+            <button class="rv-btn soft">{{ cicon('edit', 20) }} ปรับข้อความ</button>
           </form>
           <div class="rv-chips">
             <span class="rv-tl">ตัวเลือกด่วน</span>
             {% for q in ['สั้นลง', 'สุภาพขึ้น', 'ขอสลิปด้วย'] %}
             <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
               <input type="hidden" name="text"><input type="hidden" name="instruction" value="{{ q }}">
-              <button class="rv-chipbtn">{{ q }}</button>
+              <button class="rv-chipbtn">{{ cicon(chip_icons[q], 18) }}<span>{{ q }}</span></button>
             </form>
             {% endfor %}
           </div>
@@ -264,7 +265,7 @@
               <b>ผลวิเคราะห์คลาดเคลื่อน?</b>
               <span class="rv-muted">ให้ระบบอ่านข้อความล่าสุดของลูกค้าอีกครั้ง แล้วจัดทำร่างใหม่แทนร่างนี้ · {{ 'หากมี ticket ที่เกี่ยวข้อง จะจัดทำข้อความแจ้งปัญหาใหม่ให้ด้วย' if scope == 'line' else 'หากมีข้อความแจ้งปัญหาที่รอส่งเข้ากลุ่ม จะจัดทำใหม่ให้ด้วย' }}</span>
             </div>
-            <button type="button" class="rv-btn soft" data-reanalyze="{{ r.id }}" title="ให้ระบบอ่านข้อความล่าสุดของลูกค้าอีกครั้ง แล้วจัดทำร่างคำตอบใหม่แทนร่างนี้ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 15) }} วิเคราะห์แชทนี้ใหม่</button>
+            <button type="button" class="rv-btn soft" data-reanalyze="{{ r.id }}" title="ให้ระบบอ่านข้อความล่าสุดของลูกค้าอีกครั้ง แล้วจัดทำร่างคำตอบใหม่แทนร่างนี้ (นับโควตา AI 1 ครั้ง)">{{ cicon('arrow-sync', 20) }} วิเคราะห์แชทนี้ใหม่</button>
           </div>
           {% endif %}
         </div>

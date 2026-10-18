@@ -2787,3 +2787,10 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 .rvpage .rv-text a { text-decoration: underline; text-underline-offset: 3px; }
 .rvpage .rv-tid { color: var(--ink-2); }
 .rvpage .rv-chip.info { background: var(--grey-tint); color: var(--ink-2); }
+
+/* รูป (ไอคอนสี) บนปุ่มของหน้ารออนุมัติ */
+.rvpage .rv .rv-chipbtn { display: inline-flex; align-items: center; gap: 8px; }
+.rvpage .rv .rv-btn .cicon, .rvpage .rv .rv-chipbtn .cicon, .rvpage .rv .rv-mini .cicon, .rvpage .rv-link .cicon, .rvpage .rv .rv-collapse .cicon, .rvpage .rv .rv-say-btn .cicon { flex-shrink: 0; }
+.rvpage .rv .rv-btn:hover .cicon, .rvpage .rv .rv-chipbtn:hover .cicon, .rvpage .rv .rv-mini:hover .cicon, .rvpage .rv-link:hover .cicon, .rvpage .rv .rv-collapse:hover .cicon, .rvpage .rv .rv-say-btn:hover .cicon { transform: translateY(-1px) scale(1.08); }
+.rvpage .rv .rv-btn:disabled .cicon, .rvpage .rv .rv-chipbtn:disabled .cicon { filter: grayscale(1); }
+@media (prefers-reduced-motion: reduce) { .rvpage .rv .cicon { transition: none; transform: none !important; } }
