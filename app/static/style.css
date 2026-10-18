@@ -2734,22 +2734,22 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .rvpage .rv-tab b { font-size: .9rem; }
   .rvpage .rv-tab b.hot { min-width: 27px; padding: 0 9px; }
 
-  .rvpage .rv-seg a { padding: 20px 10px 17px; font-size: 1.04rem; }
-  .rvpage .rv-seg b { padding: 0 8px; font-size: .82rem; }
-  .rvpage .rv-item { gap: 14px; padding: 20px 24px 19px; }
-  .rvpage .rv-it-main { gap: 5px; }
-  .rvpage .rv-it-top strong { font-size: 1.14rem; }
-  .rvpage .rv-it-top time { font-size: .86rem; }
-  .rvpage .rv-it-snip { font-size: 1.04rem; line-height: 1.55; }
-  .rvpage .rv-it-tags { margin-top: 7px; }
-  .rvpage .rv-chip { font-size: .82rem; }
-  .rvpage .rv-un { min-width: 26px; height: 26px; font-size: .84rem; }
+  .rvpage .rv-seg a { padding: 15px 8px 13px; font-size: .96rem; }
+  .rvpage .rv-seg b { padding: 0 7px; font-size: .76rem; }
+  .rvpage .rv-item { gap: 10px; padding: 14px 18px 13px; }
+  .rvpage .rv-it-main { gap: 3px; }
+  .rvpage .rv-it-top strong { font-size: 1.02rem; }
+  .rvpage .rv-it-top time { font-size: .76rem; }
+  .rvpage .rv-it-snip { font-size: .92rem; line-height: 1.5; }
+  .rvpage .rv-it-tags { margin-top: 4px; }
+  .rvpage .rv-chip { font-size: .72rem; }
+  .rvpage .rv-un { min-width: 22px; height: 22px; font-size: .76rem; }
 
-  .rvpage .rv-ph { padding: 24px 34px 22px; }
+  .rvpage .rv-ph { padding: 24px 28px 22px; }
   .rvpage .rv-ph-text h2 { font-size: 1.55rem; }
   .rvpage .rv-ph-text p { margin-top: 5px; font-size: .98rem; }
   .rvpage .rv-link, .rvpage .rv .rv-collapse { height: 42px; padding: 0 18px; font-size: .98rem; }
-  .rvpage .rv-body { --rv-px: 34px; padding-top: 26px; padding-bottom: 30px; }
+  .rvpage .rv-body { --rv-px: 28px; padding-top: 26px; padding-bottom: 30px; }
 
   .rvpage .rv-label { min-height: 44px; font-size: 1.04rem; }
   .rvpage .rv-label-row { min-height: 44px; }
@@ -2758,8 +2758,8 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .rvpage .rv-live { font-size: .82rem; }
   .rvpage .rv-aitag { padding: 2px 11px; font-size: .82rem; }
 
-  .rvpage .rv-convo { padding: 24px 24px 20px; }
-  .rvpage .rv-msg { max-width: 86%; padding: 12px 19px 9px; }
+  .rvpage .rv-convo { padding: 22px 18px 18px; }
+  .rvpage .rv-msg { max-width: 92%; padding: 12px 19px 9px; }
   .rvpage .rv-text { font-size: 1.22rem; line-height: 1.68; }
   .rvpage .rv-meta b { font-size: .98rem; }
   .rvpage .rv-meta em { font-size: .8rem; }
@@ -2797,21 +2797,27 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   .rvpage .rv-summary { font-size: 1.12rem; }
   .rvpage .rv .rv-tg .tg-bubble { padding: 20px 26px; font-size: 1.08rem; }
   .rvpage .rv .rv-tg textarea { padding: 20px 26px; font-size: 1.08rem; }
-  .rvpage .rv-foot { padding: 18px 34px; }
+  .rvpage .rv-foot { padding: 18px 28px; }
   .rvpage .rv-hint { font-size: .92rem; }
   .rvpage .rv-hero h3 { font-size: 1.35rem; }
   .rvpage .rv-hero p { font-size: 1.02rem; }
 }
-/* แผงร่างคำตอบกว้างขึ้นพอดีกับตัวอักษรที่ใหญ่ขึ้น (ตอนแผงรายละเอียดกว้างพอจะแบ่งสองคอลัมน์) */
+/* ให้ฝั่งแชทกว้างกว่าเดิม (สัดส่วน 2.2 : 1) — ฝั่งร่างคำตอบคงกว้างพอไม่ต่ำกว่า 380px */
 @container rvd (min-width: 940px) {
-  .rvpage .rv-cols { grid-template-columns: minmax(0, 1.3fr) minmax(400px, 1fr); }
+  .rvpage .rv-cols { grid-template-columns: minmax(0, 2.2fr) minmax(380px, 1fr); column-gap: 24px; }
+  .rvpage .rv-cols > .rv-side { padding-left: 24px; }
 }
-/* คิวกว้างขึ้นเพื่อให้ตัวอักษรใหญ่ขึ้นไม่ตัดบรรทัดบ่อย */
+/* คิวแคบและกะทัดรัด (280–320px) เพื่อยกพื้นที่ให้ช่องแชท */
 @media (min-width: 1181px) {
-  .rvpage .rv:not(.collapsed):not(.empty) { grid-template-columns: minmax(350px, 420px) minmax(0, 1fr); }
+  .rvpage .rv:not(.collapsed):not(.empty) { grid-template-columns: minmax(280px, 320px) minmax(0, 1fr); }
 }
 
 /* หัวเรื่องหน้ารออนุมัติ: ซ่อนบนจอ (ให้กล่องสูงขึ้น) แต่คงไว้ให้โปรแกรมอ่านหน้าจอ */
 .rv-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .rvpage .rv-tabs { margin-top: -8px; }
 @media (max-width: 900px) { .rvpage .rv-tabs { margin-top: 0; } }
+
+/* หน้ารออนุมัติใช้ความกว้างหน้าจอเต็มที่ (เดิมจำกัดที่ 1600px) — ช่องแชทจึงกว้างขึ้นบนจอใหญ่ */
+@media (min-width: 901px) {
+  .content.content-wide { max-width: none; padding-left: 28px; padding-right: 28px; }
+}

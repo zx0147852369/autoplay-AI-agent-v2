@@ -3,6 +3,7 @@
 {% block title %}{{ 'รออนุมัติ LINE' if scope == 'line' else 'รออนุมัติ' }}{% endblock %}
 {% block content %}
 <div class="rvpage">
+<script>(function () { var c = document.querySelector('.content'); if (c) c.classList.add('content-wide'); })();</script>
 {% set base ='/linebot/replies' if scope == 'line' else '/replies' %}
 <script>window.__pendingKey = '{{ 'line_pending' if scope == 'line' else 'pending' }}';</script>
 {% set tabs = [('pending', 'รออนุมัติ'), ('sent', 'ส่งแล้ว'), ('rejected', 'ปฏิเสธ'), ('failed', 'ส่งไม่สำเร็จ'), ('all', 'ทั้งหมด')] %}
