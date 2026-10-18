@@ -1234,14 +1234,7 @@ tr[hidden] { display: none; }
 .k-pattern { background: var(--amber-tint); color: var(--amber); }
 .k-warning { background: var(--red-tint); color: var(--red); }
 
-/* ---------- หน้า เชื่อมต่อ AI ---------- */
-.fetch-out { padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-lg); }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { font-family: var(--mono); font-size: .8rem; padding: 3px 10px; border-radius: 99px; }
-.chip:disabled { opacity: .45; }
-.test-out { border-top: 1px solid var(--line); }
-.test-sum { padding: 12px 18px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: .92rem; }
-.test-out .grid-table { margin: 0; }
+/* ---------- ตารางตั้งค่า (ใช้ร่วมกัน) ---------- */
 /* ตารางตั้งค่า: หัวข้อ | ค่า | คำอธิบาย (เส้นกริดทุกช่อง ช่องกรอกเรียงตรงกันทุกแถว) */
 .kv { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .kv .kv-k { width: 215px; }
@@ -1253,18 +1246,7 @@ tr[hidden] { display: none; }
 .kv td input, .kv td select, .kv td textarea { width: 100%; }
 .kv td code { font-size: .82em; }
 .sub-title { padding: 10px 16px; background: var(--surface-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: .86rem; font-weight: 600; color: var(--ink); }
-.masktbl th, .masktbl td { vertical-align: middle; }
-.masktbl td.yes { color: var(--pine); font-weight: 600; }
-.masktbl td.no { color: var(--muted); }
-.masktbl .lv.on { background: var(--pine-tint); }
-.masktbl th.lv.on { color: var(--pine); box-shadow: inset 0 -2px 0 var(--pine); }
-.mask-notes { margin: 0; padding: 12px 16px 14px 36px; font-size: .84rem; color: var(--muted); line-height: 1.7; border-top: 1px solid var(--line); }
-.mask-try { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
-.mask-try .mask-col { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
-.mask-try .mask-col + .mask-col { border-left: 1px solid var(--line); background: var(--surface-2); }
-.mask-result { min-height: 112px; }
 .panel > .panel-foot { border-top: 1px solid var(--line); }
-.mask-recent { padding: 10px 16px 14px; border-top: 1px solid var(--line); }
 .form-actions { display: flex; gap: 16px; align-items: center; margin: 0 0 18px; }
 .form-actions .note { flex: 1; margin: 0; }
 .form-actions button { flex-shrink: 0; }
@@ -1274,15 +1256,8 @@ tr[hidden] { display: none; }
   .kv th, .kv td { border-right: 0; border-bottom: 0; padding: 10px 14px; }
   .kv th { padding-bottom: 4px; background: transparent; }
   .kv td.desc { background: transparent; padding-top: 4px; border-bottom: 1px solid var(--line); }
-  .mask-try { grid-template-columns: 1fr; }
-  .mask-try .mask-col + .mask-col { border-left: 0; border-top: 1px solid var(--line); }
   .form-actions { flex-direction: column; align-items: stretch; }
 }
-.mask-out { padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
-.mask-out pre { margin: 6px 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: .85rem; }
-.mask-sum { font-size: .88rem; color: var(--ink-2); font-weight: 600; }
-.mask-recent summary { cursor: pointer; font-size: .9rem; color: var(--ink-2); }
-.mask-recent .mask-out { margin-top: 8px; max-height: 320px; overflow: auto; }
 
 /* ---------- อื่นๆ ---------- */
 .save-bar { border-radius: var(--r-lg); box-shadow: var(--shadow-md); }

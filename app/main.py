@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, chatbus, custom_ai, dev_bridge, learning, line_service, linebot, privacy, quota, sysinfo, unread
+from . import ai_service, analyzer, chatbus, dev_bridge, learning, line_service, linebot, quota, sysinfo, unread
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
@@ -462,8 +462,6 @@ def local_day_start_utc():
 
 
 def model_key_ready(model: str, settings: dict | None = None) -> bool:
-    if custom_ai.is_custom(model):
-        return custom_ai.ready(settings or {})
     if ai_service.is_gemini(model):
         return bool(quota.gemini_keys())
     return bool(os.getenv("ANTHROPIC_API_KEY"))
@@ -505,7 +503,7 @@ async def dashboard(request: Request):
     setup = [
         ("เชื่อมต่อบัญชี Telegram", telegram.connected, "/telegram"),
         ("เลือกแชทลูกค้าที่จะติดตาม", bool(monitored), "/chats"),
-        ("ใส่ API key ของโมเดล AI", key_ready, "/ai" if custom_ai.is_custom(model) else "/settings"),
+        ("ใส่ API key ของโมเดล AI", key_ready, "/settings"),
         ("กรอกข้อมูลธุรกิจและคำตอบมาตรฐาน",
          settings.get("knowledge_base") != DEFAULT_SETTINGS["knowledge_base"], "/settings"),
     ]
@@ -1764,7 +1762,7 @@ async def brain_page(request: Request, f: str = "all", q: str = ""):
                   chat_titles=chat_titles, chats=chats, runs=runs, new_24h=new_24h, uses=uses, pending=pending,
                   next_after=learning._parse_iso(cursor.get("next_after")), last_ok=last_ok, learn_model=model,
                   learn_quota=q_row, kinds=learning.KINDS, note_data=note_data, learn_settings=settings,
-                  learning_busy=learning._lock.locked(), custom_models=ai_service.custom_models(settings))
+                  learning_busy=learning._lock.locked())
 
 
 @app.post("/brain/settings")
@@ -1888,145 +1886,6 @@ async def brain_note_delete(request: Request, note_id: int):
             db.commit()
             flash(request, f"ลบโน้ต \"{note.title}\" แล้ว")
     return back("/brain")
-
-
-# ---------------------------------------------------------------- เชื่อมต่อ AI ภายนอก (API รูปแบบ OpenAI)
-@app.get("/ai")
-async def ai_page(request: Request):
-    user = current_user(request, "admin")
-    with SessionLocal() as db:
-        settings = get_settings(db)
-        rows = db.execute(select(AiUsage.model, AiUsage.ok, AiUsage.input_tokens, AiUsage.output_tokens)
-                          .where(AiUsage.model.like(custom_ai.PREFIX + "%"), AiUsage.at >= quota.day_start_utc())).all()
-    usage: dict[str, dict] = {}
-    for m, ok, ti, to in rows:  # รวมการใช้งานวันนี้ต่อโมเดล
-        u = usage.setdefault(m, {"calls": 0, "ok": 0, "fail": 0, "tokens_in": 0, "tokens_out": 0})
-        u["calls"] += 1
-        u["ok" if ok else "fail"] += 1
-        u["tokens_in"] += ti or 0
-        u["tokens_out"] += to or 0
-    models = ai_service.custom_models(settings)
-    key = custom_ai.api_key()
-    return render(request, "ai.html", user, settings=settings, key_set=bool(key), key_mask=custom_ai.mask_key(key) if key else "",
-                  base_error=custom_ai.check_base_url(settings.get("custom_ai_base_url") or os.getenv("CUSTOM_AI_BASE_URL") or ""),
-                  models=models, caps={m: custom_ai.caps(settings, m) for m in models}, usage=usage,
-                  ready=custom_ai.ready(settings), main_model=settings.get("ai_model"), learn_model=learning.valid_model(settings),
-                  mask_on=privacy.enabled(settings), mask_level=privacy.level(settings), mask_stats=privacy.snapshot(),
-                  mask_recent=privacy.recent())
-
-
-@app.post("/ai/save")
-async def ai_save(request: Request):
-    current_user(request, "admin")
-    form = await request.form()
-    base = custom_ai.normalize_base_url(str(form.get("base_url", "")))
-    if base and (error := custom_ai.check_base_url(base)):
-        flash(request, error, "error")
-        return back("/ai")
-    models = custom_ai.parse_models(str(form.get("models", "")))
-    if len(models) > 40:
-        flash(request, "ใส่โมเดลได้สูงสุด 40 รุ่น", "error")
-        return back("/ai")
-    json_mode = str(form.get("json_mode", "auto"))
-    vision = str(form.get("vision", "no"))
-    terms = privacy.clean_terms(str(form.get("mask_terms", "")))
-    values = {
-        "custom_ai_mask": "off" if str(form.get("mask", "on")) == "off" else "on",
-        "custom_ai_mask_level": "standard" if str(form.get("mask_level", "strict")) == "standard" else "strict",
-        "custom_ai_mask_terms": "\n".join(terms),
-        "custom_ai_name": str(form.get("name", "")).strip()[:60] or "AI ภายนอก",
-        "custom_ai_base_url": base,
-        # เก็บแบบสะอาด: บรรทัดละ "id" หรือ "id | ชื่อที่แสดง" (ตัดรายการซ้ำ/ชื่อรุ่นที่ไม่ถูกต้องทิ้งแล้ว)
-        "custom_ai_models": "\n".join(m.removeprefix(custom_ai.PREFIX) + (f" | {label}" if label != m.removeprefix(custom_ai.PREFIX) else "")
-                                      for m, label in models.items()),
-        "custom_ai_json_mode": json_mode if json_mode in ("auto", *custom_ai.JSON_MODES) else "auto",
-        "custom_ai_vision": vision if vision in ("auto", "yes", "no") else "no",
-    }
-    for key, low, high in (("custom_ai_max_tokens", 0, 200000), ("custom_ai_timeout", 10, 600)):
-        raw = str(form.get({"custom_ai_max_tokens": "max_tokens", "custom_ai_timeout": "timeout"}[key], "")).strip()
-        if raw.isdigit():
-            values[key] = str(max(low, min(high, int(raw))))
-    with SessionLocal() as db:
-        for key, value in values.items():
-            db.merge(Setting(key=key, value=value))
-        db.commit()
-    custom_ai.clear_caches()
-    flash(request, "บันทึกการเชื่อมต่อ AI แล้ว · กดทดสอบโมเดลเพื่อตรวจว่าใช้งานได้จริง")
-    return back("/ai")
-
-
-@app.post("/ai/use")
-async def ai_use(request: Request, model: str = Form(""), target: str = Form("")):
-    """เลือกโมเดลนี้เป็นโมเดลหลัก (ตอบลูกค้า) หรือโมเดลเรียนรู้"""
-    current_user(request, "admin")
-    with SessionLocal() as db:
-        known = ai_service.all_models(get_settings(db))
-        if model in known and target in ("ai_model", "learn_model"):
-            db.merge(Setting(key=target, value=model))
-            db.commit()
-            flash(request, f"ตั้ง {known[model]} เป็น" + ("โมเดลหลักสำหรับตอบลูกค้าแล้ว" if target == "ai_model" else "โมเดลเรียนรู้แล้ว"))
-        else:
-            flash(request, "ไม่พบโมเดลที่เลือก", "error")
-    return back("/ai")
-
-
-async def _json_body(request: Request) -> dict:
-    try:
-        data = await request.json()
-    except ValueError:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-@app.post("/ai/api/models")
-async def ai_api_models(request: Request):
-    """ดึงรายชื่อโมเดลจาก GET {base_url}/models (ใช้ Base URL ที่กรอกอยู่ ยังไม่ต้องบันทึกก่อน)"""
-    current_user(request, "admin")
-    body = await _json_body(request)
-    with SessionLocal() as db:
-        settings = get_settings(db)
-    try:
-        ids = await custom_ai.list_models(settings, str(body.get("base_url") or ""))
-    except custom_ai.ProviderError as e:
-        return JSONResponse({"ok": False, "error": str(e)})
-    return JSONResponse({"ok": True, "models": ids[:300]})
-
-
-@app.post("/ai/api/mask-preview")
-async def ai_api_mask_preview(request: Request):
-    """ตัวอย่างว่าข้อความจะถูกปกปิดอย่างไรก่อนส่งให้ AI ภายนอก (ไม่ส่งออกไปไหน ไม่เก็บข้อความ)"""
-    current_user(request, "admin")
-    body = await _json_body(request)
-    text = str(body.get("text") or "")[:4000]
-    with SessionLocal() as db:
-        settings = get_settings(db)
-    terms = body["terms"] if isinstance(body.get("terms"), str) else (settings.get("custom_ai_mask_terms") or "")
-    lvl = body["level"] if body.get("level") in privacy.LEVELS else privacy.level(settings)
-    return JSONResponse({"ok": True, **privacy.preview(text, terms, lvl=lvl)})
-
-
-@app.post("/ai/api/test")
-async def ai_api_test(request: Request):
-    """ทดสอบโมเดลจริง: ข้อความ / JSON / รูปภาพ แล้วบันทึกความสามารถที่พบไว้ให้ระบบเลือกโหมดถูกตั้งแต่ครั้งแรก"""
-    current_user(request, "admin")
-    body = await _json_body(request)
-    model = str(body.get("model") or "")
-    if not custom_ai.is_custom(model) or not custom_ai.model_id(model):
-        return JSONResponse({"ok": False, "error": "ไม่ได้ระบุโมเดล"})
-    with SessionLocal() as db:
-        settings = get_settings(db)
-    result = await custom_ai.probe(settings, model, str(body.get("base_url") or ""))
-    if result["ok"] and body.get("save", True):
-        try:
-            saved = json.loads(settings.get("custom_ai_caps") or "{}")
-        except ValueError:
-            saved = {}
-        saved = saved if isinstance(saved, dict) else {}
-        saved[custom_ai.model_id(model)] = {**result["caps"], "tested_at": result["tested_at"]}
-        with SessionLocal() as db:
-            db.merge(Setting(key="custom_ai_caps", value=json.dumps(saved, ensure_ascii=False)))
-            db.commit()
-    return JSONResponse(result)
 
 
 # ---------------------------------------------------------------- tickets
@@ -2501,9 +2360,7 @@ async def settings_page(request: Request):
                   has_gemini_key=bool(quota.gemini_keys()),
                   gemini_keys=[(quota.slot_label(i), quota.mask_key(k), k in ai_service._bad_keys)
                                for i, k in enumerate(quota.gemini_keys(), 1)],
-                  has_claude_key=bool(os.getenv("ANTHROPIC_API_KEY")),
-                  custom_models=ai_service.custom_models(settings), custom_ready=custom_ai.ready(settings),
-                  custom_key_set=bool(custom_ai.api_key()))
+                  has_claude_key=bool(os.getenv("ANTHROPIC_API_KEY")))
 
 
 @app.post("/settings")
@@ -2535,8 +2392,8 @@ async def settings_save(request: Request):
                 value = str(form.get(key, ""))
                 if value not in known_models:
                     continue
-            elif key.startswith(("custom_ai_", "learn_", "line_", "linebot_")):
-                continue  # ตั้งที่หน้าของตัวเอง (เชื่อมต่อ AI / สมอง AI / แจ้งเตือน LINE) ไม่รับผ่านฟอร์มนี้
+            elif key.startswith(("learn_", "line_", "linebot_")):
+                continue  # ตั้งที่หน้าของตัวเอง (สมอง AI / แจ้งเตือน LINE) ไม่รับผ่านฟอร์มนี้
             elif key in ("debounce_seconds", "context_messages"):
                 low, high = (0, 600) if key == "debounce_seconds" else (5, 100)
                 value = str(int_setting({key: str(form.get(key, ""))}, key, low, high))

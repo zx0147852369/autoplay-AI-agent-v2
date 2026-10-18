@@ -55,11 +55,6 @@
             <optgroup label="Anthropic Claude (เสียเงิน)">
               {% for m, label in CLAUDE_MODELS.items() %}<option value="{{ m }}" {{ 'selected' if learn_model == m }}>{{ label }}</option>{% endfor %}
             </optgroup>
-            {% if custom_models %}
-            <optgroup label="AI ภายนอก (API รูปแบบ OpenAI)">
-              {% for m, label in custom_models.items() %}<option value="{{ m }}" {{ 'selected' if learn_model == m }}>{{ label }}</option>{% endfor %}
-            </optgroup>
-            {% endif %}
           </select></td>
           <td class="desc">แนะนำ Flash-Lite เพราะโควตาแยกจากโมเดลตอบลูกค้า จะไม่แย่งกัน
             {% if learn_quota and learn_quota.limit %}· วันนี้ใช้ไป <b>{{ learn_quota.used }}/{{ learn_quota.limit }}</b> ครั้ง{% endif %}</td>

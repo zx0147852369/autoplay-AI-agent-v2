@@ -397,18 +397,6 @@ DEFAULT_SETTINGS = {
     "learn_min_signals": "3",                 # ต้องมีสัญญาณใหม่อย่างน้อยกี่รายการถึงจะเรียนรู้ (ประหยัดโควตา)
     "learn_max_notes": "150",                 # จำนวนโน้ตที่ใช้งานสูงสุด (เกินแล้วปิดโน้ตที่ใช้น้อย/มั่นใจต่ำ)
     "learn_cursor": "",                       # JSON จุดที่เรียนรู้ถึงแล้ว {"reply_id", "ticket_ts", "last_try", "last_ok"}
-    # เชื่อมต่อ AI ภายนอกผ่าน API รูปแบบ OpenAI (API key อยู่ที่ตัวแปร CUSTOM_AI_API_KEY เท่านั้น ไม่เก็บในฐานข้อมูล)
-    "custom_ai_name": "AI ภายนอก",            # ชื่อผู้ให้บริการที่แสดงหน้าเว็บ
-    "custom_ai_base_url": "",                 # เช่น https://api.example.com/v1
-    "custom_ai_models": "",                   # รายชื่อโมเดล บรรทัดละ 1 รุ่น ("id | ชื่อที่แสดง")
-    "custom_ai_json_mode": "auto",            # auto / schema / object / prompt = วิธีบังคับให้ตอบเป็น JSON
-    "custom_ai_vision": "no",                 # no / auto / yes = ส่งรูปให้โมเดลไหม (ค่าเริ่มต้นไม่ส่ง: รูปสลิป/หน้าจอปกปิดไม่ได้)
-    "custom_ai_mask": "on",                   # on / off = ปกปิดเบอร์ อีเมล ลิงก์ เลขบัญชี ชื่ออื่นๆ ก่อนส่งให้ AI ภายนอก (privacy.py)
-    "custom_ai_mask_level": "strict",         # strict = ไม่ส่งข้อมูลธุรกิจ/ฐานความรู้/คู่มือ/บทเรียน + ปกปิดจำนวนเงินและชื่อแบรนด์ด้วย · standard = ปกปิดเฉพาะข้อมูลส่วนตัว
-    "custom_ai_mask_terms": "",               # คำที่ต้องปกปิดเพิ่ม บรรทัดละ 1 คำ (เช่น ชื่อแบรนด์ ชื่อระบบภายใน)
-    "custom_ai_max_tokens": "0",              # 0 = ไม่กำหนด (บางเจ้าไม่รับพารามิเตอร์นี้)
-    "custom_ai_timeout": "120",               # รอคำตอบสูงสุดกี่วินาที
-    "custom_ai_caps": "",                     # JSON ผลทดสอบความสามารถของแต่ละโมเดล
 }
 
 
@@ -468,12 +456,14 @@ def init_db() -> None:
         for key, value in DEFAULT_SETTINGS.items():
             if db.get(Setting, key) is None:
                 db.add(Setting(key=key, value=value))
-        # ครั้งเดียว: เดิมค่าเริ่มต้นของ AI ภายนอกคือส่งรูปอัตโนมัติ -> เปลี่ยนเป็นไม่ส่ง (รูปสลิปปกปิดข้อมูลไม่ได้) ยกเว้นแอดมินเลือก "ส่งเสมอ" ไว้เอง
-        if db.get(Setting, "custom_ai_privacy_v1") is None:
-            row = db.get(Setting, "custom_ai_vision")
-            if row is not None and row.value == "auto":
-                row.value = "no"
-            db.add(Setting(key="custom_ai_privacy_v1", value="1"))
+        # ครั้งเดียว: ลบระบบ "เชื่อมต่อ AI" (AI ภายนอก) -> โมเดลที่เคยเลือกเป็น AI ภายนอก (oai:...) กลับเป็นค่าเริ่มต้น และลบค่าเก่าที่ไม่ใช้แล้ว
+        if db.get(Setting, "extai_removed_v1") is None:
+            for key in ("ai_model", "learn_model"):
+                row = db.get(Setting, key)
+                if row is not None and (row.value or "").startswith("oai:"):
+                    row.value = DEFAULT_SETTINGS[key]
+            db.query(Setting).filter(Setting.key.like("custom_ai_%")).delete(synchronize_session=False)
+            db.add(Setting(key="extai_removed_v1", value="1"))
         # ครั้งเดียว: เพิ่มแอดมินกลุ่มลูกค้าเข้ารายชื่อทีมงาน (รวมกับที่ตั้งไว้เดิม ไม่ทับ · ลบออกที่หน้าตั้งค่าได้ ไม่ถูกเติมซ้ำ)
         if db.get(Setting, "staff_usernames_v1") is None:
             row = db.get(Setting, "staff_usernames")

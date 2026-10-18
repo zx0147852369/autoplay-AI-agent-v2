@@ -29,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=100">
+  <link rel="stylesheet" href="/static/style.css?v=101">
 </head>
 <body>
 <div class="navbar" aria-hidden="true"></div>
@@ -58,7 +58,7 @@
     {% endif %}
     {% if user.role == 'admin' %}
       {# กลุ่ม "ระบบ" พับเก็บได้ (จำค่าในเบราว์เซอร์) · ถ้าเปิดหน้าในกลุ่มนี้อยู่จะแสดงเสมอ #}
-      {% set sys_hrefs = ['/telegram', '/settings', '/system', '/logs', '/line', '/brain', '/ai'] %}
+      {% set sys_hrefs = ['/telegram', '/settings', '/system', '/logs', '/line', '/brain'] %}
       {% set sysns = namespace(active=false) %}
       {% for h in sys_hrefs %}{% if path == h or path.startswith(h ~ '/') %}{% set sysns.active = true %}{% endif %}{% endfor %}
       <div class="nav-group nav-group-sys {{ 'has-active' if sysns.active }}" id="navSys">
@@ -70,7 +70,6 @@
           {{ nav_item('/logs', 'logs', 'Log ระบบ') }}
           {{ nav_item('/line', 'bell', 'แจ้งเตือน LINE') }}
           {{ nav_item('/brain', 'data-trending', 'สมอง AI') }}
-          {{ nav_item('/ai', 'apps-list', 'เชื่อมต่อ AI') }}
         </div></div>
       </div>
       <script>(function(){try{var g=document.getElementById('navSys');if(g&&!g.classList.contains('has-active')&&localStorage.getItem('nav:sys')==='1')g.classList.add('is-folded');}catch(e){}})();</script>
