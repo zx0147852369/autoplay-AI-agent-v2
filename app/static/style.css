@@ -2271,3 +2271,7 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
   :root.nav-collapsed .nav-group-sys.is-folded ~ .nav-spacer { flex-grow: 1; }  /* แถบไอคอนแสดงกลุ่มระบบเสมอ: LINE อยู่ล่างสุดตามเดิม */
 }
 @media (prefers-reduced-motion: reduce) { .nav-spacer { transition: none !important; } }
+
+/* ---- ปุ่ม "วิเคราะห์แชทนี้ใหม่" ในหน้ารออนุมัติ ---- */
+.rv-reanalyze { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-2); }
+.rv-reanalyze .rv-muted { flex: 1 1 200px; font-size: .84rem; line-height: 1.5; }

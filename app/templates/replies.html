@@ -248,6 +248,12 @@
             <input name="reason" placeholder="เหตุผลที่ไม่ส่ง (ไม่บังคับ)">
             <button class="rv-btn danger">ยืนยันไม่ส่ง</button>
           </form>
+          {% if r.kind == 'ai' %}
+          <div class="rv-reanalyze">
+            <button type="button" class="rv-btn soft" data-reanalyze="{{ r.id }}" title="ให้ AI อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างนี้ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 15) }} วิเคราะห์แชทนี้ใหม่</button>
+            <span class="rv-muted">AI เข้าใจผิด? ให้อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างนี้</span>
+          </div>
+          {% endif %}
         </div>
         </div>
       </div>
@@ -495,6 +501,52 @@
         say('<span>' + (err.message || 'เขียนใหม่ไม่สำเร็จ') + ' · ร่างเดิมยังอยู่ ลองกดอีกครั้งได้</span>', 'err');
       } finally {
         clearInterval(timer); box.classList.remove('busy'); ta.readOnly = false; buttons.forEach(b => { b.disabled = false; });
+      }
+    });
+  })();
+
+  // วิเคราะห์แชทนี้ใหม่: ให้ AI อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างเดิม (กรณี AI เข้าใจผิด) · เสร็จแล้วโหลดหน้าใหม่และเลือกร่างใหม่
+  (() => {
+    const rv = document.getElementById('rv');
+    if (!rv) return;
+    rv.addEventListener('click', async e => {
+      const btn = e.target.closest('[data-reanalyze]');
+      if (!btn) return;
+      const id = btn.dataset.reanalyze;
+      const ta = document.querySelector('#approve-' + id + ' textarea');
+      const box = ta && ta.closest('.rv-compose'), tools = btn.closest('.rv-tools');
+      if (!ta || !box || box.classList.contains('busy')) return;
+      if (ta.value.trim() !== ta.defaultValue.trim() && typeof askConfirm === 'function') {
+        const yes = await askConfirm({ title: 'วิเคราะห์แชทนี้ใหม่?', message: 'ข้อความที่คุณแก้ไว้ในช่องร่างจะถูกแทนที่ด้วยร่างใหม่จาก AI', ok: 'วิเคราะห์ใหม่', tone: 'warn' });
+        if (!yes) return;
+      }
+      const status = box.querySelector('.rv-ai-status');
+      const buttons = [...(tools ? tools.querySelectorAll('button') : []), ...box.querySelectorAll('.rv-send button')];
+      const say = (html, cls) => { status.className = 'rv-ai-status ' + (cls || ''); status.innerHTML = html; status.hidden = false; };
+      box.classList.add('busy'); ta.readOnly = true; buttons.forEach(b => { b.disabled = true; });
+      const t0 = Date.now();
+      const tick = () => say('<i class="rv-spin"></i><span>AI กำลังวิเคราะห์แชทนี้ใหม่… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
+      tick();
+      const timer = setInterval(tick, 1000);
+      let reload = false;
+      try {
+        const r = await fetch('/api/replies/' + id + '/reanalyze', { method: 'POST', credentials: 'same-origin' });
+        let d = {};
+        try { d = await r.json(); } catch (x) {}
+        if (!r.ok || !d.ok) throw new Error(d.error || ('วิเคราะห์ใหม่ไม่สำเร็จ (' + r.status + ')'));
+        if (d.new_reply_id) {
+          reload = true;
+          say('<span>✓ ' + (d.message || 'ได้ร่างใหม่แล้ว') + ' · กำลังโหลดร่างใหม่…</span>', 'ok');
+          location.href = location.pathname + location.search + '#r' + d.new_reply_id;
+          location.reload();
+        } else {
+          say('<span>' + (d.message || 'AI ไม่มีร่างใหม่') + '</span>', 'ok');
+        }
+      } catch (err) {
+        say('<span>' + (err.message || 'วิเคราะห์ใหม่ไม่สำเร็จ') + ' · ลองกดอีกครั้งได้</span>', 'err');
+      } finally {
+        clearInterval(timer);
+        if (!reload) { box.classList.remove('busy'); ta.readOnly = false; buttons.forEach(b => { b.disabled = false; }); }
       }
     });
   })();

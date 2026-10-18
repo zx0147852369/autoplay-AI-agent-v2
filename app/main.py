@@ -1310,6 +1310,57 @@ async def _rewrite_draft(reply_id: int, instruction: str, text: str = "") -> str
     return new_text
 
 
+REANALYZE_MAX_MESSAGES = 20
+
+
+def _reopen_for_reanalysis(chat_id: int) -> int:
+    """เปิดข้อความลูกค้าล่าสุดของแชทให้ AI อ่านใหม่: ข้อความลูกค้าที่ใหม่กว่าข้อความทีมงานล่าสุด (ไม่เกิน 20)
+    ถ้าทีมงานตอบไปแล้ว ใช้ข้อความลูกค้าล่าสุด 1 ข้อความ · คืนค่าจำนวนข้อความที่เปิด"""
+    with SessionLocal() as db:
+        last_out = db.scalar(select(func.max(Message.id)).where(Message.chat_id == chat_id, Message.is_outgoing.is_(True)))
+        query = select(Message).where(Message.chat_id == chat_id, Message.is_outgoing.is_(False))
+        if last_out:
+            query = query.where(Message.id > last_out)
+        msgs = list(db.scalars(query.order_by(Message.id.desc()).limit(REANALYZE_MAX_MESSAGES)))
+        if not msgs:
+            msgs = list(db.scalars(select(Message).where(Message.chat_id == chat_id, Message.is_outgoing.is_(False))
+                                   .order_by(Message.id.desc()).limit(1)))
+        for m in msgs:
+            m.analyzed = False
+        db.commit()
+        return len(msgs)
+
+
+@app.post("/api/replies/{reply_id}/reanalyze")
+async def api_reply_reanalyze(request: Request, reply_id: int):
+    """วิเคราะห์แชทนี้ใหม่ (กรณี AI เข้าใจผิด): ให้ AI อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างเดิม
+    (นับโควตา AI 1 ครั้ง) · AI ผิดพลาด/เห็นว่าไม่ต้องตอบ = ร่างเดิมยังอยู่"""
+    user = current_user(request, "agent")
+    reply = _load_pending(reply_id)
+    if not reply or reply.kind != "ai":
+        return JSONResponse({"ok": False, "error": "ร่างนี้ถูกดำเนินการไปแล้ว หรือไม่ใช่ร่างตอบลูกค้า"}, status_code=409)
+    chat_id = reply.chat_id
+    with SessionLocal() as db:
+        before = db.scalar(select(func.max(Reply.id)).where(Reply.chat_id == chat_id)) or 0
+    n = _reopen_for_reanalysis(chat_id)
+    started = time.perf_counter()
+    summary = await analyzer.analyze(chat_id)
+    seconds = round(time.perf_counter() - started, 1)
+    if summary.startswith("ผิดพลาด"):
+        return JSONResponse({"ok": False, "error": f"AI วิเคราะห์ไม่สำเร็จ ร่างเดิมยังอยู่ · {summary}"}, status_code=502)
+    with SessionLocal() as db:
+        new = db.scalar(select(Reply).where(Reply.chat_id == chat_id, Reply.id > before).order_by(Reply.id.desc()).limit(1))
+        new_id, new_status = (new.id, new.status) if new else (None, "")
+    log.info("%s สั่งวิเคราะห์แชท %s ใหม่ (%s ข้อความ): %s", user.username, chat_id, n, summary)
+    if new_id is None:
+        return JSONResponse({"ok": True, "new_reply_id": None, "seconds": seconds,
+                             "message": f"AI วิเคราะห์ใหม่แล้ว ({summary}) · ไม่มีร่างใหม่ ร่างเดิมยังอยู่"})
+    msg = ("AI วิเคราะห์ใหม่แล้ว และส่งคำตอบถึงลูกค้าอัตโนมัติแล้ว (โหมดตอบทันที)" if new_status == "sent"
+           else "AI วิเคราะห์ใหม่แล้ว ได้ร่างคำตอบใหม่ ตรวจก่อนกดอนุมัติ")
+    flash(request, msg)
+    return JSONResponse({"ok": True, "new_reply_id": new_id, "status": new_status, "seconds": seconds, "message": msg})
+
+
 @app.post("/replies/{reply_id}/regenerate")
 async def replies_regenerate(request: Request, reply_id: int, instruction: str = Form(...),
                              text: str = Form("")):
