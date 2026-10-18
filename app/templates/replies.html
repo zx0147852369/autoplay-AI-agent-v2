@@ -2,16 +2,13 @@
 {% from "_icons.html" import icon, cicon %}
 {% block title %}{{ 'รออนุมัติ LINE' if scope == 'line' else 'รออนุมัติ' }}{% endblock %}
 {% block content %}
-{% set base = '/linebot/replies' if scope == 'line' else '/replies' %}
+<div class="rvpage">
+{% set base ='/linebot/replies' if scope == 'line' else '/replies' %}
 <script>window.__pendingKey = '{{ 'line_pending' if scope == 'line' else 'pending' }}';</script>
 {% set tabs = [('pending', 'รออนุมัติ'), ('sent', 'ส่งแล้ว'), ('rejected', 'ปฏิเสธ'), ('failed', 'ส่งไม่สำเร็จ'), ('all', 'ทั้งหมด')] %}
-<div class="page-head rv-head">
-  <div>
-    <p class="cd-eyebrow">ตรวจทานก่อนส่งถึงลูกค้า · {{ 'LINE Chat Bot' if scope == 'line' else 'Telegram' }}</p>
-    <h1>{{ ('รออนุมัติ' if status == 'pending' else 'ข้อความตอบกลับ') ~ (' LINE' if scope == 'line' else '') }}</h1>
-    {% if scope == 'line' %}<p class="sub">ร่างคำตอบของลูกค้าที่ทักมาทาง LINE Chat Bot เท่านั้น · แยกจากคิวรออนุมัติของ Telegram</p>{% endif %}
-  </div>
-</div>
+{# ไม่แสดงหัวเรื่องบนจอ เพื่อให้กล่องรออนุมัติสูงและใหญ่ขึ้น (เมนูข้างและแท็บบอกอยู่แล้วว่าอยู่หน้าไหน) · คงไว้ให้โปรแกรมอ่านหน้าจอ #}
+<h1 class="rv-sr">{{ ('รออนุมัติ' if status == 'pending' else 'ข้อความตอบกลับ') ~ (' LINE' if scope == 'line' else '') }}</h1>
+{% if scope == 'line' %}<p class="rv-sr">ร่างคำตอบของลูกค้าที่ทักมาทาง LINE Chat Bot เท่านั้น · แยกจากคิวรออนุมัติของ Telegram</p>{% endif %}
 
 {% if scope == 'line' %}
 <div class="note mode-note {{ 'ok' if linebot_mode == 'auto' else 'warn' }}">
@@ -319,6 +316,7 @@
     </div>
   </section>
 {% endif %}
+</div>
 {% endblock %}
 {% block scripts %}
 {% if status == 'pending' %}
