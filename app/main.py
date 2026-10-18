@@ -22,10 +22,12 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai_service, analyzer, chatbus, dev_bridge, learning, line_service, linebot, quota, sysinfo, unread
+from . import ai_service, analyzer, announce, chatbus, dev_bridge, learning, line_service, linebot, quota, sysinfo, unread
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, DATA_DIR, DISPLAY_TZ, EPHEMERAL_STORAGE, MEDIA_DIR, SECRET_KEY
 from .database import (
     DEFAULT_SETTINGS,
+    Announcement,
+    AnnouncementTarget,
     AiNote,
     AiUsage,
     Chat,
@@ -96,6 +98,9 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         acc = db.get(TelegramAccount, 1)
         chatbus.set_me(acc.me_name if acc else "")
+    stuck = announce.mark_interrupted()
+    if stuck:
+        log.warning("ประกาศที่ค้างสถานะกำลังส่ง %s รายการ ถูกหยุดไว้ (ระบบรีสตาร์ท) · กดส่งต่อได้ที่หน้า ประกาศ", stuck)
     fixed = backfill_sent_by()
     if fixed:
         log.info("ใส่ชื่อพนักงานที่กดส่งให้ข้อความเก่า %s ข้อความ", fixed)
@@ -955,6 +960,113 @@ async def api_chat_read(request: Request, chat_id: int, body: ReadIn):
         total = unread.total(db, user.id)
     return JSONResponse({"ok": True, "last": last, "unread": total})
 
+
+# ---------------------------------------------------------------- ประกาศ: ส่งข้อความถึงหลายกลุ่มพร้อมกัน
+def _announce_chats(db) -> list[Chat]:
+    """แชทที่ประกาศถึงได้: แชทลูกค้าทั้งหมด ยกเว้นกลุ่มโปรแกรมเมอร์ (กลุ่มภายใน) และแชทส่วนตัวของ Telegram"""
+    dev = telegram.dev_group_id
+    return [c for c in db.scalars(select(Chat)) if c.id != dev and not ((c.channel or "telegram") != "line" and c.kind == "user")]
+
+
+def _announce_info(db, aid: int):
+    ann = db.get(Announcement, aid)
+    if not ann:
+        return None, [], {}
+    targets = list(db.scalars(select(AnnouncementTarget).where(AnnouncementTarget.announcement_id == aid).order_by(AnnouncementTarget.id)))
+    return ann, targets, announce.counts(db, [aid])[aid]
+
+
+@app.get("/announce")
+async def announce_page(request: Request):
+    user = current_user(request, "agent")
+    with SessionLocal() as db:
+        chats = sorted(_announce_chats(db), key=lambda c: ((c.channel or "telegram") == "line", not c.monitored, (c.title or "").lower()))
+        recent = list(db.scalars(select(Announcement).order_by(Announcement.id.desc()).limit(20)))
+        cnt = announce.counts(db, [a.id for a in recent])
+    return render(request, "announce.html", user, chats=chats, recent=recent, counts=cnt, connected=telegram.connected,
+                  line_ready=bool(linebot.token()), max_images=SAY_MAX_IMAGES, max_text=announce.MAX_TEXT,
+                  max_targets=announce.MAX_TARGETS, delay=announce.delay(), status_labels=announce.STATUS_LABELS)
+
+
+@app.post("/announce/send")
+async def announce_send(request: Request, text: str = Form(""), chat_ids: list[int] = Form([]),
+                        images: list[UploadFile] = File([])):
+    user = current_user(request, "agent")
+    text = text.strip()
+    saved, notes = await _save_guide_images(images, SAY_MAX_IMAGES, prefix="announce", max_total=SAY_MAX_IMAGES)
+
+    def refuse(message: str):
+        for n in saved:
+            (MEDIA_DIR / n).unlink(missing_ok=True)
+        flash(request, message, "error")
+        return back("/announce")
+
+    if not text and not saved:
+        return refuse("พิมพ์ข้อความประกาศหรือแนบรูปอย่างน้อยอย่างใดอย่างหนึ่ง" + (" · " + "; ".join(notes) if notes else ""))
+    if len(text) > announce.MAX_TEXT:
+        return refuse(f"ข้อความประกาศยาวเกิน {announce.MAX_TEXT:,} ตัวอักษร")
+    with SessionLocal() as db:
+        allowed = {c.id: c for c in _announce_chats(db)}
+    targets = [cid for cid in dict.fromkeys(chat_ids) if cid in allowed]
+    if not targets:
+        return refuse("เลือกกลุ่มที่จะประกาศอย่างน้อย 1 แชท")
+    if len(targets) > announce.MAX_TARGETS:
+        return refuse(f"ประกาศได้ครั้งละไม่เกิน {announce.MAX_TARGETS} แชท (เลือกไว้ {len(targets)})")
+    if any((allowed[c].channel or "telegram") != "line" for c in targets) and not telegram.connected:
+        return refuse("ยังไม่ได้เชื่อมต่อ Telegram จึงประกาศถึงกลุ่ม Telegram ไม่ได้")
+    if any((allowed[c].channel or "telegram") == "line" for c in targets) and not linebot.token():
+        return refuse("ยังไม่ได้ตั้งค่า LINE_BOT_CHANNEL_ACCESS_TOKEN จึงประกาศถึงแชท LINE ไม่ได้")
+    aid = announce.create(text, targets, saved, user.username)
+    announce.start(aid)
+    log.info("%s ประกาศถึง %s แชท (ประกาศ #%s)", user.username, len(targets), aid)
+    flash(request, f"เริ่มประกาศถึง {len(targets)} แชทแล้ว" + (" · ข้ามบางรูป: " + "; ".join(notes) if notes else ""))
+    return back(f"/announce/{aid}")
+
+
+@app.get("/announce/{aid}")
+async def announce_detail(request: Request, aid: int):
+    user = current_user(request, "agent")
+    with SessionLocal() as db:
+        ann, targets, cnt = _announce_info(db, aid)
+    if not ann:
+        flash(request, "ไม่พบประกาศนี้", "error")
+        return back("/announce")
+    return render(request, "announce_detail.html", user, ann=ann, targets=targets, cnt=cnt, images=json.loads(ann.images or "[]"),
+                  status_labels=announce.STATUS_LABELS, target_labels=announce.TARGET_LABELS, delay=announce.delay())
+
+
+@app.get("/api/announce/{aid}")
+async def api_announce(request: Request, aid: int):
+    current_user(request, "agent")
+    with SessionLocal() as db:
+        ann, targets, cnt = _announce_info(db, aid)
+    if not ann:
+        return JSONResponse({"ok": False, "error": "ไม่พบประกาศนี้"}, status_code=404)
+    return JSONResponse({"ok": True, "status": ann.status, "label": announce.STATUS_LABELS.get(ann.status, ann.status), "counts": cnt,
+                         "targets": [{"id": t.id, "status": t.status, "label": announce.TARGET_LABELS.get(t.status, t.status), "error": t.error}
+                                     for t in targets]})
+
+
+@app.post("/announce/{aid}/cancel")
+async def announce_cancel(request: Request, aid: int):
+    user = current_user(request, "agent")
+    if announce.cancel(aid):
+        log.info("%s ยกเลิกประกาศ #%s", user.username, aid)
+        flash(request, "ยกเลิกประกาศแล้ว · แชทที่ส่งไปแล้วยังคงอยู่ ที่ยังไม่ถึงคิวถูกข้าม")
+    return back(f"/announce/{aid}")
+
+
+@app.post("/announce/{aid}/retry")
+async def announce_retry(request: Request, aid: int):
+    user = current_user(request, "agent")
+    if not telegram.connected and not linebot.token():
+        flash(request, "ยังไม่ได้เชื่อมต่อ Telegram / LINE", "error")
+        return back(f"/announce/{aid}")
+    n = announce.retry(aid)
+    flash(request, f"ส่งต่อที่ค้าง/ล้มเหลว {n} แชท" if n else "ไม่มีแชทที่ต้องส่งต่อ", "ok" if n else "error")
+    if n:
+        log.info("%s สั่งส่งต่อประกาศ #%s (%s แชท)", user.username, aid, n)
+    return back(f"/announce/{aid}")
 
 # ---------------------------------------------------------------- replies (approval queue)
 @app.get("/replies")

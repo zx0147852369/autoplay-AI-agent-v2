@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, cicon %}
+{% block title %}ประกาศ{% endblock %}
+{% block content %}
+{% set has_mon = chats | selectattr('monitored') | list | length > 0 %}
+<div class="page-head">
+  <div>
+    <h1>ประกาศ</h1>
+    <p class="sub">ส่งข้อความ (และรูป) ถึงหลายกลุ่มพร้อมกัน · เลือกประกาศทุกกลุ่ม หรือเลือกเฉพาะกลุ่มที่ต้องการ</p>
+  </div>
+</div>
+
+{% if not connected %}
+  <div class="note warn" style="margin-bottom:16px">ยังไม่ได้เชื่อมต่อ Telegram จึงประกาศถึงกลุ่ม Telegram ไม่ได้ {% if user.role == 'admin' %}<a href="/telegram">ไปเชื่อมต่อบัญชี</a>{% endif %}</div>
+{% endif %}
+
+<form method="post" action="/announce/send" enctype="multipart/form-data" id="anForm" class="an-grid">
+  <section class="an-card an-compose" aria-labelledby="anH1">
+    <h2 id="anH1">ข้อความประกาศ</h2>
+    <label class="rv-sr" for="anText">ข้อความประกาศ</label>
+    <textarea name="text" id="anText" rows="10" maxlength="{{ max_text }}" placeholder="พิมพ์ข้อความที่จะประกาศ เช่น แจ้งปิดปรับปรุงระบบ แจ้งโปรโมชัน หรือประกาศสำคัญถึงลูกค้า"></textarea>
+    <div class="an-meta"><span id="anCount">0 / {{ '{:,}'.format(max_text) }}</span><span class="an-hint">วางรูปด้วย Ctrl+V ในช่องนี้ได้</span></div>
+
+    <div class="an-files" id="anFiles" hidden aria-label="รูปที่จะส่ง"></div>
+    <div class="an-attach-row">
+      <button type="button" class="ghost an-attach" id="anAttach">{{ cicon('image', 22) }} แนบรูป</button>
+      <span class="an-hint">ไม่เกิน {{ max_images }} รูป · รูปละไม่เกิน 8 MB (JPG / PNG / GIF / WEBP) · ถ้าข้อความยาวเกิน 1,000 ตัวอักษร ระบบส่งข้อความก่อนแล้วตามด้วยรูป</span>
+      <input type="file" name="images" id="anInput" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden>
+    </div>
+    <p class="an-err" id="anErr" role="alert" hidden></p>
+
+    <div class="an-send">
+      <button class="primary an-go" id="anSend" disabled
+        data-confirm-title="ส่งประกาศถึง {n} แชท?"
+        data-confirm="ข้อความด้านล่างจะถูกส่งถึง {n} แชททันที ส่งแล้วเรียกคืนไม่ได้ · ระบบส่งทีละแชทเว้นช่วงประมาณ {{ delay | int }} วินาที ดูความคืบหน้าและยกเลิกกลางคันได้"
+        data-confirm-ok="ประกาศเลย" data-confirm-tone="send" data-confirm-preview="#anText" data-confirm-count="input[name=chat_ids]:checked">{{ cicon('send', 22) }} ส่งประกาศ</button>
+      <span class="an-sendinfo" id="anSendInfo">เลือกกลุ่มและพิมพ์ข้อความก่อน</span>
+    </div>
+  </section>
+
+  <section class="an-card an-recipients" aria-labelledby="anH2">
+    <div class="an-rhead">
+      <h2 id="anH2">เลือกกลุ่มที่จะประกาศ</h2>
+      <span class="an-count">เลือกแล้ว <b id="anSel">0</b> แชท · แสดงอยู่ <span id="anShown">0</span></span>
+    </div>
+    <div class="an-tools">
+      <div class="search an-search">{{ icon('search', 16) }}<input type="search" id="anSearch" placeholder="พิมพ์ค้นหาชื่อกลุ่ม…" autocomplete="off" aria-label="ค้นหาชื่อกลุ่ม" enterkeyhint="search"></div>
+      <div class="seg" id="anSeg" role="group" aria-label="กรองตามช่องทาง">
+        <button type="button" data-ch="all" class="on">ทั้งหมด</button>
+        <button type="button" data-ch="telegram">Telegram</button>
+        <button type="button" data-ch="line">LINE</button>
+      </div>
+    </div>
+    <div class="an-tools an-tools2">
+      <label class="check-inline"><input type="checkbox" id="anMon" {{ 'checked' if has_mon }}> เฉพาะกลุ่มที่ติดตามอยู่</label>
+      <span class="an-bulk">
+        <button type="button" class="ghost sm" id="anAll">เลือกทุกกลุ่มที่แสดง</button>
+        <button type="button" class="ghost sm" id="anNone">ล้างที่เลือก</button>
+      </span>
+    </div>
+    <div class="an-list" id="anList" role="group" aria-label="รายชื่อแชท">
+      {% for c in chats %}
+        {% set is_line = (c.channel or 'telegram') == 'line' %}
+        <label class="an-row {{ '' if c.monitored else 'dim' }}" data-title="{{ (c.title or c.id | string) | lower }}" data-channel="{{ 'line' if is_line else 'telegram' }}" data-mon="{{ 1 if c.monitored else 0 }}">
+          <input type="checkbox" name="chat_ids" value="{{ c.id }}">
+          <span class="an-name">{{ c.title or c.id }}</span>
+          <span class="an-tags">
+            <i class="an-tag {{ 'line' if is_line }}">{{ 'LINE' if is_line else ({'group': 'กลุ่ม', 'channel': 'แชนแนล'}.get(c.kind, c.kind)) }}</i>
+            {% if not c.monitored %}<i class="an-tag mute">ไม่ได้ติดตาม</i>{% endif %}
+          </span>
+        </label>
+      {% endfor %}
+      <p class="an-none" id="anNone2" hidden><strong>ไม่พบแชทที่ตรงเงื่อนไข</strong>ลองพิมพ์ชื่ออื่น เปลี่ยนช่องทาง หรือเอาติ๊ก "เฉพาะกลุ่มที่ติดตามอยู่" ออก</p>
+      {% if not chats %}<p class="an-none"><strong>ยังไม่มีรายชื่อแชท</strong>ดึงรายชื่อแชทจาก Telegram ที่หน้า แชทลูกค้า ก่อน</p>{% endif %}
+    </div>
+    <p class="an-note" id="anLineNote" hidden>แชท LINE ที่เลือกจะนับโควตาข้อความของ LINE OA ตามจำนวนแชท {% if not line_ready %}· <b>ยังไม่ได้ตั้งค่า LINE Chat Bot</b> ประกาศถึง LINE ไม่ได้{% endif %}</p>
+  </section>
+</form>
+
+<section class="panel an-history">
+  <div class="panel-head"><h2>ประกาศล่าสุด</h2><span class="count">{{ recent | length }} รายการ</span></div>
+  {% if recent %}
+  <div class="table-wrap">
+  <table class="grid-table">
+    <thead><tr><th class="shrink">เวลา</th><th>ข้อความ</th><th class="shrink center">แชท</th><th class="shrink center">ส่งแล้ว</th><th class="shrink center">ล้มเหลว</th><th class="shrink">สถานะ</th><th class="shrink">โดย</th></tr></thead>
+    <tbody>
+    {% for a in recent %}
+      {% set k = counts[a.id] %}
+      <tr>
+        <td class="when">{{ a.created_at | localtime }}</td>
+        <td class="fill"><a class="title-link truncate" href="/announce/{{ a.id }}" title="{{ a.text }}">{{ a.text or '(รูปภาพ)' }}</a></td>
+        <td class="shrink center num">{{ k.total }}</td>
+        <td class="shrink center num">{{ k.sent }}</td>
+        <td class="shrink center num {{ 'zero' if not k.failed }}">{{ k.failed }}</td>
+        <td class="shrink"><span class="tag an-st-{{ a.status }}">{{ status_labels.get(a.status, a.status) }}</span></td>
+        <td class="shrink small">{{ a.created_by or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>ยังไม่เคยประกาศ</strong>ประกาศที่ส่งแล้วจะมาอยู่ที่นี่ พร้อมผลการส่งรายแชท</div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const form = document.getElementById('anForm');
+    const text = document.getElementById('anText'), count = document.getElementById('anCount');
+    const rows = [...document.querySelectorAll('#anList .an-row')];
+    const sel = document.getElementById('anSel'), shown = document.getElementById('anShown');
+    const search = document.getElementById('anSearch'), mon = document.getElementById('anMon'), seg = document.getElementById('anSeg');
+    const none = document.getElementById('anNone2'), send = document.getElementById('anSend'), info = document.getElementById('anSendInfo');
+    const lineNote = document.getElementById('anLineNote');
+    const filesBox = document.getElementById('anFiles'), input = document.getElementById('anInput'), err = document.getElementById('anErr');
+    const MAX = {{ max_images }}, MAXB = 8 * 1024 * 1024, OK = /^image\/(jpeg|png|gif|webp)$/;
+    let ch = 'all', dt = new DataTransfer(), urls = [];
+
+    const visible = r => !r.hidden;
+    function apply() {
+      const q = search.value.trim().toLowerCase();
+      let n = 0;
+      rows.forEach(r => {
+        const okCh = ch === 'all' || r.dataset.channel === ch;
+        const okMon = !mon.checked || r.dataset.mon === '1';
+        const okQ = !q || r.dataset.title.includes(q);
+        r.hidden = !(okCh && okMon && okQ);
+        if (!r.hidden) n++;
+      });
+      shown.textContent = n;
+      none.hidden = n > 0 || !rows.length;
+      seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.ch === ch));
+      refresh();
+    }
+    function refresh() {
+      const picked = rows.filter(r => r.querySelector('input').checked);
+      sel.textContent = picked.length;
+      rows.forEach(r => r.classList.toggle('on', r.querySelector('input').checked));
+      if (lineNote) lineNote.hidden = !picked.some(r => r.dataset.channel === 'line');
+      const ready = (text.value.trim() || dt.files.length) && picked.length;
+      send.disabled = !ready;
+      info.textContent = ready ? ('จะส่งถึง ' + picked.length + ' แชท' + (dt.files.length ? ' · พร้อมรูป ' + dt.files.length + ' รูป' : '')) : 'เลือกกลุ่มและพิมพ์ข้อความก่อน';
+      count.textContent = text.value.length.toLocaleString() + ' / ' + (+text.maxLength).toLocaleString();
+    }
+    search.addEventListener('input', apply);
+    mon.addEventListener('change', apply);
+    seg.addEventListener('click', e => { const b = e.target.closest('button[data-ch]'); if (b) { ch = b.dataset.ch; apply(); } });
+    document.getElementById('anAll').addEventListener('click', () => { rows.filter(visible).forEach(r => { r.querySelector('input').checked = true; }); refresh(); });
+    document.getElementById('anNone').addEventListener('click', () => { rows.forEach(r => { r.querySelector('input').checked = false; }); refresh(); });
+    form.addEventListener('change', e => { if (e.target.name === 'chat_ids') refresh(); });
+    text.addEventListener('input', refresh);
+
+    // ---- รูปประกาศ: แนบ / วาง (Ctrl+V) / เอาออกทีละรูป
+    function drawFiles() {
+      urls.splice(0).forEach(u => URL.revokeObjectURL(u));
+      filesBox.textContent = '';
+      [...dt.files].forEach((f, i) => {
+        const u = URL.createObjectURL(f); urls.push(u);
+        const el = document.createElement('div');
+        el.className = 'an-file'; el.title = f.name || 'รูปที่วาง';
+        el.innerHTML = '<img alt="รูปประกาศ" src="' + u + '"><button type="button" data-i="' + i + '" aria-label="เอารูปนี้ออก">×</button>';
+        filesBox.appendChild(el);
+      });
+      filesBox.hidden = !dt.files.length;
+      input.files = dt.files;
+      refresh();
+    }
+    function addFiles(list) {
+      let note = '';
+      [...list].forEach(f => {
+        if (!OK.test(f.type)) { note = 'ส่งได้เฉพาะรูป JPG / PNG / GIF / WEBP'; return; }
+        if (f.size > MAXB) { note = 'รูปใหญ่เกิน 8 MB: ' + (f.name || 'รูปที่วาง'); return; }
+        if (dt.files.length >= MAX) { note = 'แนบรูปได้ไม่เกิน ' + MAX + ' รูป'; return; }
+        dt.items.add(f);
+      });
+      err.textContent = note; err.hidden = !note;
+      drawFiles();
+    }
+    document.getElementById('anAttach').addEventListener('click', () => input.click());
+    input.addEventListener('change', () => { const picked = [...input.files]; input.files = dt.files; addFiles(picked); });
+    filesBox.addEventListener('click', e => {
+      const b = e.target.closest('button[data-i]'); if (!b) return;
+      const nd = new DataTransfer(); [...dt.files].forEach((f, k) => { if (k !== +b.dataset.i) nd.items.add(f); });
+      dt = nd; err.hidden = true; drawFiles();
+    });
+    text.addEventListener('paste', e => {
+      const imgs = [...((e.clipboardData && e.clipboardData.items) || [])].filter(i => i.kind === 'file' && /^image\//.test(i.type)).map(i => i.getAsFile()).filter(Boolean);
+      if (!imgs.length) return;
+      e.preventDefault(); addFiles(imgs);
+    });
+    // กด Enter ในช่องค้นหาไม่ให้ส่งฟอร์มโดยไม่ตั้งใจ
+    search.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+    apply();
+  })();
+</script>
+{% endblock %}

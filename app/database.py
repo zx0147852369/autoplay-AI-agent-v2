@@ -304,6 +304,36 @@ class Reply(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Announcement(Base):
+    """ประกาศ: ข้อความ (+รูป) ที่ส่งถึงหลายแชท/กลุ่มในครั้งเดียว"""
+
+    __tablename__ = "announcements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    images: Mapped[str] = mapped_column(Text, default="", server_default="")  # JSON รายชื่อไฟล์รูปใน MEDIA_DIR
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    # sending = กำลังส่ง / done = ส่งครบรอบนี้แล้ว / cancelled = ยกเลิกกลางคัน / interrupted = ระบบรีสตาร์ทกลางคัน
+    status: Mapped[str] = mapped_column(String(16), default="sending", server_default="sending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AnnouncementTarget(Base):
+    """ปลายทางของประกาศ 1 แชท + ผลการส่ง"""
+
+    __tablename__ = "announcement_targets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    announcement_id: Mapped[int] = mapped_column(ForeignKey("announcements.id"), index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    chat_title: Mapped[str] = mapped_column(String(256), default="")  # จดชื่อไว้ตอนประกาศ (ชื่อกลุ่มเปลี่ยนทีหลังก็ยังอ่านออก)
+    channel: Mapped[str] = mapped_column(String(16), default="telegram", server_default="telegram")
+    # pending / sent / failed / skipped (ยกเลิกก่อนถึงคิว)
+    status: Mapped[str] = mapped_column(String(10), default="pending", server_default="pending", index=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 class AiNote(Base):
     """โน้ตความจำของ AI: บทเรียนที่ได้จากการทำงานจริง (AI จดเอง หรือแอดมินเขียน) แล้วนำกลับไปใช้ตอนวิเคราะห์"""
     __tablename__ = "ai_notes"

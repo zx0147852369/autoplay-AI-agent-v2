@@ -5,7 +5,7 @@
   ไฟล์: add-circle, apps-list, calendar-clock, chat, chat-multiple, checkmark-circle, clipboard-task, home, settings,
         dismiss-circle, lock-closed, book-open-lightbulb, question-circle, gauge, data-trending,
         chat-bubbles-question, book-open, history, bell (alert), text-bullet-list-square (logs), mail-clock, mail-multiple, person-available, send, warning, wrench,
-        receipt, heart, document-text, edit, arrow-sync (เพิ่มสำหรับปุ่มในหน้ารออนุมัติ)
+        receipt, heart, document-text, edit, arrow-sync (เพิ่มสำหรับปุ่มในหน้ารออนุมัติ), image (ปุ่มแนบรูปในช่องพิมพ์ตอบ)
 
 - delete.svg (Wastebasket) จาก Fluent Emoji Flat โดย Microsoft Corporation — MIT License
   https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE
