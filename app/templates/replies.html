@@ -5,8 +5,9 @@
 {% set base = '/linebot/replies' if scope == 'line' else '/replies' %}
 <script>window.__pendingKey = '{{ 'line_pending' if scope == 'line' else 'pending' }}';</script>
 {% set tabs = [('pending', 'รออนุมัติ'), ('sent', 'ส่งแล้ว'), ('rejected', 'ปฏิเสธ'), ('failed', 'ส่งไม่สำเร็จ'), ('all', 'ทั้งหมด')] %}
-<div class="page-head">
+<div class="page-head rv-head">
   <div>
+    <p class="cd-eyebrow">ตรวจทานก่อนส่งถึงลูกค้า · {{ 'LINE Chat Bot' if scope == 'line' else 'Telegram' }}</p>
     <h1>{{ ('รออนุมัติ' if status == 'pending' else 'ข้อความตอบกลับ') ~ (' LINE' if scope == 'line' else '') }}</h1>
     {% if scope == 'line' %}<p class="sub">ร่างคำตอบของลูกค้าที่ทักมาทาง LINE Chat Bot เท่านั้น · แยกจากคิวรออนุมัติของ Telegram</p>{% endif %}
   </div>
@@ -132,7 +133,7 @@
           <div class="rv-label-row">
             <span class="rv-label" style="margin:0">ข้อความที่จะโพสต์ในกลุ่ม</span>
             <span class="rv-mini-row">
-              <button type="button" class="rv-mini" data-reanalyze-ticket="{{ t.id }}" title="ให้ AI วิเคราะห์แชทนี้ใหม่ แล้วร่างข้อความปัญหาที่จะส่งเข้ากลุ่มใหม่ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 13) }} <span>วิเคราะห์ใหม่</span></button>
+              <button type="button" class="rv-mini" data-reanalyze-ticket="{{ t.id }}" title="ให้ระบบวิเคราะห์แชทนี้ใหม่ แล้วจัดทำข้อความแจ้งปัญหาที่จะส่งเข้ากลุ่มใหม่ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 13) }} <span>วิเคราะห์ใหม่</span></button>
               <button type="button" class="rv-mini" onclick="toggleEdit(this)">{{ icon('edit', 13) }} <span>แก้ไขข้อความ</span></button>
             </span>
           </div>
@@ -177,7 +178,7 @@
 
       <div class="rv-body rv-cols">
         {% set ctx = context.get(r.id, []) %}
-        <p class="rv-label">แชทกับลูกค้า <span class="rv-live" title="ข้อความใหม่ในแชทนี้จะขึ้นที่นี่ทันที"><i></i><span>สด</span></span>
+        <p class="rv-label">บทสนทนากับลูกค้า <span class="rv-live" title="ข้อความใหม่ในแชทนี้จะขึ้นที่นี่ทันที"><i></i><span>สด</span></span>
           <span class="rv-legend"><span class="l">← ลูกค้า</span><span class="r">ทีมงาน →</span></span></p>
         <div class="rv-chat" data-chat="{{ r.chat_id }}">
           <div class="rv-convo" data-last="{{ (ctx | map(attribute='id') | max) if ctx else 0 }}">
@@ -207,12 +208,12 @@
         <div class="rv-side">
         <form method="post" action="/replies/{{ r.id }}/approve" class="rv-compose" id="approve-{{ r.id }}">
           <div class="rv-label-row">
-            <label class="rv-label" for="txt-{{ r.id }}" style="margin:0">{{ icon('sparkles', 15) }} AI ร่างคำตอบให้</label>
-            <span class="rv-aitag">แก้ไขได้</span>
+            <label class="rv-label" for="txt-{{ r.id }}" style="margin:0">ร่างข้อความตอบกลับ</label>
+            <span class="rv-aitag">ฉบับร่าง · แก้ไขได้</span>
           </div>
           <textarea id="txt-{{ r.id }}" name="text" rows="5" required>{{ r.final_text }}</textarea>
           <p class="rv-ai-status" role="status" aria-live="polite" hidden></p>
-          {% if r.note %}<p class="rv-note">{{ icon('lightbulb', 14) }}<span>{{ r.note }}</span></p>{% endif %}
+          {% if r.note %}<p class="rv-note"><b>หมายเหตุประกอบการพิจารณา</b><span>{{ r.note }}</span></p>{% endif %}
           {% if pics %}
           <div class="rv-pics">
             <span class="rv-label" style="margin:0">รูปที่จะส่งพร้อมข้อความ ({{ pics | length }}) <span class="rv-muted">เอาติ๊กออกถ้าไม่ต้องการส่งรูปนั้น</span></span>
@@ -225,37 +226,40 @@
           </div>
           {% endif %}
           <div class="rv-send">
+            <button type="button" class="rv-btn rv-decline" data-toggle=".rv-rej" aria-controls="rej-{{ r.id }}">ไม่ส่ง</button>
             <button class="rv-btn primary" data-confirm-title="ส่งข้อความถึงลูกค้า?"
               data-confirm="ข้อความด้านล่างจะถูกส่งในแชท {{ title }} ทันที{{ ' พร้อมรูปที่เลือก' if pics }}" data-confirm-ok="ส่งข้อความ"
               data-confirm-tone="send" data-confirm-preview="#approve-{{ r.id }} textarea">{{ icon('send', 16) }} อนุมัติและส่ง</button>
           </div>
         </form>
+        <form method="post" action="/replies/{{ r.id }}/reject" class="rv-inline rv-rej" hidden id="rej-{{ r.id }}">
+          <input name="reason" placeholder="เหตุผลที่ไม่ส่ง (ไม่บังคับ)" aria-label="เหตุผลที่ไม่ส่งข้อความนี้">
+          <button class="rv-btn danger">ยืนยันไม่ส่ง</button>
+        </form>
 
         <div class="rv-tools">
-          <p class="rv-tl">{{ icon('wand', 15) }} ให้ AI เขียนข้อความใหม่</p>
+          <p class="rv-tl">ปรับปรุงข้อความ</p>
           <form method="post" action="/replies/{{ r.id }}/regenerate" class="rv-inline rv-own" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
             <input type="hidden" name="text">
-            <input name="instruction" placeholder="พิมพ์สั่ง AI เอง เช่น ให้ขอยูสเซอร์ด้วย · เป็นกันเองขึ้น · ขอเวลาตรวจสอบ" required autocomplete="off" aria-label="คำสั่งให้ AI เขียนข้อความใหม่">
-            <button class="rv-btn soft">{{ icon('refresh', 15) }} เขียนใหม่</button>
+            <input name="instruction" placeholder="ระบุสิ่งที่ต้องการปรับ เช่น ขอชื่อผู้ใช้เพิ่มเติม · ใช้ถ้อยคำเป็นกันเองขึ้น · แจ้งขอเวลาตรวจสอบ" required autocomplete="off" aria-label="คำสั่งปรับปรุงข้อความ">
+            <button class="rv-btn soft">ปรับข้อความ</button>
           </form>
           <div class="rv-chips">
-            <span class="rv-tl">หรือเลือก</span>
+            <span class="rv-tl">ตัวเลือกด่วน</span>
             {% for q in ['สั้นลง', 'สุภาพขึ้น', 'ขอสลิปด้วย'] %}
             <form method="post" action="/replies/{{ r.id }}/regenerate" onsubmit="this.text.value=document.querySelector('#approve-{{ r.id }} textarea').value">
               <input type="hidden" name="text"><input type="hidden" name="instruction" value="{{ q }}">
               <button class="rv-chipbtn">{{ q }}</button>
             </form>
             {% endfor %}
-            <button type="button" class="rv-chipbtn no" data-toggle=".rv-rej">ไม่ส่ง</button>
           </div>
-          <form method="post" action="/replies/{{ r.id }}/reject" class="rv-inline rv-rej" hidden>
-            <input name="reason" placeholder="เหตุผลที่ไม่ส่ง (ไม่บังคับ)">
-            <button class="rv-btn danger">ยืนยันไม่ส่ง</button>
-          </form>
           {% if r.kind == 'ai' %}
           <div class="rv-reanalyze">
-            <button type="button" class="rv-btn soft" data-reanalyze="{{ r.id }}" title="ให้ AI อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างนี้ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 15) }} วิเคราะห์แชทนี้ใหม่</button>
-            <span class="rv-muted">AI เข้าใจผิด? ให้อ่านข้อความล่าสุดของลูกค้าอีกรอบ แล้วร่างคำตอบใหม่แทนร่างนี้ · {{ 'ถ้ามี ticket ที่เกี่ยวข้อง จะร่างข้อความปัญหาใหม่ให้ด้วย' if scope == 'line' else 'ถ้ามีข้อความปัญหาที่รอส่งเข้ากลุ่ม จะร่างใหม่ให้ด้วย' }}</span>
+            <div class="rv-ra-text">
+              <b>ผลวิเคราะห์คลาดเคลื่อน?</b>
+              <span class="rv-muted">ให้ระบบอ่านข้อความล่าสุดของลูกค้าอีกครั้ง แล้วจัดทำร่างใหม่แทนร่างนี้ · {{ 'หากมี ticket ที่เกี่ยวข้อง จะจัดทำข้อความแจ้งปัญหาใหม่ให้ด้วย' if scope == 'line' else 'หากมีข้อความแจ้งปัญหาที่รอส่งเข้ากลุ่ม จะจัดทำใหม่ให้ด้วย' }}</span>
+            </div>
+            <button type="button" class="rv-btn soft" data-reanalyze="{{ r.id }}" title="ให้ระบบอ่านข้อความล่าสุดของลูกค้าอีกครั้ง แล้วจัดทำร่างคำตอบใหม่แทนร่างนี้ (นับโควตา AI 1 ครั้ง)">{{ icon('refresh', 15) }} วิเคราะห์แชทนี้ใหม่</button>
           </div>
           {% endif %}
         </div>
@@ -485,7 +489,7 @@
       const say = (html, cls) => { status.className = 'rv-ai-status ' + (cls || ''); status.innerHTML = html; status.hidden = false; };
       box.classList.add('busy'); ta.readOnly = true; buttons.forEach(b => { b.disabled = true; });
       const t0 = Date.now();
-      const tick = () => say('<i class="rv-spin"></i><span>AI กำลังเขียนใหม่… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
+      const tick = () => say('<i class="rv-spin"></i><span>ระบบกำลังปรับข้อความ… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
       tick();
       const timer = setInterval(tick, 1000);
       try {
@@ -495,14 +499,14 @@
         });
         let d = {};
         try { d = await r.json(); } catch (x) {}
-        if (!r.ok || !d.ok) throw new Error(d.error || ('เขียนใหม่ไม่สำเร็จ (' + r.status + ')'));
+        if (!r.ok || !d.ok) throw new Error(d.error || ('ปรับข้อความไม่สำเร็จ (' + r.status + ')'));
         ta.value = d.text; ta.defaultValue = d.text;
         if (input) input.value = '';
 
-        say('<span>✓ AI เขียนใหม่แล้ว (' + (d.seconds || 0) + ' วินาที) · ตรวจก่อนกดอนุมัติ</span>', 'ok');
+        say('<span>ปรับข้อความเรียบร้อย (' + (d.seconds || 0) + ' วินาที) · โปรดตรวจทานก่อนอนุมัติ</span>', 'ok');
         setTimeout(() => { if (status.classList.contains('ok')) status.hidden = true; }, 6000);
       } catch (err) {
-        say('<span>' + (err.message || 'เขียนใหม่ไม่สำเร็จ') + ' · ร่างเดิมยังอยู่ ลองกดอีกครั้งได้</span>', 'err');
+        say('<span>' + (err.message || 'ปรับข้อความไม่สำเร็จ') + ' · ร่างเดิมยังอยู่ ลองกดอีกครั้งได้</span>', 'err');
       } finally {
         clearInterval(timer); box.classList.remove('busy'); ta.readOnly = false; buttons.forEach(b => { b.disabled = false; });
       }
@@ -521,7 +525,7 @@
       const box = ta && ta.closest('.rv-compose'), tools = btn.closest('.rv-tools');
       if (!ta || !box || box.classList.contains('busy')) return;
       if (ta.value.trim() !== ta.defaultValue.trim() && typeof askConfirm === 'function') {
-        const yes = await askConfirm({ title: 'วิเคราะห์แชทนี้ใหม่?', message: 'ข้อความที่คุณแก้ไว้ในช่องร่างจะถูกแทนที่ด้วยร่างใหม่จาก AI', ok: 'วิเคราะห์ใหม่', tone: 'warn' });
+        const yes = await askConfirm({ title: 'วิเคราะห์แชทนี้ใหม่?', message: 'ข้อความที่คุณแก้ไว้ในช่องร่างจะถูกแทนที่ด้วยร่างใหม่จากระบบ', ok: 'วิเคราะห์ใหม่', tone: 'warn' });
         if (!yes) return;
       }
       const status = box.querySelector('.rv-ai-status');
@@ -529,7 +533,7 @@
       const say = (html, cls) => { status.className = 'rv-ai-status ' + (cls || ''); status.innerHTML = html; status.hidden = false; };
       box.classList.add('busy'); ta.readOnly = true; buttons.forEach(b => { b.disabled = true; });
       const t0 = Date.now();
-      const tick = () => say('<i class="rv-spin"></i><span>AI กำลังวิเคราะห์แชทนี้ใหม่… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
+      const tick = () => say('<i class="rv-spin"></i><span>ระบบกำลังวิเคราะห์แชทนี้ใหม่… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
       tick();
       const timer = setInterval(tick, 1000);
       let reload = false;
@@ -548,7 +552,7 @@
           say('<span>✓ ' + (d.message || '') + ' · กำลังโหลดหน้าใหม่…</span>', 'ok');
           location.reload();
         } else {
-          say('<span>' + (d.message || 'AI ไม่มีร่างใหม่') + '</span>', 'ok');
+          say('<span>' + (d.message || 'ไม่มีร่างใหม่') + '</span>', 'ok');
         }
       } catch (err) {
         say('<span>' + (err.message || 'วิเคราะห์ใหม่ไม่สำเร็จ') + ' · ลองกดอีกครั้งได้</span>', 'err');
@@ -571,7 +575,7 @@
       if (!wrap || wrap.classList.contains('busy')) return;
       const ta = wrap.querySelector('textarea');
       if (ta && ta.value.trim() !== ta.defaultValue.trim() && typeof askConfirm === 'function') {
-        const yes = await askConfirm({ title: 'วิเคราะห์ใหม่และร่างข้อความปัญหาใหม่?', message: 'ข้อความที่คุณแก้ไว้จะถูกแทนที่ด้วยข้อความใหม่จาก AI', ok: 'วิเคราะห์ใหม่', tone: 'warn' });
+        const yes = await askConfirm({ title: 'วิเคราะห์ใหม่และร่างข้อความปัญหาใหม่?', message: 'ข้อความที่คุณแก้ไว้จะถูกแทนที่ด้วยข้อความใหม่จากระบบ', ok: 'วิเคราะห์ใหม่', tone: 'warn' });
         if (!yes) return;
       }
       const status = wrap.querySelector('.rv-ai-status');
@@ -579,7 +583,7 @@
       const say = (html, cls) => { status.className = 'rv-ai-status ' + (cls || ''); status.innerHTML = html; status.hidden = false; };
       wrap.classList.add('busy'); buttons.forEach(b => { b.disabled = true; });
       const t0 = Date.now();
-      const tick = () => say('<i class="rv-spin"></i><span>AI กำลังวิเคราะห์แชทนี้ใหม่และร่างข้อความปัญหา… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
+      const tick = () => say('<i class="rv-spin"></i><span>ระบบกำลังวิเคราะห์แชทนี้ใหม่และจัดทำข้อความแจ้งปัญหา… ' + Math.round((Date.now() - t0) / 1000) + ' วินาที</span>');
       tick();
       const timer = setInterval(tick, 1000);
       let reload = false;
@@ -594,7 +598,7 @@
           location.href = location.pathname + location.search + '#t' + id;
           location.reload();
         } else {
-          say('<span>' + (d.message || 'AI ไม่ได้ร่างข้อความใหม่') + '</span>', 'ok');
+          say('<span>' + (d.message || 'ระบบไม่ได้จัดทำข้อความใหม่') + '</span>', 'ok');
         }
       } catch (err) {
         say('<span>' + (err.message || 'วิเคราะห์ใหม่ไม่สำเร็จ') + ' · ข้อความเดิมยังอยู่ ลองกดอีกครั้งได้</span>', 'err');
@@ -707,17 +711,21 @@
     setInterval(() => { if (!up && !document.hidden) catchUp(); }, 4000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
 
-    // ปุ่มสลับแถวเครื่องมือ (สั่ง AI เอง / ไม่ส่ง)
+    // ปุ่ม "ไม่ส่ง" ในแถบตัดสินใจ: เปิด/ปิดช่องเหตุผลที่ไม่ส่ง (อยู่ใต้ปุ่ม ในแผงเดียวกัน)
     rv.addEventListener('click', e => {
       const tg = e.target.closest('[data-toggle]');
       if (!tg) return;
-      const pane = tg.closest('.rv-tools');
+      const pane = tg.closest('.rv-side');
       const row = pane && pane.querySelector(tg.dataset.toggle);
       if (!row) return;
       const was = row.hidden;
       pane.querySelectorAll('.rv-rej').forEach(r => { r.hidden = true; });
-      pane.querySelectorAll('[data-toggle]').forEach(b => b.classList.remove('on'));
-      if (was) { row.hidden = false; tg.classList.add('on'); const inp = row.querySelector('input:not([type=hidden])'); if (inp) inp.focus(); }
+      pane.querySelectorAll('[data-toggle]').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-expanded', 'false'); });
+      if (was) {
+        row.hidden = false; tg.classList.add('on'); tg.setAttribute('aria-expanded', 'true');
+        const inp = row.querySelector('input:not([type=hidden])'); if (inp) inp.focus();
+        if (row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+      }
     });
 
     // ปุ่ม "ข้อความใหม่ ↓"

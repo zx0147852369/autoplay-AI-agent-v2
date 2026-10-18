@@ -12,7 +12,7 @@
   {% endif %}
 </div>
 
-<div class="strip compact">
+<div class="strip compact strip-quiet">
   <div class="strip-cell"><span class="strip-ic">{{ cicon('chat-multiple', 22) }}</span><span class="strip-label">แชททั้งหมด</span><span class="strip-value">{{ summary.total }}</span></div>
   <div class="strip-cell"><span class="strip-ic">{{ cicon('person-available', 22) }}</span><span class="strip-label">ติดตามอยู่</span><span class="strip-value">{{ summary.monitored }}</span></div>
   <div class="strip-cell"><span class="strip-ic">{{ cicon('calendar-clock', 22) }}</span><span class="strip-label">ข้อความลูกค้าวันนี้</span><span class="strip-value">{{ summary.today }}</span></div>
@@ -26,9 +26,9 @@
   <div class="note warn" style="margin-bottom:16px">ยังไม่ได้ตั้งค่า LINE Chat Bot ระบบจะยังไม่รับข้อความจากลูกค้า LINE {% if user.role == 'admin' %}<a href="/linebot">ไปตั้งค่า</a>{% endif %}</div>
 {% endif %}
 
-<section class="panel">
+<section class="panel chat-list">
   <div class="panel-head">
-    <h2>{{ cicon('chat', 20) }} รายชื่อแชท</h2>
+    <h2>รายชื่อแชท</h2>
     <span class="count">{{ summary.monitored }} จาก {{ summary.total }} แชทที่ติดตาม · วิเคราะห์อัตโนมัติเมื่อมีข้อความใหม่</span>
   </div>
   {% if chats %}
@@ -42,7 +42,7 @@
   </div>
   {% endif %}
   <div class="table-wrap">
-  <table class="grid-table" id="chatTable">
+  <table class="grid-table chat-table" id="chatTable">
     <thead><tr>
       <th>แชท</th><th class="shrink m-hide">ประเภท</th><th class="shrink">ติดตาม</th>
       <th class="shrink center">วันนี้</th><th class="shrink center m-hide">ทั้งหมด</th><th class="shrink m-hide">ข้อความล่าสุด</th>

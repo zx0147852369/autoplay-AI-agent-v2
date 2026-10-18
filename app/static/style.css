@@ -2253,3 +2253,420 @@ body.kb-open .form-actions, body.kb-open .save-bar { bottom: 10px; }
 
 .rv-mini-row { display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .dt-msg .rv-ai-status { margin: 0 0 10px; }
+
+/* =====================================================================
+   หน้า รออนุมัติ — ชุดตกแต่งแบบทางการ (ทับกฎด้านบน ไม่เปลี่ยนโครงสร้างหรือสคริปต์)
+   หลักการ: คงโทนกระดาษ-หมึก-เขียวสนเดิม · มุมโค้งน้อย · เส้นบางละเอียด · สีเขียวเข้มใช้กับปุ่มหลักปุ่มเดียว
+   ไม่มีไอคอนประกาย/ป้ายพาสเทลทรงแคปซูล/เงาเรืองแสง · หัวข้อส่วนเป็นแบบฟอร์มเอกสาร (ตัวหนา + เส้นใต้)
+   ===================================================================== */
+.rv {
+  --rv-in: #f6f5f1;
+  --rv-out-bg: #ecf2ee;
+  --rv-out-line: #cfddd4;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(28, 27, 25, .04), 0 18px 40px -26px rgba(28, 27, 25, .3);
+}
+[data-theme="dark"] .rv { --rv-in: #171815; --rv-out-bg: #16281f; --rv-out-line: #25402f; box-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
+
+/* แท็บสถานะ */
+.rv-tabs { margin-bottom: 20px; }
+.rv-tab { padding: 12px 18px; font-size: .96rem; font-weight: 600; }
+.rv-tab b { min-width: 22px; padding: 0 6px; border-radius: 4px; font-size: .74rem; line-height: 1.65; }
+
+/* คิวทางซ้าย: แท็บแบบเส้นใต้แทนปุ่มแคปซูล · ไม่มีไอคอนสี */
+.rv-seg { margin: 0; padding: 0 8px; gap: 0; background: var(--surface); border-radius: 0; border-bottom: 1px solid var(--line); }
+.rv-seg a { padding: 15px 8px 13px; margin-bottom: -1px; border-radius: 0; border-bottom: 2px solid transparent; font-size: .92rem; font-weight: 650; color: var(--muted); }
+.rv-seg a:hover { color: var(--ink); }
+.rv-seg a.on { background: none; box-shadow: none; color: var(--ink); border-bottom-color: var(--pine); }
+.rv-seg .cicon { display: none; }
+.rv-seg b { padding: 0 6px; border-radius: 4px; background: var(--grey-tint); font-size: .72rem; line-height: 1.7; }
+.rv-seg b.hot { background: var(--red-tint); color: var(--red); }
+.rv-list { border-top: 0; }
+.rv.empty .rv-seg { width: min(420px, 100%); padding: 0 8px; background: none; }
+.rv-it-top strong { font-size: 1rem; font-weight: 650; letter-spacing: -.005em; }
+.rv-it-snip { color: var(--muted); font-size: .9rem; line-height: 1.5; }
+.rv-it-tags { margin-top: 5px; }
+.rv-chip { padding: 0 7px; border-radius: 4px; background: var(--grey-tint); color: var(--ink-2); font-size: .72rem; font-weight: 600; letter-spacing: .01em; line-height: 1.75; }
+.rv-un { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: .72rem; }
+
+/* หัวแผงรายละเอียด */
+.rv-ph-text h2 { font-size: 1.22rem; font-weight: 700; letter-spacing: -.012em; }
+.rv-ph-text p { margin-top: 3px; gap: 2px 10px; font-size: .84rem; }
+.rv-ph-text p a { font-weight: 600; }
+.rv-link, .rv .rv-collapse {
+  align-items: center; height: 36px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 6px;
+  background: var(--surface); color: var(--ink); font-size: .85rem; font-weight: 600; box-shadow: none;
+}
+.rv-link:hover, .rv .rv-collapse:hover { background: var(--surface-2); border-color: var(--ink-2); text-decoration: none; }
+
+/* หัวข้อส่วน: ตัวหนา + เส้นใต้บางๆ เหมือนแบบฟอร์มเอกสาร */
+.rv-label { min-height: 38px; margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: .9rem; font-weight: 700; letter-spacing: .005em; }
+.rv-label-row { min-height: 38px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.rv-label-row .rv-label, .rv-pics > .rv-label { min-height: 0; margin: 0; padding: 0; border: 0; }
+.rv-label-row label { font-size: .9rem; font-weight: 700; }
+.rv-label .rv-muted, .rv-pics .rv-muted { font-size: .8rem; font-weight: 400; }
+.rv-live { margin-left: 10px; padding: 0; background: none; color: var(--pine-2); font-size: .72rem; font-weight: 650; letter-spacing: .02em; }
+.rv-live i { width: 6px; height: 6px; }
+.rv-live.off { background: none; }
+.rv-label .rv-legend { gap: 14px; font-size: .74rem; font-weight: 600; }
+.rv-legend .r { color: var(--pine-2); }
+.rv-aitag { padding: 1px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--grey-tint); color: var(--ink-2); font-size: .72rem; font-weight: 650; letter-spacing: .01em; }
+
+/* บทสนทนา: พื้นกระดาษอ่อน ฟองมุมโค้งน้อย ลูกค้า = ขาว / ทีมงาน = เขียวหม่นอ่อนมาก */
+.rv-convo { padding: 20px 20px 16px; gap: 3px; background: var(--rv-in); border: 1px solid var(--line); border-radius: 8px; }
+.rv-msg { padding: 9px 14px 6px; margin-top: 10px; border-radius: 10px 10px 10px 3px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 1px 0 rgba(28, 27, 25, .03); }
+.rv-msg:first-child { margin-top: 0; }
+.rv-msg.out { border-radius: 10px 10px 3px 10px; background: var(--rv-out-bg); border-color: var(--rv-out-line); }
+.rv-msg.cont { margin-top: 0; border-top-left-radius: 3px; }
+.rv-msg.out.cont { border-top-left-radius: 10px; border-top-right-radius: 3px; }
+.rv-meta b { font-size: .82rem; font-weight: 700; color: var(--ink-2); letter-spacing: .005em; }
+.rv-msg.out .rv-meta b { color: var(--pine-2); }
+.rv-meta em { padding: 0 6px; border-radius: 4px; font-size: .7rem; }
+.rv-text { font-size: 1.07rem; line-height: 1.6; }
+.rv-msg time { margin-top: 2px; font-size: .72rem; }
+.rv-msg.target { border-color: #d9b46e; box-shadow: 0 0 0 3px rgba(161, 92, 7, .1); }
+.rv-msg.picked { border-color: var(--pine); box-shadow: 0 0 0 3px var(--ring); }
+.rv-img, .rv-photos img { border-radius: 6px; }
+.rv-say { margin-top: 12px; }
+.rv-say-row { padding: 6px 6px 6px 16px; border-radius: 8px; }
+.rv .rv-say-btn { width: 38px; height: 38px; border-radius: 6px; }
+.rv-replying { border: 1px solid var(--line); border-left: 3px solid var(--pine); border-radius: 6px; background: var(--surface-2); }
+.rv-newmsg { border-radius: 6px; }
+
+/* ร่างข้อความตอบกลับ */
+.rv-compose textarea { padding: 16px 18px; border: 1px solid var(--line-2); border-radius: 8px; font-size: 1.07rem; line-height: 1.75; }
+.rv-compose textarea:focus { outline: none; border-color: var(--pine); box-shadow: var(--focus); }
+.rv-note { display: block; margin: 14px 0 0; padding: 11px 14px 12px; border: 1px solid var(--line); border-left: 3px solid var(--amber); border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-size: .88rem; line-height: 1.6; }
+.rv-note b { display: block; margin: 0 0 3px; color: var(--amber); font-size: .76rem; font-weight: 700; letter-spacing: .02em; }
+
+/* ปุ่ม: เหลี่ยมมนน้อย · ปุ่มเขียวมีปุ่มเดียว (อนุมัติและส่ง) · ปุ่มรองเป็นเส้นขอบ */
+.rv .rv-btn { border-radius: 6px; font-weight: 600; }
+.rv .rv-btn:hover { background: var(--surface-2); border-color: var(--ink-2); }
+.rv .rv-btn.primary { border-radius: 6px; border-color: var(--pine-2); background: var(--pine); box-shadow: none; font-weight: 650; letter-spacing: .005em; }
+.rv .rv-btn.primary:hover { background: var(--pine-2); border-color: var(--pine-2); }
+.rv .rv-btn.soft { border-color: var(--line-2); background: var(--surface); color: var(--ink); }
+.rv .rv-btn.soft:hover { background: var(--surface-2); border-color: var(--ink-2); }
+.rv .rv-btn.danger { color: var(--red); }
+.rv .rv-btn.danger:hover { background: var(--red-tint); border-color: #e3b1ab; }
+.rv .rv-mini { border-radius: 6px; }
+.rv .rv-chipbtn { border-radius: 6px; font-size: .84rem; }
+.rv .rv-chipbtn:hover { background: var(--surface-2); border-color: var(--ink-2); color: var(--ink); }
+.rv .rv-chipbtn.on { background: var(--surface-2); border-color: var(--ink-2); color: var(--ink); }
+.rv .rv-chipbtn.no { color: var(--red); border-color: transparent; background: none; }
+.rv .rv-chipbtn.no:hover, .rv .rv-chipbtn.no.on { background: var(--red-tint); border-color: #e3b1ab; color: var(--red); }
+
+/* เครื่องมือปรับข้อความ */
+.rv-tools { margin-top: 22px; padding-top: 0; border-top: 0; }
+.rv-tools > .rv-tl:first-child { display: flex; margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: .9rem; font-weight: 700; }
+.rv-tools .rv-chips { margin-top: 14px; row-gap: 8px; }
+.rv-tools .rv-chips .rv-tl { flex: 0 0 100%; margin: 0 0 -2px; color: var(--muted); font-size: .8rem; font-weight: 600; }
+.rv-inline input { border-radius: 6px; }
+.rv-tools .rv-inline.rv-own input { height: 42px; }
+.rv .rv-tools .rv-inline.rv-own .rv-btn { height: 42px; }
+.rv-reanalyze { flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 20px; padding: 13px 16px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.rv-ra-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rv-ra-text b { color: var(--ink); font-size: .9rem; font-weight: 700; }
+.rv-reanalyze .rv-ra-text .rv-muted { flex: none; font-size: .84rem; line-height: 1.6; }
+
+/* ticket ที่รอส่งเข้ากลุ่มโปรแกรมเมอร์ */
+.rv-facts { gap: 1px; padding: 0; border-radius: 8px; overflow: hidden; background: var(--line); }
+.rv-facts > div { padding: 12px 16px; background: var(--surface-2); }
+.rv-facts dt { margin-bottom: 3px; font-size: .74rem; font-weight: 700; letter-spacing: .02em; }
+.rv-summary { font-size: 1rem; line-height: 1.75; }
+.rv .rv-tg .tg-bubble { padding: 16px 20px; border: 1px solid var(--line); border-left: 3px solid var(--pine); border-radius: 8px; background: var(--surface-2); font-size: .96rem; line-height: 1.75; }
+.rv .rv-tg textarea { padding: 16px 20px; border-radius: 8px; }
+
+/* จอกว้าง: ระยะขอบแน่นแบบเอกสาร + เส้นแบ่งสองคอลัมน์ */
+@media (min-width: 901px) {
+  .rv-item { padding: 15px 20px 14px; }
+  .rv-seg { padding: 0 10px; }
+}
+@media (min-width: 1181px) {
+  .rv-ph { padding: 18px 28px 16px; }
+  .rv-body { --rv-px: 28px; padding-top: 22px; padding-bottom: 26px; }
+  .rv-foot { padding-left: 28px; padding-right: 28px; }
+}
+@container rvd (min-width: 940px) {
+  .rv-cols { column-gap: 28px; }
+  .rv-cols > .rv-side { padding-left: 28px; border-left: 1px solid var(--line); }
+}
+
+/* มือถือ/แท็บเล็ตแคบ: รายการเป็นการ์ดเหมือนเดิม */
+@media (max-width: 900px) {
+  .rv-seg { margin: 0 0 12px; padding: 0 6px; border: 1px solid var(--line); border-radius: 10px; }
+  .rv-list { border-radius: 10px; box-shadow: none; }
+  .rv-reanalyze .rv-btn { width: 100%; }
+}
+
+/* =====================================================================
+   หน้าแชท (รายชื่อแชท + บันทึกการสนทนา) — ชุดตกแต่งแบบเรียบหรู
+   คงโทนกระดาษ-หมึก-เขียวสนเดิม · หน้าแชทเป็นเอกสารบันทึกการสนทนา: คอลัมน์ข้อความกว้างพอดีอ่าน อยู่กลางพื้นที่
+   ไม่มีวงกลมตัวอักษร/สีสุ่มของชื่อ/พื้นลายจุด/ป้ายแคปซูล · ข้อมูลแชทและเว็บไซต์อยู่แผงด้านข้าง
+   ===================================================================== */
+:root { --cd-in: #f7f6f2; --cd-out: #ecf2ee; --cd-out-line: #cfddd4; }
+[data-theme="dark"] { --cd-in: #171815; --cd-out: #16281f; --cd-out-line: #25402f; }
+
+/* หัวเรื่อง */
+.cd-head { margin: 4px 0 26px; }
+.cd-eyebrow { display: flex; align-items: center; gap: 12px; margin: 0 0 8px; color: var(--pine-2); font-size: .74rem; font-weight: 700; letter-spacing: .06em; }
+.cd-eyebrow::before { content: ""; width: 24px; height: 2px; background: var(--pine); }
+.cd-head h1 { font-size: 1.9rem; font-weight: 650; letter-spacing: -.015em; line-height: 1.25; overflow-wrap: anywhere; }
+.cd-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 10px 0 0; color: var(--muted); font-size: .9rem; }
+.cd-sub > span { display: inline-flex; align-items: center; gap: 7px; }
+.cd-sub > span + span::before { content: ""; width: 1px; height: 12px; margin-right: 14px; margin-left: 14px; background: var(--line-2); }
+.cd-state i, .cd-wait i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); flex-shrink: 0; }
+.cd-state.on { color: var(--pine-2); font-weight: 600; }
+.cd-state.on i { background: var(--pine); box-shadow: 0 0 0 3px var(--ring); }
+.cd-wait { color: var(--amber); font-weight: 600; }
+.cd-wait i { width: 6px; height: 6px; background: var(--amber); }
+
+/* โครงหน้า: บทสนทนา + แผงข้อมูลด้านข้าง */
+.cd-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
+.cd-main { margin-bottom: 0; }
+.cd-rail { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 18px; }
+.cd-card { padding: 20px 22px 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(28, 27, 25, .04); }
+.cd-card h2, .cd-card-title { display: block; margin: 0 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: .9rem; font-weight: 700; }
+.cd-facts { display: grid; margin: 0; }
+.cd-facts > div { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.cd-facts > div:first-child { padding-top: 0; }
+.cd-facts > div:last-child { padding-bottom: 0; border-bottom: 0; }
+.cd-facts dt { margin: 0; color: var(--muted); font-size: .84rem; }
+.cd-facts dd { margin: 0; color: var(--ink); font-size: .9rem; font-weight: 600; text-align: right; }
+.cd-facts dd.num { font-variant-numeric: tabular-nums; }
+.cd-card.site-edit { display: block; margin: 0; padding: 20px 22px 22px; border: 1px solid var(--line); }
+.cd-card.site-edit .field { gap: 0; }
+.cd-card.site-edit .row { gap: 8px; }
+.cd-card.site-edit .row input { height: 40px; min-width: 0; font-size: .84rem; }
+.cd-card.site-edit .row button { height: 40px; }
+.cd-card.site-edit .hint { margin-top: 10px; line-height: 1.6; }
+
+/* แผงบทสนทนา */
+.chat-panel { border-radius: 12px; box-shadow: 0 1px 2px rgba(28, 27, 25, .04), 0 18px 40px -28px rgba(28, 27, 25, .3); }
+.chat-panel .panel-head { padding: 16px 28px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.chat-panel .panel-head h2 { font-size: .95rem; font-weight: 700; }
+.chat-legend { gap: 20px; font-size: .78rem; font-weight: 600; color: var(--muted); }
+.chat-legend i { width: 14px; height: 10px; margin-right: 8px; border-radius: 3px; vertical-align: 0; }
+.lg-in { background: var(--surface); border: 1px solid var(--line-2); }
+.lg-out { background: var(--cd-out); border: 1px solid var(--cd-out-line); }
+[data-theme="dark"] .lg-out { background: var(--cd-out); border-color: var(--cd-out-line); }
+.chat-panel .chatview {
+  gap: 3px; min-height: 320px; max-height: calc(100vh - 330px); max-height: calc(100svh - 330px); padding: 28px max(24px, calc((100% - 860px) / 2)) 36px;
+  background: var(--cd-in);
+}
+.chat-panel .day-sep { position: static; justify-content: stretch; align-items: center; gap: 18px; margin: 20px 0 12px; padding: 6px 0; background: var(--cd-in); }
+.chat-panel .day-sep:first-child { margin-top: 0; }
+.chat-panel .day-sep::before, .chat-panel .day-sep::after { content: ""; flex: 1; height: 1px; background: var(--line-2); opacity: .7; }
+.chat-panel .day-sep span { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--muted); font-size: .74rem; font-weight: 700; letter-spacing: .04em; }
+
+/* ข้อความ: การ์ดมุมโค้งน้อย ลูกค้า = ขาว / ทีมงาน = เขียวหม่นอ่อนมาก */
+.chat-panel .cm { gap: 0; max-width: min(640px, 86%); }
+.chat-panel .cm.first { margin-top: 14px; }
+.chat-panel .cm:first-child, .chat-panel .day-sep + .cm { margin-top: 0; }
+.chat-panel .cm .cm-bubble { min-width: 0; padding: 9px 15px 7px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 0 rgba(28, 27, 25, .03); }
+.chat-panel .cm.out .cm-bubble { border-color: var(--cd-out-line); background: var(--cd-out); }
+.chat-panel .cm.in.last .cm-bubble { border-bottom-left-radius: 10px; }
+.chat-panel .cm.out.last .cm-bubble { border-bottom-right-radius: 10px; }
+.chat-panel .cm.in:not(.first) .cm-bubble { border-top-left-radius: 3px; }
+.chat-panel .cm.in:not(.last) .cm-bubble { border-bottom-left-radius: 3px; }
+.chat-panel .cm.out:not(.first) .cm-bubble { border-top-right-radius: 3px; }
+.chat-panel .cm.out:not(.last) .cm-bubble { border-bottom-right-radius: 3px; }
+.chat-panel .cm-name { gap: 8px; margin-bottom: 3px; font-size: .78rem; }
+.chat-panel .cm-who { color: var(--ink-2); font-weight: 700; letter-spacing: .005em; }
+.chat-panel .cm.out .cm-who { color: var(--pine-2); }
+.chat-panel .cm-user { color: var(--muted); font-size: .74rem; font-weight: 400; }
+.chat-panel .cm-badge { padding: 0 6px; border: 1px solid var(--cd-out-line); border-radius: 3px; background: transparent; color: var(--pine-2); font-size: .66rem; font-weight: 700; letter-spacing: .02em; line-height: 1.6; }
+.chat-panel .cm-text { font-size: 1.02rem; line-height: 1.65; }
+.chat-panel .cm-text a { color: var(--pine-2); text-decoration: underline; text-decoration-color: rgba(8, 102, 63, .35); text-underline-offset: 3px; }
+.chat-panel .cm-note { color: var(--muted); font-size: .86rem; font-style: normal; }
+.chat-panel .cm-bubble.sticker { border: 1px dashed var(--line-2); background: transparent; box-shadow: none; }
+.chat-panel .cm-photo img { border-radius: 6px; }
+.chat-panel .cm-foot { gap: 10px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.chat-panel .cm-wait { color: var(--amber); font-weight: 600; }
+
+/* รายชื่อแชท */
+.strip-quiet { gap: 12px; }
+.strip-quiet .strip-cell, .strip-quiet .strip-cell:last-child, .strip-quiet .strip-cell:nth-child(2n) { padding: 16px 20px; border-radius: 10px; box-shadow: none; }
+.strip-quiet .strip-ic { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.strip-quiet .strip-ic .cicon { filter: grayscale(1) contrast(.9); opacity: .72; }
+.strip-quiet .strip-label { color: var(--muted); font-size: .78rem; font-weight: 600; letter-spacing: .02em; }
+.strip-quiet .strip-value { font-family: inherit; font-size: 1.55rem; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.chat-list { border-radius: 12px; box-shadow: 0 1px 2px rgba(28, 27, 25, .04), 0 18px 40px -30px rgba(28, 27, 25, .28); }
+.chat-list .panel-head { padding: 18px 24px; background: var(--surface); }
+.chat-list .panel-head h2 { font-size: .95rem; font-weight: 700; }
+.chat-list .panel-head .count { font-family: inherit; font-size: .8rem; }
+.chat-list .toolbar { padding: 14px 24px; background: var(--surface); }
+.chat-list .toolbar .search input { height: 40px; border-radius: 6px; background: var(--surface-2); }
+.chat-list .seg { padding: 3px; border-radius: 8px; }
+.chat-list .seg button { border-radius: 6px; }
+.chat-table th { padding: 12px 18px; background: var(--surface-2); color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .04em; }
+.chat-table td { padding: 16px 18px; }
+.chat-table th:first-child, .chat-table td:first-child { padding-left: 24px; }
+.chat-table th:last-child, .chat-table td:last-child { padding-right: 24px; }
+.chat-table tbody tr:hover { background: var(--surface-2); }
+.chat-table td .title-link { font-size: 1rem; font-weight: 650; letter-spacing: -.005em; }
+.chat-table .state, .chat-table .state.ok, .chat-table .state.bad, .chat-table .state.warn, .chat-table .state.off { padding: 0; border-radius: 0; background: none; font-size: .84rem; font-weight: 600; }
+.chat-table .tag { padding: 1px 8px; border-radius: 4px; }
+.chat-table .unread-pill { padding: 0 7px; border-radius: 4px; }
+
+@media (max-width: 1100px) {
+  .cd-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .cd-rail { position: static; }
+}
+@media (max-width: 640px) {
+  .cd-head { margin-bottom: 18px; }
+  .cd-head h1 { font-size: 1.5rem; }
+  .cd-sub { gap: 4px 16px; }
+  .cd-sub > span + span::before { display: none; }
+  .chat-panel .panel-head { padding: 13px 16px; }
+  .chat-panel .chatview { padding: 18px 14px 24px; max-height: 70vh; max-height: 70svh; }
+  .chat-panel .cm { max-width: 94%; }
+  .cd-card, .cd-card.site-edit { padding: 18px 18px 20px; }
+  .chat-list .panel-head, .chat-list .toolbar { padding-left: 16px; padding-right: 16px; }
+}
+
+/* =====================================================================
+   หน้ารออนุมัติ — ชุดเรียบหรู รอบ 2 (ต่อจากชุดทางการ)
+   หัวเรื่องแบบจดหมาย (เส้นเขียวบางบนกรอบ + หัวเรื่องตัวใหญ่) · แท็บตัวเลขเงียบ · ป้าย ticket เป็นตัวอักษรเล็ก
+   แถบตัดสินใจสองปุ่ม [ไม่ส่ง] [อนุมัติและส่ง] · ช่องเหตุผลที่ไม่ส่งอยู่ใต้ปุ่ม · เปลี่ยนรายการแบบเฟดนุ่มๆ
+   ===================================================================== */
+.rv-head { margin-bottom: 22px; }
+.rv-head h1 { font-size: 1.9rem; font-weight: 650; letter-spacing: -.015em; line-height: 1.25; }
+.rv-head .sub { margin: 8px 0 0; color: var(--muted); font-size: .92rem; }
+
+/* แท็บสถานะ: ตัวเลขเป็นตัวอักษรเงียบๆ มีเฉพาะรออนุมัติที่เป็นป้ายแดง */
+.rv-tab { padding: 12px 20px 13px; }
+.rv-tab b { min-width: 0; padding: 0; border-radius: 0; background: none; color: var(--muted); font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rv-tab.on b { background: none; color: var(--ink-2); }
+.rv-tab b.hot { min-width: 22px; padding: 0 7px; border-radius: 10px; background: var(--red-tint); color: var(--red); }
+.rv-tab.on b.hot { background: var(--red); color: #fff; }
+
+/* กรอบหลัก: เส้นเขียวบางด้านบนเหมือนหัวจดหมาย */
+.rv { position: relative; }
+.rv::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--pine); z-index: 3; pointer-events: none; }
+.rv.empty::before { display: none; }
+
+/* คิวทางซ้าย */
+.rv-item { transition: background .15s; }
+.rv-it-top time { font-size: .74rem; font-variant-numeric: tabular-nums; }
+.rv-chip:not(.line):not(.ok):not(.info):not(.bad):not([class*="sev-"]) {
+  padding: 0; border-radius: 0; background: none; color: var(--muted); font-family: var(--mono); font-size: .72rem; font-weight: 500; letter-spacing: 0;
+}
+
+/* เปลี่ยนรายการ: เฟดเข้าเบาๆ */
+@keyframes rv-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.rv.js .rv-pane.on { animation: rv-fade .24s ease-out; }
+@media (prefers-reduced-motion: reduce) { .rv.js .rv-pane.on { animation: none; } }
+
+/* แถบตัดสินใจ: [ไม่ส่ง] [อนุมัติและส่ง] */
+.rv .rv-send { gap: 12px; }
+.rv .rv-send .rv-btn.primary { width: auto; flex: 1 1 auto; }
+.rv .rv-decline { height: 50px; padding: 0 26px; border-color: var(--line-2); background: var(--surface); color: var(--ink-2); font-size: 1rem; font-weight: 600; }
+.rv .rv-decline:hover, .rv .rv-decline.on { border-color: #d49a92; background: var(--red-tint); color: var(--red); }
+.rv-side > .rv-rej { margin: 12px 0 0; padding: 12px; border: 1px solid #e3b1ab; border-radius: 8px; background: var(--red-tint); }
+.rv-side > .rv-rej input { background: var(--surface); }
+[data-theme="dark"] .rv-side > .rv-rej { border-color: #6e2f28; }
+[data-theme="dark"] .rv .rv-decline:hover, [data-theme="dark"] .rv .rv-decline.on { border-color: #6e2f28; }
+
+@media (min-width: 901px) {
+  .rv-ph { padding-top: 20px; padding-bottom: 18px; }
+}
+@container rvd (min-width: 940px) {
+  .rv-cols .rv-compose textarea { min-height: 150px; }
+}
+@media (max-width: 900px) {
+  .rv::before { display: none; }
+  .rv .rv-decline { height: 52px; padding: 0 20px; }
+  .rv-side > .rv-rej { margin-top: 10px; }
+}
+
+/* =====================================================================
+   หน้ารออนุมัติ — ชุดหรูหรา รอบ 3 (เขียวป่าเข้ม + งาช้าง + ทองเหลืองบาง)
+   คิวทางซ้ายเป็นแผงเขียวป่าเข้มตัวอักษรงาช้าง · เส้น/จุดเน้นเป็นสีทองเหลืองอ่อน (ใช้เฉพาะรายละเอียดเล็กๆ)
+   พื้นที่อ่านและเขียนทางขวายังเป็นกระดาษงาช้างสว่าง เพื่ออ่านง่ายทั้งวัน · ปุ่มหลักเขียวป่าเข้มขอบทองบาง
+   ===================================================================== */
+.rv {
+  --lux-ink: #0f2a21;
+  --lux-ink-2: #173a2d;
+  --lux-line: rgba(243, 238, 226, .1);
+  --lux-text: #f3eee2;
+  --lux-mute: #9fb4a8;
+  --brass: #c4a062;
+  --brass-d: #8f7236;
+  --rv-in: #f6f3ec;
+  --rv-out-bg: #e8efe9;
+  --rv-out-line: #c9d9ce;
+}
+[data-theme="dark"] .rv { --lux-ink: #0b1c15; --lux-ink-2: #122a20; --brass-d: #d1b274; --rv-in: #171815; --rv-out-bg: #16281f; --rv-out-line: #25402f; }
+
+/* หัวหน้า + แท็บ */
+.rv-head .cd-eyebrow { color: var(--brass-d, #8f7236); }
+.rv-head .cd-eyebrow::before { background: #c4a062; }
+.rv-tab.on { border-bottom-color: #0f2a21; }
+[data-theme="dark"] .rv-tab.on { border-bottom-color: #c4a062; }
+
+/* เส้นหัวจดหมาย: ทองเหลืองบาง */
+.rv::before { background: var(--brass); height: 2px; }
+
+/* คิวทางซ้าย: แผงเขียวป่าเข้ม */
+.rv-queue { background: var(--lux-ink); border-right: 0; color: var(--lux-text); }
+.rv-seg { background: transparent; border-bottom: 1px solid var(--lux-line); }
+.rv-seg a { color: var(--lux-mute); }
+.rv-seg a:hover { color: var(--lux-text); }
+.rv-seg a.on { background: none; color: var(--lux-text); border-bottom-color: var(--brass); }
+.rv-seg b { background: rgba(243, 238, 226, .08); color: var(--lux-mute); }
+.rv-seg b.hot { background: var(--brass); color: #1d1709; }
+.rv-list { scrollbar-color: rgba(243, 238, 226, .22) transparent; }
+.rv-item { border-bottom: 1px solid var(--lux-line); color: var(--lux-text); }
+.rv-item:hover { background: rgba(243, 238, 226, .045); }
+.rv-item.on { background: var(--lux-ink-2); }
+.rv-item.on::before { background: var(--brass); }
+.rv-item:focus-visible { box-shadow: inset 0 0 0 2px var(--brass); }
+.rv-it-top strong { color: var(--lux-text); }
+.rv-it-top time { color: var(--lux-mute); }
+.rv-it-snip { color: #b6c6bb; }
+.rv-item.unread .rv-it-top strong { color: #fff; }
+.rv-item.unread .rv-it-snip { color: #fff; }
+.rv-item.unread .rv-it-top time { color: var(--brass); }
+.rv-un { background: var(--brass); color: #1d1709; }
+.rv-queue .rv-tid { color: var(--brass); }
+.rv-queue .rv-chip:not(.line):not(.ok):not(.info):not(.bad):not([class*="sev-"]) { color: var(--lux-mute); }
+.rv-queue .rv-chip.line { background: rgba(6, 199, 85, .16); color: #78e7a2; }
+.rv-queue .rv-chip.ok { background: rgba(56, 226, 145, .14); color: #86e6bd; }
+.rv-queue .rv-chip.info { background: rgba(134, 168, 255, .16); color: #b0c5ff; }
+.rv-queue .rv-chip.bad, .rv-queue .rv-chip.sev-high, .rv-queue .rv-chip.sev-critical { background: rgba(242, 107, 91, .17); color: #f7a498; }
+.rv-queue .rv-chip.sev-medium { background: rgba(231, 169, 72, .17); color: #f0c77c; }
+.rv-queue .rv-chip.sev-low { background: rgba(56, 226, 145, .13); color: #86e6bd; }
+
+/* คิวว่าง: กลับเป็นพื้นสว่าง */
+.rv.empty .rv-queue { color: var(--ink); }
+.rv.empty .rv-seg { background: none; border-bottom-color: var(--line); }
+.rv.empty .rv-seg a { color: var(--muted); }
+.rv.empty .rv-seg a:hover { color: var(--ink); }
+.rv.empty .rv-seg a.on { color: var(--ink); border-bottom-color: var(--lux-ink); }
+.rv.empty .rv-seg b { background: var(--grey-tint); color: var(--muted); }
+.rv.empty .rv-seg b.hot { background: var(--red-tint); color: var(--red); }
+
+/* พื้นที่อ่าน/เขียนทางขวา */
+.rv-convo { background: var(--rv-in); }
+.rv-note { border-left-color: var(--brass); }
+.rv-note b { color: var(--brass-d); }
+.rv-replying { border-left-color: var(--brass); }
+.rv-replying { color: var(--ink-2); }
+.rv .rv-btn.primary { border-color: #0a1d16; background: var(--lux-ink); box-shadow: inset 0 0 0 1px rgba(196, 160, 98, .42); }
+.rv .rv-btn.primary:hover { border-color: #0a1d16; background: var(--lux-ink-2); }
+.rv .rv-say-btn { background: var(--lux-ink); box-shadow: inset 0 0 0 1px rgba(196, 160, 98, .42); }
+.rv .rv-say-btn:hover { background: var(--lux-ink-2); }
+[data-theme="dark"] .rv .rv-btn.primary { border-color: #127350; background: #178a5d; box-shadow: none; }
+[data-theme="dark"] .rv .rv-btn.primary:hover { background: #1c9d6a; }
+[data-theme="dark"] .rv .rv-say-btn { background: #178a5d; box-shadow: none; }
+.rv-compose textarea:focus { border-color: var(--lux-ink); box-shadow: 0 0 0 3px rgba(196, 160, 98, .28); }
+.rv-say-row:focus-within { border-color: var(--lux-ink); box-shadow: 0 0 0 3px rgba(196, 160, 98, .28); }
+[data-theme="dark"] .rv-compose textarea:focus, [data-theme="dark"] .rv-say-row:focus-within { border-color: var(--brass); }
+.rv .rv-tg .tg-bubble { border-left-color: var(--brass); }
+
+/* มือถือ: รายการเป็นการ์ดเขียวป่าเข้ม */
+@media (max-width: 900px) {
+  .rv-seg { background: var(--lux-ink); border: 0; border-radius: 12px 12px 0 0; margin-bottom: 0; }
+  .rv-list { background: var(--lux-ink); border: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
+  .rv.empty .rv-seg { background: none; border: 0; border-radius: 0; }
+}
